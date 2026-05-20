@@ -128,6 +128,9 @@ button:disabled {
     }
     configWarn.style.display = 'none';
 
+    var linkApp = document.getElementById('linkIntranet');
+    if (linkApp) linkApp.setAttribute('href', APP);
+
     window.fpRedirectIfSession(APP).catch(function () {});
 
     form.addEventListener('submit', function (e) {
@@ -139,11 +142,20 @@ button:disabled {
 
         window.fpSignIn(email, password).then(function (res) {
             if (res.error) {
-                msg.textContent = res.error.message;
+                msg.textContent = res.error.message || 'Erro ao entrar.';
                 btn.disabled = false;
                 return;
             }
-            window.location.href = APP;
+            if (typeof window.fpGoToApp === 'function') {
+                window.fpGoToApp(APP).then(function (ok) {
+                    if (!ok) {
+                        msg.textContent = 'Login OK, mas a sessão não ficou no navegador. Verifique Supabase → URL Configuration (domínio Vercel).';
+                        btn.disabled = false;
+                    }
+                });
+            } else {
+                window.location.replace(APP);
+            }
         }).catch(function (err) {
             msg.textContent = err && err.message ? err.message : 'Erro ao entrar.';
             btn.disabled = false;
