@@ -28,7 +28,7 @@
 
     /** Rotas (local: ficheiros .html | Vercel: vercel.json rewrites) */
     g.FP_LOGIN_URL = '/';
-    g.FP_APP_URL = '/intranet-fastpark';
+    g.FP_APP_URL = '/Intranet_FastPark_Integrada.html';
 
     g.fpSupabaseConfigIsReady = function () {
         var url = String(g.FP_SUPABASE_URL || '').trim();
