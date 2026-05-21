@@ -5571,26 +5571,44 @@ function fpPushDashboardWithRetry(){
         }
     }
 }
-window.fpOnCloudDataReady = function () {
+window.fpOnCloudDataReady = async function () {
     if(typeof fpInitExternalTabsAndDashboard === 'function') fpInitExternalTabsAndDashboard();
+    state.employees = fpHydrateEmployeesMediaForSnapshot(state.employees || [], window.__FP_EMBEDDED_ATTACHMENTS__ || {});
+    if(typeof fpPersistEmployeeAttBagFromState === 'function'){
+        try { await fpPersistEmployeeAttBagFromState(); } catch(e) { console.warn('[FP] persist bag pós-nuvem', e); }
+    }
     try { renderAll(); } catch(e) { console.warn('[FP] renderAll pós-nuvem', e); }
     if(typeof refreshDashboardFilters === 'function') refreshDashboardFilters();
     if(typeof renderBeneficiosCestas === 'function') renderBeneficiosCestas();
     fpPushDashboardWithRetry();
 };
 async function fpWaitForAuthSession(maxMs){
-    maxMs = maxMs || 10000;
-    var t0 = Date.now();
-    while(Date.now() - t0 < maxMs){
-        try {
-            if(typeof fpGetAuthContext === 'function'){
-                var ctx = await fpGetAuthContext();
-                if(ctx && ctx.session) return ctx.session;
+    maxMs = maxMs || 20000;
+    if(window.FP_AUTH_REQUIRED === false) return { user: {} };
+    var done = false;
+    var sub = null;
+    return new Promise(function(resolve){
+        function finish(sess){ if(done) return; done = true; try{ if(sub && sub.unsubscribe) sub.unsubscribe(); }catch(_e){} resolve(sess || null); }
+        if(window.fpSupabase && window.fpSupabase.auth && window.fpSupabase.auth.onAuthStateChange){
+            var h = window.fpSupabase.auth.onAuthStateChange(function(ev, session){
+                if(session && (ev === 'SIGNED_IN' || ev === 'INITIAL_SESSION' || ev === 'TOKEN_REFRESHED')) finish(session);
+            });
+            sub = h.data && h.data.subscription ? h.data.subscription : null;
+        }
+        (async function poll(){
+            var t0 = Date.now();
+            while(Date.now() - t0 < maxMs && !done){
+                try {
+                    if(typeof fpGetAuthContext === 'function'){
+                        var ctx = await fpGetAuthContext();
+                        if(ctx && ctx.session){ finish(ctx.session); return; }
+                    }
+                } catch(e) { /* retry */ }
+                await new Promise(function(r){ setTimeout(r, 200); });
             }
-        } catch(e) { /* retry */ }
-        await new Promise(function(r){ setTimeout(r, 250); });
-    }
-    return null;
+            if(!done) finish(null);
+        })();
+    });
 }
 
 function detectFolhaTipoFromLines(lines, fileName){
@@ -7021,7 +7039,6 @@ async function applyFpEmbeddedIntranetDb(db, opts){
         window.__FP_CLOUD_SNAPSHOT_LOADED__ = true;
     }
     window.__FP_EMBEDDED_ATTACHMENTS__ = att;
-    fpPrimeEmployeeAttBagFromDb(db.state.employees, att);
     state.employees = expandEmployeeRefsInEmployees(db.state.employees, att);
     state.cnhMap = new Map(Object.entries(db.state.cnhMapObj || {}));
     state.cnhColBDByNome = new Map(Object.entries(db.state.cnhColBDByNomeObj || {}));
@@ -7065,9 +7082,11 @@ async function applyFpEmbeddedIntranetDb(db, opts){
         }
         if((!state.employees || !state.employees.length) && typeof fpLoadEmployeesFromLocalStorage === 'function'){
             fpLoadEmployeesFromLocalStorage();
-            state.employees = fpHydrateEmployeesMediaForSnapshot(state.employees || [], att);
         }
     }
+    fpPrimeEmployeeAttBagFromDb(state.employees, window.__FP_EMBEDDED_ATTACHMENTS__ || att);
+    state.employees = fpMergeEmployeeAttachments(state.employees || [], window.__FP_EMPLOYEE_ATT_BAG__ || {});
+    state.employees = fpHydrateEmployeesMediaForSnapshot(state.employees, window.__FP_EMBEDDED_ATTACHMENTS__ || att);
     if(typeof fpApplyDarkModePreference === 'function') fpApplyDarkModePreference();
     if(db.movState){
         movState.rows = db.movState.rows || [];
@@ -12891,9 +12910,12 @@ function renderSinistrosList(){
             return;
         }
     }
+    if(window.FP_CLOUD_AUTOSAVE !== false && typeof fpInitCloudAutosave === 'function'){
+        try { fpInitCloudAutosave(); } catch(eInit) { console.warn('[fp-cloud] init autosave', eInit); }
+    }
     if(typeof fpScheduleCloudAutoload === 'function'){
         try {
-            var autoload = await fpScheduleCloudAutoload({ boot: true });
+            var autoload = await fpScheduleCloudAutoload({ boot: true, force: true });
             cloudLoaded = !!(autoload && autoload.loaded);
         } catch(e) { console.warn('[fp-cloud] boot autoload', e); }
     } else if(typeof fpTryCloudAutoload === 'function'){
@@ -12918,7 +12940,7 @@ function renderSinistrosList(){
         state.employees = fpHydrateEmployeesMediaForSnapshot(state.employees || [], window.__FP_EMBEDDED_ATTACHMENTS__ || {});
     }
     if(typeof fpInitExternalTabsAndDashboard === 'function') fpInitExternalTabsAndDashboard();
-    if(typeof window.fpOnCloudDataReady === 'function') window.fpOnCloudDataReady();
+    if(typeof window.fpOnCloudDataReady === 'function') await window.fpOnCloudDataReady();
     else {
         try { renderAll(); } catch (renderErr) {
             console.error('[FP] renderAll', renderErr);
@@ -12927,6 +12949,17 @@ function renderSinistrosList(){
     }
     if (typeof switchTab === 'function') switchTab('fp-home');
     window.__fpIntranetBootComplete = true;
+    if(window.FP_AUTH_REQUIRED !== false && (!(state.employees && state.employees.length)) && typeof fpCloudLoadSnapshot === 'function'){
+        setTimeout(async function(){
+            try {
+                if(state.employees && state.employees.length) return;
+                if(typeof fpResetCloudAutoloadForRetry === 'function') fpResetCloudAutoloadForRetry();
+                await fpCloudLoadSnapshot({ autoload: true, skipIframeSync: true });
+                state.employees = fpHydrateEmployeesMediaForSnapshot(state.employees || [], window.__FP_EMBEDDED_ATTACHMENTS__ || {});
+                if(typeof window.fpOnCloudDataReady === 'function') await window.fpOnCloudDataReady();
+            } catch(retryErr) { console.warn('[fp-cloud] retry autoload', retryErr); }
+        }, 2000);
+    }
     queueMicrotask(() => {
         if(typeof fpUpdateCloudNavUi === 'function') fpUpdateCloudNavUi().catch(function(){});
         if(typeof fpBridgeInit === 'function' && window.FP_BRIDGE_ENABLED !== false){
