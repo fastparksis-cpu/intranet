@@ -5184,9 +5184,14 @@ function propagateWorkbookToEmbeddedDashboardIframes(data) {
 
 /** Sincroniza o cadastro em memória (shell) para os iframes do DashBoard quando não há .xlsx (embutido, localStorage, novo funcionário). */
 function propagateStateToDashboardIframes() {
+    const bag = window.__FP_EMPLOYEE_ATT_BAG__ || {};
+    const att = window.__FP_EMBEDDED_ATTACHMENTS__ || {};
+    let employees = Array.isArray(state.employees) ? state.employees : [];
+    employees = fpMergeEmployeeAttachments(employees, bag);
+    employees = fpHydrateEmployeesMediaForSnapshot(employees, att);
     const payload = {
         type: 'fastpark-employees-sync',
-        employees: Array.isArray(state.employees) ? state.employees : [],
+        employees,
         ferias: Array.isArray(state.ferias) ? state.ferias : [],
         movimentacoes: Array.isArray(state.movimentacoes) ? state.movimentacoes : [],
         cnhMapObj: mapToPlainObjectFromMap(state.cnhMap),
@@ -6252,29 +6257,125 @@ function fpIsEmbeddedActive(){ return !!window.__FP_EMBEDDED_FROM_FILE__; }
 function fpNormEmployeeAttKey(nome){
     return String(nome || '').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
+function fpStableEmployeeSlug(emp, fallbackIdx){
+    const n = fpSlugAttSeg(fpNormEmployeeAttKey(emp && emp.nome), 48) || 'sem_nome';
+    const cpf = String(emp && emp.cpf || '').replace(/\D/g, '').slice(0, 11);
+    return cpf ? (n + '_' + cpf) : (n + (fallbackIdx != null ? '_' + fallbackIdx : ''));
+}
+function fpAttDataUrlFromMapValue(v){
+    if(!v) return null;
+    if(typeof v === 'string' && v.indexOf('data:') === 0) return v;
+    if(v && typeof v === 'object' && v.__cloud === true) return null;
+    return null;
+}
+/** Resolve foto/documento a partir de refs (nuvem, IDB ou caminho estável). */
+function fpResolveEmployeeMediaRef(ref, emp, attMap, bag){
+    if(!ref) return null;
+    const r = String(ref);
+    const att = attMap && typeof attMap === 'object' ? attMap : {};
+    const b = bag && typeof bag === 'object' ? bag : {};
+    const inline = fpAttDataUrlFromMapValue(att[r]);
+    if(inline) return inline;
+    if(fpAttDataUrlFromMapValue(b[r])) return b[r];
+    const key = fpNormEmployeeAttKey(emp && emp.nome);
+    if(r.startsWith('emp_att:') && key && b[key]){
+        if(r.endsWith(':foto') && b[key].foto) return b[key].foto;
+        const m = r.match(/^emp_att:[^:]+:(doc|resc):(\d+)$/);
+        if(m){
+            const list = m[1] === 'resc' ? b[key].documentosRescisao : b[key].documentos;
+            const idx = Number(m[2]);
+            const src = Array.isArray(list) ? (list.find(x => x && x.i === idx) || list[idx]) : null;
+            if(src && src.dataUrl) return src.dataUrl;
+        }
+    }
+    if(key && b[key]){
+        if(r.indexOf('/foto/') >= 0 && b[key].foto) return b[key].foto;
+    }
+    return null;
+}
+function fpPrimeEmployeeAttBagFromDb(employees, attMap){
+    const bag = { ...(window.__FP_EMPLOYEE_ATT_BAG__ || {}) };
+    const att = attMap && typeof attMap === 'object' ? attMap : {};
+    (employees || []).forEach((emp, ei) => {
+        const key = fpNormEmployeeAttKey(emp && emp.nome);
+        if(!key) return;
+        const fotoUrl = (emp.foto && String(emp.foto).startsWith('data:')) ? emp.foto
+            : fpResolveEmployeeMediaRef(emp.fotoRef, emp, att, bag);
+        if(fotoUrl){
+            if(!bag[key]) bag[key] = {};
+            bag[key].foto = fotoUrl;
+            const slug = fpStableEmployeeSlug(emp, ei);
+            bag['colaboradores/foto/' + slug] = fotoUrl;
+        }
+        const mapDocs = (docs, resc) => {
+            if(!Array.isArray(docs)) return;
+            const stored = [];
+            docs.forEach((d, di) => {
+                if(!d) return;
+                let dataUrl = (d.dataUrl && String(d.dataUrl).startsWith('data:')) ? d.dataUrl
+                    : fpResolveEmployeeMediaRef(d.dataRef, emp, att, bag);
+                if(!dataUrl) return;
+                const slug = fpStableEmployeeSlug(emp, ei);
+                const base = resc ? 'colaboradores/rescisao/' : 'colaboradores/docs/';
+                const path = base + slug + '_' + di + '_' + fpSlugAttSeg(d.name || 'doc', 32);
+                bag[path] = dataUrl;
+                stored.push({ i: di, dataUrl, name: d.name || '', type: d.type || '', size: d.size || 0, addedAt: d.addedAt || '' });
+            });
+            if(stored.length){
+                if(!bag[key]) bag[key] = {};
+                if(resc) bag[key].documentosRescisao = stored;
+                else bag[key].documentos = stored;
+            }
+        };
+        mapDocs(emp.documentos, false);
+        mapDocs(emp.documentosRescisao, true);
+    });
+    window.__FP_EMPLOYEE_ATT_BAG__ = bag;
+    fpIdbPut(FP_EMPLOYEES_ATTACHMENTS_IDB_KEY, bag).catch(e => console.warn('[FP] IDB bag prime', e));
+    return bag;
+}
+async function fpPersistEmployeeAttBagFromState(){
+    const emps = state.employees || [];
+    const { slim, bag } = fpSlimEmployeesForLocalStorage(emps);
+    window.__FP_EMPLOYEE_ATT_BAG__ = bag;
+    await fpIdbPut(FP_EMPLOYEES_ATTACHMENTS_IDB_KEY, bag).catch(e => console.warn('[FP] IDB bag persist', e));
+    try { localStorage.setItem(FP_EMPLOYEES_STORE_KEY, JSON.stringify(slim)); } catch(e) { console.warn('[FP] slim LS', e); }
+    state.employees = fpMergeEmployeeAttachments(slim, bag);
+}
+window.fpStableEmployeeSlug = fpStableEmployeeSlug;
+window.fpResolveEmployeeMediaRef = fpResolveEmployeeMediaRef;
+window.fpPrimeEmployeeAttBagFromDb = fpPrimeEmployeeAttBagFromDb;
+window.fpPersistEmployeeAttBagFromState = fpPersistEmployeeAttBagFromState;
 /** Separa foto/documentos (base64) para IndexedDB; devolve colaboradores «leves» para localStorage. */
 function fpSlimEmployeesForLocalStorage(arr){
     const bag = {};
-    const slim = (arr || []).map(emp => {
+    const slim = (arr || []).map((emp, ei) => {
         const e = { ...emp };
         const key = fpNormEmployeeAttKey(emp.nome);
         if(!key) return e;
+        const slug = fpStableEmployeeSlug(emp, ei);
         if(emp.foto && String(emp.foto).startsWith('data:')){
+            const fotoPath = 'colaboradores/foto/' + slug;
             if(!bag[key]) bag[key] = {};
             bag[key].foto = emp.foto;
+            bag[fotoPath] = emp.foto;
             e.foto = '';
-            e.fotoRef = 'emp_att:' + key + ':foto';
+            e.fotoRef = e.fotoRef || fotoPath;
+        } else if(e.fotoRef && !e.foto){
+            /* mantém caminho estável já gravado na nuvem/local */
         }
         if(Array.isArray(emp.documentos)){
             const stored = [];
             e.documentos = emp.documentos.map((d, i) => {
                 const o = { ...d };
                 if(d && d.dataUrl && String(d.dataUrl).startsWith('data:')){
+                    const docPath = 'colaboradores/docs/' + slug + '_' + i + '_' + fpSlugAttSeg(d.name || 'doc', 32);
                     if(!bag[key]) bag[key] = {};
                     if(!bag[key].documentos) bag[key].documentos = [];
                     stored.push({ i, dataUrl: d.dataUrl, name: d.name || '', type: d.type || '', size: d.size || 0, addedAt: d.addedAt || '' });
+                    bag[docPath] = d.dataUrl;
                     o.dataUrl = '';
-                    o.dataRef = 'emp_att:' + key + ':doc:' + i;
+                    o.dataRef = o.dataRef || docPath;
                 }
                 return o;
             });
@@ -6285,11 +6386,13 @@ function fpSlimEmployeesForLocalStorage(arr){
             e.documentosRescisao = emp.documentosRescisao.map((d, i) => {
                 const o = { ...d };
                 if(d && d.dataUrl && String(d.dataUrl).startsWith('data:')){
+                    const docPath = 'colaboradores/rescisao/' + slug + '_' + i + '_' + fpSlugAttSeg(d.name || 'rescisao', 32);
                     if(!bag[key]) bag[key] = {};
                     if(!bag[key].documentosRescisao) bag[key].documentosRescisao = [];
                     storedR.push({ i, dataUrl: d.dataUrl, name: d.name || '', type: d.type || '', size: d.size || 0, addedAt: d.addedAt || '' });
+                    bag[docPath] = d.dataUrl;
                     o.dataUrl = '';
-                    o.dataRef = 'emp_att:' + key + ':resc:' + i;
+                    o.dataRef = o.dataRef || docPath;
                 }
                 return o;
             });
@@ -6318,18 +6421,36 @@ function fpMergeEmployeeAttachments(arr, bag){
             return o;
         });
     };
+    const attMap = window.__FP_EMBEDDED_ATTACHMENTS__ || {};
     return arr.map(emp => {
         const e = { ...emp };
         const key = fpNormEmployeeAttKey(emp.nome);
         const att = b[key];
+        if(!e.foto || !String(e.foto).startsWith('data:')){
+            const fromRef = fpResolveEmployeeMediaRef(e.fotoRef, emp, attMap, b);
+            if(fromRef) e.foto = fromRef;
+        }
         if(att){
-            if((e.fotoRef && String(e.fotoRef).startsWith('emp_att:')) || !e.foto){
-                if(att.foto) e.foto = att.foto;
-            }
-            if(e.fotoRef && String(e.fotoRef).startsWith('emp_att:') && e.foto) delete e.fotoRef;
+            if(!e.foto && att.foto) e.foto = att.foto;
             e.documentos = docFromBag(e.documentos, att.documentos);
             e.documentosRescisao = docFromBag(e.documentosRescisao, att.documentosRescisao);
         }
+        const mapDocRefs = (docs) => {
+            if(!Array.isArray(docs)) return docs;
+            return docs.map((d, i) => {
+                const o = { ...d };
+                if((!o.dataUrl || !String(o.dataUrl).startsWith('data:')) && o.dataRef){
+                    const u = fpResolveEmployeeMediaRef(o.dataRef, emp, attMap, b);
+                    if(u) o.dataUrl = u;
+                } else if(!o.dataUrl && Array.isArray(att && att.documentos)){
+                    const src = att.documentos.find(x => x && x.i === i) || att.documentos[i];
+                    if(src && src.dataUrl) o.dataUrl = src.dataUrl;
+                }
+                return o;
+            });
+        };
+        e.documentos = mapDocRefs(e.documentos);
+        e.documentosRescisao = mapDocRefs(e.documentosRescisao);
         return e;
     });
 }
@@ -6467,27 +6588,35 @@ function expandPagasSignedSlim(slim, att){
 /** Restaura foto e documentos dos colaboradores a partir do mapa attachments (export com refs). */
 function expandEmployeeRefsInEmployees(arr, att){
     if(!Array.isArray(arr)) return [];
-    arr = fpMergeEmployeeAttachments(arr, window.__FP_EMPLOYEE_ATT_BAG__ || {});
     const bag = att && typeof att === 'object' ? att : {};
-    const mapDocs = (docs) => {
-        if(!Array.isArray(docs)) return docs;
-        return docs.map(d => {
-            const o = { ...d };
-            if(o.dataRef && bag[o.dataRef]){
-                o.dataUrl = bag[o.dataRef];
-                delete o.dataRef;
-            }
-            return o;
-        });
-    };
-    return arr.map(emp => {
+    fpPrimeEmployeeAttBagFromDb(arr, bag);
+    return fpMergeEmployeeAttachments(arr, window.__FP_EMPLOYEE_ATT_BAG__ || {});
+}
+function fpHydrateEmployeesMediaForSnapshot(emps, attExtra){
+    const att = { ...(attExtra || {}), ...(window.__FP_EMBEDDED_ATTACHMENTS__ || {}) };
+    const bag = window.__FP_EMPLOYEE_ATT_BAG__ || {};
+    return (emps || []).map((emp, ei) => {
         const e = { ...emp };
-        if(e.fotoRef && bag[e.fotoRef]){
-            e.foto = bag[e.fotoRef];
-            delete e.fotoRef;
+        if(!e.foto || !String(e.foto).startsWith('data:')){
+            const u = fpResolveEmployeeMediaRef(e.fotoRef, emp, att, bag);
+            if(u) e.foto = u;
         }
-        e.documentos = mapDocs(e.documentos);
-        e.documentosRescisao = mapDocs(e.documentosRescisao);
+        const hydrateDocs = (docs) => {
+            if(!Array.isArray(docs)) return docs;
+            return docs.map((d, di) => {
+                const o = { ...d };
+                if((!o.dataUrl || !String(o.dataUrl).startsWith('data:')) && o.dataRef){
+                    const u = fpResolveEmployeeMediaRef(o.dataRef, emp, att, bag);
+                    if(u) o.dataUrl = u;
+                }
+                return o;
+            });
+        };
+        e.documentos = hydrateDocs(e.documentos);
+        e.documentosRescisao = hydrateDocs(e.documentosRescisao);
+        if((!e.fotoRef || !String(e.fotoRef).trim()) && e.foto && String(e.foto).startsWith('data:')){
+            e.fotoRef = 'colaboradores/foto/' + fpStableEmployeeSlug(emp, ei);
+        }
         return e;
     });
 }
@@ -6697,22 +6826,29 @@ async function collectFpIntranetSnapshot(){
         }
     }
     const employeesResolved = [];
-    const emps = state.employees || [];
+    const emps = fpHydrateEmployeesMediaForSnapshot(state.employees || [], window.__FP_EMBEDDED_ATTACHMENTS__ || {});
     for(let ei = 0; ei < emps.length; ei++){
         const emp = emps[ei];
         const e = { ...emp };
+        const slug = fpStableEmployeeSlug(emp, ei);
+        const fotoPath = 'colaboradores/foto/' + slug;
         if(e.foto && String(e.foto).startsWith('data:')){
-            const ref = await putAtt('colaboradores/foto/' + ei + '_' + fpSlugAttSeg(emp.nome, 36), e.foto);
+            const ref = await putAtt(e.fotoRef && String(e.fotoRef).indexOf('colaboradores/foto/') === 0 ? e.fotoRef : fotoPath, e.foto);
             e.foto = '';
             e.fotoRef = ref;
+        } else if(e.fotoRef && attachments[e.fotoRef]){
+            /* já na nuvem/disco — mantém caminho */
         }
         if(Array.isArray(e.documentos)){
             const docs = [];
             for(let di = 0; di < e.documentos.length; di++){
                 const d = e.documentos[di];
+                const docPath = 'colaboradores/docs/' + slug + '_' + di + '_' + fpSlugAttSeg(d && d.name || 'doc', 48);
                 if(d && d.dataUrl && String(d.dataUrl).startsWith('data:')){
-                    const ref = await putAtt('colaboradores/docs/' + ei + '_' + di + '_' + fpSlugAttSeg(d.name || 'doc', 48), d.dataUrl);
+                    const ref = await putAtt(d.dataRef && String(d.dataRef).indexOf('colaboradores/docs/') === 0 ? d.dataRef : docPath, d.dataUrl);
                     docs.push({ ...d, dataUrl: '', dataRef: ref });
+                } else if(d && d.dataRef && attachments[d.dataRef]) {
+                    docs.push({ ...d });
                 } else {
                     docs.push({ ...d });
                 }
@@ -6723,9 +6859,12 @@ async function collectFpIntranetSnapshot(){
             const dr = [];
             for(let di = 0; di < e.documentosRescisao.length; di++){
                 const d = e.documentosRescisao[di];
+                const docPath = 'colaboradores/rescisao/' + slug + '_' + di + '_' + fpSlugAttSeg(d && d.name || 'rescisao', 48);
                 if(d && d.dataUrl && String(d.dataUrl).startsWith('data:')){
-                    const ref = await putAtt('colaboradores/rescisao/' + ei + '_' + di + '_' + fpSlugAttSeg(d.name || 'rescisao', 48), d.dataUrl);
+                    const ref = await putAtt(d.dataRef && String(d.dataRef).indexOf('colaboradores/rescisao/') === 0 ? d.dataRef : docPath, d.dataUrl);
                     dr.push({ ...d, dataUrl: '', dataRef: ref });
+                } else if(d && d.dataRef && attachments[d.dataRef]) {
+                    dr.push({ ...d });
                 } else {
                     dr.push({ ...d });
                 }
@@ -6814,6 +6953,7 @@ async function applyFpEmbeddedIntranetDb(db){
     const att = db.attachments || {};
     window.__FP_EMBEDDED_FROM_FILE__ = true;
     window.__FP_EMBEDDED_ATTACHMENTS__ = att;
+    fpPrimeEmployeeAttBagFromDb(db.state.employees, att);
     state.employees = expandEmployeeRefsInEmployees(db.state.employees, att);
     state.cnhMap = new Map(Object.entries(db.state.cnhMapObj || {}));
     state.cnhColBDByNome = new Map(Object.entries(db.state.cnhColBDByNomeObj || {}));
@@ -6890,7 +7030,7 @@ async function applyFpEmbeddedIntranetDb(db){
     fpSavePagasToLocalStorage();
     fpSaveQuadroGeralToLocalStorage();
     if(typeof propagateStateToDashboardIframes === 'function') propagateStateToDashboardIframes();
-    fpNotifyIntranetChanged();
+    if(typeof fpNotifyIntranetChanged === 'function') fpNotifyIntranetChanged();
     } finally {
         window.__fpLsHookPause = false;
     }
@@ -12671,9 +12811,12 @@ function renderSinistrosList(){
         } else {
             fpLoadEmployeesFromLocalStorage();
             await fpHydrateEmployeeAttachmentsFromIdb();
+            state.employees = fpHydrateEmployeesMediaForSnapshot(state.employees || [], window.__FP_EMBEDDED_ATTACHMENTS__ || {});
             fpLoadPagasFromLocalStorage();
             fpLoadQuadroGeralFromLocalStorage();
         }
+    } else {
+        state.employees = fpHydrateEmployeesMediaForSnapshot(state.employees || [], window.__FP_EMBEDDED_ATTACHMENTS__ || {});
     }
     try { renderAll(); } catch (renderErr) {
         console.error('[FP] renderAll', renderErr);
