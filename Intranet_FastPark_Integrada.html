@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script>(function(){if(location.protocol!=='file:'){var b=document.createElement('base');b.href='/';document.head.appendChild(b);}})();</script>
 <title>Intranet FastPark Integrada</title>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -5492,6 +5493,16 @@ function fpInitTabPageLayout() {
     });
 }
 
+/** URL do DashBoard: na Vercel usa /cadastro; em ficheiro local usa DashBoard RH.html */
+function fpIframeCadastroUrl(query){
+    const q = query ? (query.indexOf('?') === 0 ? query : '?' + query) : '';
+    try {
+        if(location.protocol === 'file:') return 'DashBoard RH.html' + q;
+        return '/cadastro' + q;
+    } catch(e) {
+        return 'DashBoard RH.html' + q;
+    }
+}
 function configureExternalTab(tabId, fileName){
     const tab = document.getElementById(tabId);
     if(!tab || tab.dataset.externalConfigured === '1') return;
@@ -5521,8 +5532,8 @@ window.fpInitExternalTabsAndDashboard = function () {
     }
     if (typeof configureExternalTab !== 'function') return;
     try {
-        configureExternalTab('dashboard', 'DashBoard RH.html?view=cadastro&fpv=5');
-        configureExternalTab('inicio', 'DashBoard RH.html?view=inicio&fpv=5');
+        configureExternalTab('dashboard', fpIframeCadastroUrl('view=cadastro&fpv=5'));
+        configureExternalTab('inicio', fpIframeCadastroUrl('view=inicio&fpv=5'));
     } catch (e) { console.warn('[FP] iframes', e); }
     switchTab('fp-home');
     queueMicrotask(function () {
