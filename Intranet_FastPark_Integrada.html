@@ -2552,9 +2552,6 @@ function switchTab(tab) {
             fpSyncDarkModeToDashboardIframes(localStorage.getItem('fp_darkmode') === '1');
         }
         if(typeof propagateStateToDashboardIframes === 'function') propagateStateToDashboardIframes();
-        document.querySelectorAll('#' + tab + ' iframe.external-tab-frame').forEach(function(fr){
-            try { fr.contentWindow.postMessage({ type: 'fastpark-request-full-state' }, '*'); } catch(e) {}
-        });
     }
     if(tab === 'movimentos' && typeof refreshMovGestaoPagamentosUi === 'function') refreshMovGestaoPagamentosUi();
     if(tab === 'vt' && typeof renderVtReport === 'function') renderVtReport();
@@ -5259,7 +5256,12 @@ window.addEventListener('message', (ev) => {
                 incoming = fpMergeEmployeeAttachments(incoming, window.__FP_EMPLOYEE_ATT_BAG__ || {});
             }
             let sig;
-            try { sig = JSON.stringify(incoming.map(e => ({ n: e.nome, f: !!(e.foto), d: (e.documentos || []).length }))); } catch(_){ sig = null; }
+            try {
+                sig = JSON.stringify({
+                    n: incoming.length,
+                    names: incoming.slice(0, 12).map(e => String(e.nome || ''))
+                });
+            } catch(_){ sig = null; }
             if(sig !== null && sig === __fpLastIframeEmployeesJson) return;
             __fpLastIframeEmployeesJson = sig;
             state.employees = incoming;
@@ -5272,8 +5274,9 @@ window.addEventListener('message', (ev) => {
             refreshDashboardFilters();
             populateCadastroDependentes();
             renderBeneficiosCestas();
-            fpNotifyIntranetChanged();
-            if(typeof propagateStateToDashboardIframes === 'function') propagateStateToDashboardIframes();
+            if(typeof refreshDashboardFilters === 'function') refreshDashboardFilters();
+            if(typeof renderBeneficiosCestas === 'function') renderBeneficiosCestas();
+            if(typeof fpNotifyIntranetChanged === 'function') fpNotifyIntranetChanged();
             addAudit('Cadastro do DashBoard (anexos e dados) sincronizado com a intranet.', 'action');
         }catch(err){
             console.error('Falha ao receber cadastro do iframe do DashBoard', err);

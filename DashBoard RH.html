@@ -2227,39 +2227,56 @@ function getDataLimite90(){
 function fillEmployees(list) {
     if(!E.employee) return;
     const a = [...list].sort((x, y) => x.nome.localeCompare(y.nome, 'pt-BR'));
-    E.employee.innerHTML = '<option value="">Selecione um funcionário</option>' + a.map(x => `<option value="${esc(x.nome)}">${esc(x.nome)}</option>`).join('');
+    const prev = E.employee.value;
+    E.employee.innerHTML = '<option value="">Selecione um funcionário</option>' + a.map(x => {
+        const n = String(x.nome || '');
+        return `<option value="${esc(n)}">${esc(n)}</option>`;
+    }).join('');
+    if(prev && [...E.employee.options].some(o => o.value === prev)) E.employee.value = prev;
 }
 
+let __fpApplyingFilters = false;
+let __fpSuppressFilterEvents = false;
+let __fpLastParentSyncAt = 0;
+let __fpLastPostedToParentSig = '';
+
 function applyFilters() {
-    const list = listagemParaPainel();
-    const sel = E.employee ? E.employee.value : '';
-    fillEmployees(IS_INICIO_VIEW ? listaCompletaPlanilha() : list);
-    let chosen = sel ? list.find(e => e.nome === sel) : null;
-    if(IS_INICIO_VIEW) {
-        if(E.employee) E.employee.value = '';
-        chosen = null;
-    } else if(!chosen && list.length && E.employee) {
-        chosen = list[0];
-        E.employee.value = chosen.nome;
-    }
-    state.selected = chosen;
-    if(chosen && E.employee && !IS_INICIO_VIEW) E.employee.value = chosen.nome;
-    console.log('[DEBUG] applyFilters: iniciando renders, chosen=', chosen?.nome, 'employee.value=', E.employee?.value);
-    try { renderMetrics(list); } catch(e) { console.error('[ERRO] renderMetrics:', e); }
-    try { renderProfile(chosen, list.length); } catch(e) { console.error('[ERRO] renderProfile:', e); }
-    if(IS_INICIO_VIEW){
-        try { renderAlerts(list); } catch(e) { console.error('[ERRO] renderAlerts:', e); }
-        try { renderDashInicioSinistrosUnidadesCard(); } catch(e) { console.error('[ERRO] renderDashInicioSinistrosUnidadesCard:', e); }
-    }
-    try { renderCompany(list); } catch(e) { console.error('[ERRO] renderCompany:', e); }
-    try { renderBenefitsSummary(list); } catch(e) { console.error('[ERRO] renderBenefitsSummary:', e); }
-    try { renderMovimentacoes(); } catch(e) { console.error('[ERRO] renderMovimentacoes:', e); }
-    try { renderDashCadastroSinistrosHistorico(); } catch(e) { console.error('[ERRO] renderDashCadastroSinistrosHistorico:', e); }
-    console.log('[DEBUG] applyFilters: todos os renders completos');
-    if(IS_INICIO_VIEW) {
-        renderCharts(list);
-    } else if(state.chartsVisible) {
-        renderCharts(list);
+    if(__fpApplyingFilters) return;
+    __fpApplyingFilters = true;
+    try {
+        const list = listagemParaPainel();
+        const sel = E.employee ? E.employee.value : '';
+        __fpSuppressFilterEvents = true;
+        fillEmployees(IS_INICIO_VIEW ? listaCompletaPlanilha() : list);
+        let chosen = sel ? list.find(e => e.nome === sel || esc(e.nome) === sel) : null;
+        if(IS_INICIO_VIEW) {
+            if(E.employee) E.employee.value = '';
+            chosen = null;
+        } else if(!chosen && list.length && E.employee) {
+            chosen = list[0];
+            const optVal = esc(chosen.nome);
+            if(E.employee.value !== optVal) E.employee.value = optVal;
+        }
+        state.selected = chosen;
+        __fpSuppressFilterEvents = false;
+        try { renderMetrics(list); } catch(e) { console.error('[ERRO] renderMetrics:', e); }
+        try { renderProfile(chosen, list.length); } catch(e) { console.error('[ERRO] renderProfile:', e); }
+        if(IS_INICIO_VIEW){
+            try { renderAlerts(list); } catch(e) { console.error('[ERRO] renderAlerts:', e); }
+            try { renderDashInicioSinistrosUnidadesCard(); } catch(e) { console.error('[ERRO] renderDashInicioSinistrosUnidadesCard:', e); }
+        }
+        try { renderCompany(list); } catch(e) { console.error('[ERRO] renderCompany:', e); }
+        try { renderBenefitsSummary(list); } catch(e) { console.error('[ERRO] renderBenefitsSummary:', e); }
+        try { renderMovimentacoes(); } catch(e) { console.error('[ERRO] renderMovimentacoes:', e); }
+        try { renderDashCadastroSinistrosHistorico(); } catch(e) { console.error('[ERRO] renderDashCadastroSinistrosHistorico:', e); }
+        if(IS_INICIO_VIEW) {
+            renderCharts(list);
+        } else if(state.chartsVisible) {
+            renderCharts(list);
+        }
+    } finally {
+        __fpSuppressFilterEvents = false;
+        __fpApplyingFilters = false;
     }
 }
 
@@ -2617,7 +2634,6 @@ function renderMovimentacoes() {
     const panel = document.getElementById('movimentacoesPanel');
     const countEl = document.getElementById('movCount');
     const section = document.getElementById('movimentacoesSection');
-    console.log('[DEBUG] renderMovimentacoes: panel=', !!panel, 'section=', !!section, 'employee=', E.employee.value);
     if(!panel || !section) { console.log('[DEBUG] renderMovimentacoes: ABORTOU - panel ou section null'); return; }
 
     const selEmp = E.employee.value;
@@ -3480,6 +3496,7 @@ function closeEmployeeForm(){
 /** Envia o cadastro completo (incl. documentos e foto em base64) para a intranet integrada gravar no JSON/localStorage. */
 function fpPostFullStateToParentIfEmbedded(){
     if(!window.parent || window.parent === window) return;
+    if(Date.now() - __fpLastParentSyncAt < 1200) return;
     try{
         const cnhMapObj = {};
         if(state.cnhMap && typeof state.cnhMap.forEach === 'function') state.cnhMap.forEach((v, k) => { cnhMapObj[String(k)] = v; });
@@ -3494,6 +3511,12 @@ function fpPostFullStateToParentIfEmbedded(){
                 empAttachmentsBag = packed.bag;
             }
         } catch(slimErr) { console.warn('[DashBoard] slim antes de enviar à intranet', slimErr); }
+        let postSig;
+        try {
+            postSig = JSON.stringify({ n: (employees || []).length, names: (employees || []).slice(0, 8).map(e => e.nome) });
+        } catch(_){ postSig = String((employees || []).length); }
+        if(postSig === __fpLastPostedToParentSig) return;
+        __fpLastPostedToParentSig = postSig;
         window.parent.postMessage({
             type: 'fastpark-employees-from-iframe',
             employees,
@@ -3703,6 +3726,7 @@ if(E.file){
 }
 
 function applyEmployeesSyncFromParent(msg) {
+    __fpLastParentSyncAt = Date.now();
     state.employees = (Array.isArray(msg.employees) ? msg.employees : []).map(emp => {
         const e = { ...emp };
         const foto = fpResolveEmployeeFotoUrl(e);
@@ -3762,7 +3786,7 @@ window.addEventListener('message', (ev) => {
         return;
     }
     if(msg.type === 'fastpark-request-full-state') {
-        fpPostFullStateToParentIfEmbedded();
+        if(Date.now() - __fpLastParentSyncAt >= 1200) fpPostFullStateToParentIfEmbedded();
     }
 });
 
@@ -3772,10 +3796,28 @@ window.addEventListener('storage', (ev) => {
     }
 });
 
-if(E.company) E.company.addEventListener('change', () => { if(E.employee) E.employee.value = ''; addAudit(`Filtro empresa: ${E.company.value}`, 'action'); applyFilters(); });
-if(E.status) E.status.addEventListener('change', () => { if(E.employee) E.employee.value = ''; addAudit(`Filtro status: ${E.status.value}`, 'action'); applyFilters(); });
-if(E.search) E.search.addEventListener('input', () => { if(E.employee) E.employee.value = ''; applyFilters(); });
-if(E.employee) E.employee.addEventListener('change', () => { if(E.employee.value) addAudit(`Funcionário selecionado: ${E.employee.value}`, 'info'); applyFilters(); });
+if(E.company) E.company.addEventListener('change', () => {
+    if(__fpSuppressFilterEvents) return;
+    if(E.employee) E.employee.value = '';
+    addAudit(`Filtro empresa: ${E.company.value}`, 'action');
+    applyFilters();
+});
+if(E.status) E.status.addEventListener('change', () => {
+    if(__fpSuppressFilterEvents) return;
+    if(E.employee) E.employee.value = '';
+    addAudit(`Filtro status: ${E.status.value}`, 'action');
+    applyFilters();
+});
+if(E.search) E.search.addEventListener('input', () => {
+    if(__fpSuppressFilterEvents) return;
+    if(E.employee) E.employee.value = '';
+    applyFilters();
+});
+if(E.employee) E.employee.addEventListener('change', () => {
+    if(__fpSuppressFilterEvents) return;
+    if(E.employee.value) addAudit(`Funcionário selecionado: ${E.employee.value}`, 'info');
+    applyFilters();
+});
 
 // Render audit on load
 renderAudit();
