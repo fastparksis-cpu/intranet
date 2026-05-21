@@ -487,6 +487,15 @@ body {
 #cadunidades .uni-tabela-hist .hist-aumento { color: #0f8a57; font-weight: 700; }
 #cadunidades .uni-tabela-hist .hist-reducao { color: #c53030; font-weight: 700; }
 #cadunidades .uni-view-header { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #e5e7eb; }
+#cadunidades .uni-postos-form { display: grid; grid-template-columns: repeat(4, minmax(160px, 1fr)); gap: 10px; margin-bottom: 12px; }
+#cadunidades .uni-postos-form label { display: block; font-size: 11px; font-weight: 700; margin-bottom: 4px; color: #374151; }
+#cadunidades .uni-postos-form input,
+#cadunidades .uni-postos-form select { width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 12px; }
+#cadunidades .uni-postos-form .uni-postos-actions { grid-column: 1 / -1; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+#cadunidades table.uni-postos-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+#cadunidades table.uni-postos-table th,
+#cadunidades table.uni-postos-table td { border: 1px solid #e5e7eb; padding: 8px 10px; text-align: left; vertical-align: middle; }
+#cadunidades table.uni-postos-table thead th { background: #f3f4f6; font-weight: 700; font-size: 11px; }
 #cestas .inner {
     max-height: none;
 }
@@ -1849,6 +1858,7 @@ td { color: var(--t); font-weight: 500;}
         <section class="filters" style="margin-bottom:10px;">
             <button class="btn btn-info" onclick="switchUnidadesSubtab('cadastro')" id="btnUniCadastro">Cadastro</button>
             <button class="btn" onclick="switchUnidadesSubtab('visualizacao')" id="btnUniVisualizacao">Visualização</button>
+            <button class="btn" onclick="switchUnidadesSubtab('postos')" id="btnUniPostos">Postos</button>
             <div style="margin-left:auto;"><label><strong>Importar Informações Unidades:</strong></label><input id="unidadesFile" type="file" accept=".xlsx,.xls"></div>
         </section>
         <div id="unidadesCadastroTab">
@@ -2004,6 +2014,32 @@ td { color: var(--t); font-weight: 500;}
                     <div id="uniViewContratosBody" class="inner uni-view-edit-form"></div>
                     <div style="margin-top:12px;"><button type="button" class="btn btn-success" onclick="salvarUnidadeViewContratos()">Salvar contratos</button></div>
                 </div>
+            </article>
+        </div>
+        <div id="unidadesPostosTab" style="display:none;">
+            <section class="filters" style="margin-bottom:10px;flex-wrap:wrap;gap:10px;align-items:flex-end;">
+                <div><label><strong>Unidade</strong></label><br><select id="uniPostosUnidadeSelect" style="min-width:280px;" onchange="onUniPostosUnidadeChange()"><option value="">— Selecione uma unidade —</option></select></div>
+            </section>
+            <article class="panel">
+                <div class="head"><h2 id="uniPostosFormTitle">Novo posto</h2></div>
+                <div class="body uni-postos-form">
+                    <input type="hidden" id="uniPostoEditId" value="">
+                    <div><label for="uniPostoCodigo">Código do posto</label><input id="uniPostoCodigo" type="text" placeholder="Ex.: P-01"></div>
+                    <div><label for="uniPostoDias">Dias da semana</label><select id="uniPostoDias"><option value="">Selecione</option></select></div>
+                    <div><label for="uniPostoEntrada">Horário entrada</label><input id="uniPostoEntrada" type="time"></div>
+                    <div><label for="uniPostoSaidaIntervalo">Saída intervalo</label><input id="uniPostoSaidaIntervalo" type="time"></div>
+                    <div><label for="uniPostoRetornoIntervalo">Retorno intervalo</label><input id="uniPostoRetornoIntervalo" type="time"></div>
+                    <div><label for="uniPostoSaida">Saída</label><input id="uniPostoSaida" type="time"></div>
+                    <div style="grid-column: span 2;"><label for="uniPostoSupervisor">Supervisor</label><input id="uniPostoSupervisor" type="text" placeholder="Nome do supervisor"></div>
+                    <div class="uni-postos-actions">
+                        <button type="button" class="btn btn-success" onclick="salvarPostoUnidadeCatalog()">Salvar posto</button>
+                        <button type="button" class="btn" onclick="limparFormPostoUnidade()">Limpar</button>
+                    </div>
+                </div>
+            </article>
+            <article class="panel list" style="margin-top:12px;">
+                <h3>Postos da unidade</h3>
+                <div class="inner" id="uniPostosListBody"><div class="empty">Selecione uma unidade para ver ou cadastrar postos.</div></div>
             </article>
         </div>
         <div id="uniReajusteModal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)cancelUniReajusteModal()">
@@ -6323,6 +6359,7 @@ function updateBdayCount() {
 // ========== CADASTRO / ABAS OPERACIONAIS ==========
 const MOV_CAD_KEY = 'fp_mov_cad';
 const UNI_KEY = 'fp_unidades';
+const FP_UNIDADES_POSTOS_KEY = 'fp_unidades_postos';
 const FALTAS_KEY = 'fp_faltas_atestados';
 const PAGAS_SIGNED_KEY = 'fp_pagas_signed_docs';
 const FERIAS_HIST_KEY = 'fp_ferias_hist';
@@ -7139,6 +7176,7 @@ async function collectFpIntranetSnapshot(){
             [FP_PEDIDOS_KEY]: localStorage.getItem(FP_PEDIDOS_KEY) || '[]',
             [MOV_CAD_KEY]: localStorage.getItem(MOV_CAD_KEY) || '[]',
             [POSTOS_EXTRAS_KEY]: localStorage.getItem(POSTOS_EXTRAS_KEY) || '[]',
+            [FP_UNIDADES_POSTOS_KEY]: localStorage.getItem(FP_UNIDADES_POSTOS_KEY) || '[]',
             [UNI_KEY]: localStorage.getItem(UNI_KEY) || '[]',
             [FALTAS_KEY]: localStorage.getItem(FALTAS_KEY) || '[]',
             [FP_EMPLOYEES_STORE_KEY]: JSON.stringify(state.employees || []),
@@ -7334,6 +7372,7 @@ function fpIntranetHasDataForSnapshot(){
         if(sg && typeof sg === 'object' && Object.keys(sg).length) return true;
         const pe = JSON.parse(localStorage.getItem('fp_postos_extras') || '[]');
         if(Array.isArray(pe) && pe.length) return true;
+        if(getUnidadesPostosCatalog().length) return true;
         const qgLs = JSON.parse(localStorage.getItem(FP_QUADRO_GERAL_KEY) || '[]');
         if(Array.isArray(qgLs) && qgLs.length) return true;
         const vtM = JSON.parse(localStorage.getItem('fp_vt_monthly') || '[]');
@@ -7427,6 +7466,7 @@ function fpFlushAllTabsToLocalStorage(){
         try { localStorage.setItem(PAGAS_SIGNED_KEY, JSON.stringify(getSignedDocsMap())); } catch(e5) { console.warn(e5); }
         try { localStorage.setItem(MOV_CAD_KEY, JSON.stringify(getMovCad())); } catch(e6) { console.warn(e6); }
         try { localStorage.setItem(POSTOS_EXTRAS_KEY, JSON.stringify(getPostosExtras())); } catch(e7) { console.warn(e7); }
+        try { localStorage.setItem(FP_UNIDADES_POSTOS_KEY, JSON.stringify(getUnidadesPostosCatalog())); } catch(e7b) { console.warn(e7b); }
         try { localStorage.setItem(FP_GESTAO_PAGAMENTOS_KEY, localStorage.getItem(FP_GESTAO_PAGAMENTOS_KEY) || '{}'); } catch(e8) { console.warn(e8); }
         try { localStorage.setItem('fp_vt_cfg', localStorage.getItem('fp_vt_cfg') || '{}'); } catch(e9) { console.warn(e9); }
         try { localStorage.setItem('fp_vt_monthly', localStorage.getItem('fp_vt_monthly') || '[]'); } catch(e10) { console.warn(e10); }
@@ -7872,7 +7912,7 @@ async function fpExecutePersistToDiskAndDom(){
 }
 function fpInstallAutosaveHooks(){
     if(Storage.prototype.__fpOrigSetItem) return;
-    const keys = new Set(['fastparkHistorico','fastparkPedidosCestas','fp_mov_cad','fp_unidades','fp_faltas_atestados','fp_pagas_signed_docs','fp_ferias_hist','fp_vt_cfg','fp_vt_monthly','pagasEmpresaPagadora','fp_postos_extras','fp_audit', FP_QUADRO_GERAL_KEY, FP_EMPLOYEES_STORE_KEY, FP_PAGAS_LANCAMENTOS_KEY, FP_SINISTROS_KEY, FP_LAUDOS_KEY, FP_GESTAO_PAGAMENTOS_KEY]);
+    const keys = new Set(['fastparkHistorico','fastparkPedidosCestas','fp_mov_cad','fp_unidades','fp_faltas_atestados','fp_pagas_signed_docs','fp_ferias_hist','fp_vt_cfg','fp_vt_monthly','pagasEmpresaPagadora','fp_postos_extras', FP_UNIDADES_POSTOS_KEY, 'fp_audit', FP_QUADRO_GERAL_KEY, FP_EMPLOYEES_STORE_KEY, FP_PAGAS_LANCAMENTOS_KEY, FP_SINISTROS_KEY, FP_LAUDOS_KEY, FP_GESTAO_PAGAMENTOS_KEY]);
     Storage.prototype.__fpOrigSetItem = Storage.prototype.setItem;
     Storage.prototype.setItem = function(k, v){
         Storage.prototype.__fpOrigSetItem.call(this, k, v);
@@ -8094,6 +8134,7 @@ function getUnidades(){ return JSON.parse(localStorage.getItem(UNI_KEY) || '[]')
 function setUnidades(v){
     localStorage.setItem(UNI_KEY, JSON.stringify(v));
     fpAfterPersistentStorageWrite();
+    if(typeof refreshUnidadesPostosUnidadeSelect === 'function') refreshUnidadesPostosUnidadeSelect();
 }
 function getInputVal(id){ return document.getElementById(id)?.value || ''; }
 function parseMoneyNum(v){ return Number(String(v || '0').replace(/\./g,'').replace(',','.')) || 0; }
@@ -8966,6 +9007,7 @@ function abrirUnidadeVisualizacao(nome){
 }
 function renderUnidadesList(){
     refreshUnidadesViewSelect();
+    if(typeof refreshUnidadesPostosUnidadeSelect === 'function') refreshUnidadesPostosUnidadeSelect();
     if(document.getElementById('uniViewShell')){
         onUnidadeViewSelectChange();
         return;
@@ -9088,18 +9130,25 @@ function switchUnidadesSubtab(tab){
     const t = tab || 'cadastro';
     const cad = document.getElementById('unidadesCadastroTab');
     const vis = document.getElementById('unidadesVisualizacaoTab');
+    const postos = document.getElementById('unidadesPostosTab');
     const b1 = document.getElementById('btnUniCadastro');
     const b2 = document.getElementById('btnUniVisualizacao');
+    const b3 = document.getElementById('btnUniPostos');
     if(cad) cad.style.display = t === 'cadastro' ? '' : 'none';
     if(vis) vis.style.display = t === 'visualizacao' ? '' : 'none';
+    if(postos) postos.style.display = t === 'postos' ? '' : 'none';
     if(b1) b1.className = t === 'cadastro' ? 'btn btn-info' : 'btn';
     if(b2) b2.className = t === 'visualizacao' ? 'btn btn-info' : 'btn';
+    if(b3) b3.className = t === 'postos' ? 'btn btn-info' : 'btn';
     if(t === 'cadastro'){
         const panel = document.getElementById('unidadesCadastroFormPanel');
         if(panel) panel.style.display = 'none';
     } else if(t === 'visualizacao'){
         refreshUnidadesViewSelect();
         onUnidadeViewSelectChange();
+    } else if(t === 'postos'){
+        refreshUnidadesPostosUnidadeSelect();
+        onUniPostosUnidadeChange();
     }
 }
 function importUnidadesWorkbook(data){
@@ -9609,6 +9658,187 @@ function renderLaudosHistorico(){
 }
 
 const POSTOS_DIAS_PRESETS = ['Segunda a sexta', 'Segunda a sábado', 'Segunda a domingo'];
+/** Modelos de dias — aba Unidades › Postos */
+const UNIDADES_POSTOS_DIAS_OPCOES = [
+    'Segunda a sexta',
+    'Segunda a sábado',
+    'Terça a domingo',
+    '5x2',
+    '6x1',
+    '12x36'
+];
+function getUnidadesPostosCatalog(){
+    try {
+        const arr = JSON.parse(localStorage.getItem(FP_UNIDADES_POSTOS_KEY) || '[]');
+        return Array.isArray(arr) ? arr : [];
+    } catch(e) { return []; }
+}
+function setUnidadesPostosCatalog(arr){
+    localStorage.setItem(FP_UNIDADES_POSTOS_KEY, JSON.stringify(Array.isArray(arr) ? arr : []));
+    fpAfterPersistentStorageWrite();
+}
+function _normUniPostoUnidadeKey(cod, nome){
+    const c = String(cod || '').trim().toUpperCase();
+    const n = String(nome || '').trim().toUpperCase();
+    return c || n;
+}
+function findUnidadeByPostosSelectValue(val){
+    const v = String(val || '').trim();
+    if(!v) return null;
+    const arr = getUnidades();
+    return arr.find(u => String(u.cod || '').trim() === v || String(u.nome || '').trim() === v) || null;
+}
+function refreshUnidadesPostosUnidadeSelect(){
+    const sel = document.getElementById('uniPostosUnidadeSelect');
+    if(!sel) return;
+    const current = sel.value || '';
+    const arr = getUnidades().slice().sort((a, b) => String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR'));
+    sel.innerHTML = '<option value="">— Selecione uma unidade —</option>' + arr.map(u => {
+        const cod = String(u.cod || '').trim();
+        const nome = String(u.nome || '').trim();
+        const val = cod || nome;
+        const label = (cod ? cod + ' — ' : '') + nome;
+        return `<option value="${esc(val)}">${esc(label)}</option>`;
+    }).join('');
+    if(current){
+        const still = [...sel.options].some(o => o.value === current);
+        if(still) sel.value = current;
+    }
+    fillUniPostoDiasSelect();
+}
+function fillUniPostoDiasSelect(selected){
+    const sel = document.getElementById('uniPostoDias');
+    if(!sel) return;
+    const cur = selected !== undefined ? selected : (sel.value || '');
+    sel.innerHTML = '<option value="">Selecione</option>' + UNIDADES_POSTOS_DIAS_OPCOES.map(d =>
+        `<option value="${esc(d)}">${esc(d)}</option>`
+    ).join('');
+    if(cur && [...sel.options].some(o => o.value === cur)) sel.value = cur;
+}
+function limparFormPostoUnidade(){
+    const ids = ['uniPostoEditId','uniPostoCodigo','uniPostoEntrada','uniPostoSaidaIntervalo','uniPostoRetornoIntervalo','uniPostoSaida','uniPostoSupervisor'];
+    ids.forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+    fillUniPostoDiasSelect('');
+    const title = document.getElementById('uniPostosFormTitle');
+    if(title) title.textContent = 'Novo posto';
+}
+function onUniPostosUnidadeChange(){
+    limparFormPostoUnidade();
+    renderUnidadesPostosList();
+}
+function salvarPostoUnidadeCatalog(){
+    const unidade = findUnidadeByPostosSelectValue(document.getElementById('uniPostosUnidadeSelect')?.value);
+    if(!unidade){ alert('Selecione uma unidade.'); return; }
+    const codigo = (document.getElementById('uniPostoCodigo')?.value || '').trim();
+    if(!codigo){ alert('Informe o código do posto.'); return; }
+    const diasSemana = (document.getElementById('uniPostoDias')?.value || '').trim();
+    const entrada = (document.getElementById('uniPostoEntrada')?.value || '').trim();
+    const saidaIntervalo = (document.getElementById('uniPostoSaidaIntervalo')?.value || '').trim();
+    const retornoIntervalo = (document.getElementById('uniPostoRetornoIntervalo')?.value || '').trim();
+    const saida = (document.getElementById('uniPostoSaida')?.value || '').trim();
+    const supervisor = (document.getElementById('uniPostoSupervisor')?.value || '').trim();
+    const editId = (document.getElementById('uniPostoEditId')?.value || '').trim();
+    const arr = getUnidadesPostosCatalog();
+    const uKey = _normUniPostoUnidadeKey(unidade.cod, unidade.nome);
+    const dup = arr.find(p =>
+        _normUniPostoUnidadeKey(p.unidadeCod, p.unidadeNome) === uKey &&
+        String(p.codigo || '').trim().toUpperCase() === codigo.toUpperCase() &&
+        String(p.id || '') !== editId
+    );
+    if(dup){ alert('Já existe um posto com este código nesta unidade.'); return; }
+    const payload = {
+        id: editId || ('up_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8)),
+        unidadeCod: String(unidade.cod || '').trim(),
+        unidadeNome: String(unidade.nome || '').trim(),
+        codigo,
+        diasSemana,
+        entrada,
+        saidaIntervalo,
+        retornoIntervalo,
+        saida,
+        supervisor,
+        atualizadoEm: new Date().toISOString()
+    };
+    if(editId){
+        const ix = arr.findIndex(p => String(p.id) === editId);
+        if(ix >= 0) arr[ix] = { ...arr[ix], ...payload };
+        else arr.unshift(payload);
+    } else {
+        payload.criadoEm = payload.atualizadoEm;
+        arr.unshift(payload);
+    }
+    setUnidadesPostosCatalog(arr);
+    limparFormPostoUnidade();
+    renderUnidadesPostosList();
+    if(typeof addAudit === 'function') addAudit('Posto ' + codigo + ' — ' + unidade.nome, 'action');
+}
+function editarPostoUnidadeCatalog(idEnc){
+    const id = decodeURIComponent(String(idEnc || ''));
+    const row = getUnidadesPostosCatalog().find(p => String(p.id) === id);
+    if(!row) return;
+    const sel = document.getElementById('uniPostosUnidadeSelect');
+    const val = String(row.unidadeCod || row.unidadeNome || '').trim();
+    if(sel) sel.value = val;
+    document.getElementById('uniPostoEditId').value = row.id || '';
+    document.getElementById('uniPostoCodigo').value = row.codigo || '';
+    fillUniPostoDiasSelect(row.diasSemana || '');
+    document.getElementById('uniPostoEntrada').value = row.entrada || '';
+    document.getElementById('uniPostoSaidaIntervalo').value = row.saidaIntervalo || '';
+    document.getElementById('uniPostoRetornoIntervalo').value = row.retornoIntervalo || '';
+    document.getElementById('uniPostoSaida').value = row.saida || '';
+    document.getElementById('uniPostoSupervisor').value = row.supervisor || '';
+    const title = document.getElementById('uniPostosFormTitle');
+    if(title) title.textContent = 'Editar posto ' + (row.codigo || '');
+    renderUnidadesPostosList();
+}
+function excluirPostoUnidadeCatalog(idEnc){
+    const id = decodeURIComponent(String(idEnc || ''));
+    const row = getUnidadesPostosCatalog().find(p => String(p.id) === id);
+    if(!row) return;
+    if(!confirm('Excluir o posto ' + (row.codigo || '') + '?')) return;
+    setUnidadesPostosCatalog(getUnidadesPostosCatalog().filter(p => String(p.id) !== id));
+    limparFormPostoUnidade();
+    renderUnidadesPostosList();
+    if(typeof addAudit === 'function') addAudit('Posto excluído: ' + row.codigo, 'action');
+}
+function renderUnidadesPostosList(){
+    const el = document.getElementById('uniPostosListBody');
+    if(!el) return;
+    const unidade = findUnidadeByPostosSelectValue(document.getElementById('uniPostosUnidadeSelect')?.value);
+    if(!unidade){
+        el.innerHTML = '<div class="empty">Selecione uma unidade para ver ou cadastrar postos.</div>';
+        return;
+    }
+    const uKey = _normUniPostoUnidadeKey(unidade.cod, unidade.nome);
+    const rows = getUnidadesPostosCatalog()
+        .filter(p => _normUniPostoUnidadeKey(p.unidadeCod, p.unidadeNome) === uKey)
+        .sort((a, b) => String(a.codigo || '').localeCompare(String(b.codigo || ''), 'pt-BR'));
+    if(!rows.length){
+        el.innerHTML = '<div class="empty">Nenhum posto cadastrado para esta unidade. Use o formulário acima.</div>';
+        return;
+    }
+    const fmtH = (v) => esc(String(v || '').trim()) || '—';
+    el.innerHTML = `<table class="uni-postos-table"><thead><tr>
+        <th>Código</th><th>Dias</th><th>Entrada</th><th>Saída intervalo</th><th>Retorno intervalo</th><th>Saída</th><th>Supervisor</th><th>Ações</th>
+    </tr></thead><tbody>${
+        rows.map(r => {
+            const idEnc = encodeURIComponent(String(r.id || ''));
+            return `<tr>
+                <td><strong>${esc(r.codigo || '')}</strong></td>
+                <td>${esc(r.diasSemana || '—')}</td>
+                <td>${fmtH(r.entrada)}</td>
+                <td>${fmtH(r.saidaIntervalo)}</td>
+                <td>${fmtH(r.retornoIntervalo)}</td>
+                <td>${fmtH(r.saida)}</td>
+                <td>${esc(r.supervisor || '—')}</td>
+                <td style="white-space:nowrap;">
+                    <button type="button" class="btn" onclick="editarPostoUnidadeCatalog('${idEnc}')">Editar</button>
+                    <button type="button" class="btn btn-danger" onclick="excluirPostoUnidadeCatalog('${idEnc}')">Excluir</button>
+                </td>
+            </tr>`;
+        }).join('')
+    }</tbody></table>`;
+}
 function normPostosDiasPresetKey(s){
     return String(s || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ');
 }
