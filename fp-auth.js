@@ -46,7 +46,9 @@
 
     g.fpAppUrl = function () {
         if (fpIsLocalFileOpen()) return 'Intranet_FastPark_Integrada.html';
-        return String(g.FP_APP_URL || '/intranet-fastpark').trim() || '/intranet-fastpark';
+        var u = String(g.FP_APP_URL || '/intranet-fastpark').trim() || '/intranet-fastpark';
+        if (u.endsWith('/')) u = u.replace(/\/+$/, '');
+        return u;
     };
 
     function fpIsLoginPath() {
