@@ -8,6 +8,7 @@
     var BUCKET = g.FP_STORAGE_BUCKET || 'intranet-files';
     var ROW_ID = g.FP_SNAPSHOT_ROW_ID || 'main';
     var cloudTimer = null;
+    var cloudUnpauseTimer = null;
     var cloudRunning = false;
     var cloudPending = false;
 
@@ -584,9 +585,7 @@
             g.fpLoadQuadroGeralFromLocalStorage();
         }
         var quick = opts.quick !== false && opts.autosave && g.FP_CLOUD_QUICK_SAVE !== false && g.FP_CLOUD_FAST_SYNC !== false;
-        if (!quick) {
-            await g.fpPullStateFromDashboardIframes(opts.iframeMs || 3000);
-        }
+        await g.fpPullStateFromDashboardIframes(quick ? (opts.iframeMs || 900) : (opts.iframeMs || 3000));
         if (typeof g.syncBeneficiosFuncionariosFromEmployees === 'function') {
             g.syncBeneficiosFuncionariosFromEmployees();
         }
@@ -711,9 +710,26 @@
         return res.data;
     };
 
+    function fpQueueCloudSaveRetry() {
+        g.__fpCloudSavePending = true;
+        if (cloudUnpauseTimer) return;
+        cloudUnpauseTimer = setInterval(function () {
+            if (fpCloudAutosavePaused()) return;
+            clearInterval(cloudUnpauseTimer);
+            cloudUnpauseTimer = null;
+            if (g.__fpCloudSavePending) {
+                g.__fpCloudSavePending = false;
+                g.fpScheduleCloudSave();
+            }
+        }, 400);
+    }
+
     g.fpExecuteCloudAutosave = async function () {
         if (g.FP_CLOUD_AUTOSAVE === false) return;
-        if (fpCloudAutosavePaused()) return;
+        if (fpCloudAutosavePaused()) {
+            fpQueueCloudSaveRetry();
+            return;
+        }
         if (cloudRunning) {
             cloudPending = true;
             return;
@@ -741,7 +757,11 @@
 
     g.fpScheduleCloudSave = function () {
         if (g.FP_CLOUD_AUTOSAVE === false) return;
-        if (fpCloudAutosavePaused()) return;
+        g.__fpCloudUserEditedAt = Date.now();
+        if (fpCloudAutosavePaused()) {
+            fpQueueCloudSaveRetry();
+            return;
+        }
         clearTimeout(cloudTimer);
         var ms = g.FP_CLOUD_AUTOSAVE_DEBOUNCE_MS || 8000;
         cloudTimer = setTimeout(function () {
@@ -753,6 +773,16 @@
         if (g.__fpCloudAutosaveInit) return;
         g.__fpCloudAutosaveInit = true;
         g.document.addEventListener('fp-intranet-changed', function () {
+            g.__fpCloudUserEditedAt = Date.now();
+            if (g.__fpCloudLoadRunning) {
+                fpQueueCloudSaveRetry();
+                return;
+            }
+            if (g.__fpCloudSkipAutosaveUntil && Date.now() < g.__fpCloudSkipAutosaveUntil) {
+                if (g.__fpCloudUserEditedAt > (g.__fpCloudLoadedAt || 0)) {
+                    g.__fpCloudSkipAutosaveUntil = 0;
+                }
+            }
             g.fpScheduleCloudSave();
         });
         var sec = Math.round((g.FP_CLOUD_AUTOSAVE_DEBOUNCE_MS || 8000) / 1000);
@@ -867,7 +897,8 @@
                 }
             }
             var when = res.data.updated_at || res.data.exported_at || '';
-            var pauseMs = g.FP_CLOUD_AUTOLOAD_AUTOSAVE_PAUSE_MS || 90000;
+            var pauseMs = g.FP_CLOUD_AUTOLOAD_AUTOSAVE_PAUSE_MS || 20000;
+            g.__fpCloudLoadedAt = Date.now();
             g.__fpCloudSkipAutosaveUntil = Date.now() + pauseMs;
             var nEmp = (g.state && g.state.employees) ? g.state.employees.length : 0;
             var msg = (opts.autoload ? 'Carregado automaticamente' : 'Carregado da nuvem') +

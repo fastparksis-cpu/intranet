@@ -5280,6 +5280,7 @@ window.addEventListener('message', (ev) => {
             if(typeof refreshDashboardFilters === 'function') refreshDashboardFilters();
             if(typeof renderBeneficiosCestas === 'function') renderBeneficiosCestas();
             if(typeof fpNotifyIntranetChanged === 'function') fpNotifyIntranetChanged();
+            if(typeof fpScheduleCloudSave === 'function') fpScheduleCloudSave();
             addAudit('Cadastro do DashBoard (anexos e dados) sincronizado com a intranet.', 'action');
         }catch(err){
             console.error('Falha ao receber cadastro do iframe do DashBoard', err);
@@ -7144,7 +7145,8 @@ async function applyFpEmbeddedIntranetDb(db, opts){
     if(db && db.version && db.version !== FP_DB_VERSION && db.version !== 1) console.warn('[FP] Versão de banco embutido (compatível):', db.version);
     if(!db || !db.state) return;
     await fpResolveDiskAttachmentMarkers(db);
-    if (typeof fpResolveCloudAttachmentMarkers === 'function') {
+    var skipCloudResolve = opts.fromCloud && window.FP_CLOUD_FAST_SYNC !== false;
+    if (!skipCloudResolve && typeof fpResolveCloudAttachmentMarkers === 'function') {
         await fpResolveCloudAttachmentMarkers(db);
     }
     const att = db.attachments || {};
@@ -7253,10 +7255,10 @@ async function applyFpEmbeddedIntranetDb(db, opts){
     fpSavePagasToLocalStorage();
     fpSaveQuadroGeralToLocalStorage();
     if(typeof propagateStateToDashboardIframes === 'function') propagateStateToDashboardIframes();
-    if(typeof fpNotifyIntranetChanged === 'function') fpNotifyIntranetChanged();
     } finally {
         window.__fpLsHookPause = false;
     }
+    if(!opts.fromCloud && typeof fpNotifyIntranetChanged === 'function') fpNotifyIntranetChanged();
 }
 async function fpBuildEmbeddedJsonString(){
     const snap = await collectFpIntranetSnapshot();
@@ -13057,6 +13059,9 @@ function renderSinistrosList(){
     }
     if(window.FP_CLOUD_AUTOSAVE !== false && typeof fpInitCloudAutosave === 'function'){
         try { fpInitCloudAutosave(); } catch(eInit) { console.warn('[fp-cloud] init autosave', eInit); }
+    }
+    if(window.FP_CLOUD_AUTOSAVE !== false && typeof fpScheduleCloudSave === 'function'){
+        window.__fpCloudSkipAutosaveUntil = 0;
     }
     if(typeof fpScheduleCloudAutoload === 'function'){
         try {

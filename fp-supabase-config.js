@@ -39,7 +39,8 @@
     /** Ao abrir a intranet com login, carrega snapshot + ficheiros do Supabase automaticamente */
     g.FP_CLOUD_AUTOLOAD = true;
     /** Após auto-carregar, não gravar de volta na nuvem durante este tempo (evita sobrescrever com cache local) */
-    g.FP_CLOUD_AUTOLOAD_AUTOSAVE_PAUSE_MS = 60000;
+    /** Pausa auto-gravação só logo após carregar da nuvem (evita eco); edições do utilizador ignoram a pausa */
+    g.FP_CLOUD_AUTOLOAD_AUTOSAVE_PAUSE_MS = 20000;
 
     /** Rotas (Vercel: intranet-fastpark.html com cleanUrls, ou Intranet_FastPark_Integrada.html) */
     g.FP_LOGIN_URL = '/';
