@@ -334,18 +334,23 @@
         var uploaded = 0;
         var alreadyCloud = 0;
         var uploadErrors = [];
+        var queue = [];
         var keys = Object.keys(att);
         for (var i = 0; i < keys.length; i++) {
-            var key = keys[i];
-            var v = att[key];
+            var key = sanitizeStoragePath(keys[i]);
+            var v = att[keys[i]];
             var dataUrl = null;
             if (typeof v === 'string' && v.indexOf('data:') === 0) {
                 dataUrl = v;
             } else if (v && typeof v === 'object' && v.__disk === true) {
-                dataUrl = await readDiskAttachmentAsDataUrl(key);
+                try {
+                    dataUrl = await readDiskAttachmentAsDataUrl(key);
+                } catch (diskErr) {
+                    console.warn('[fp-cloud] disco', key, diskErr);
+                }
                 if (!dataUrl) {
                     diskSkipped++;
-                    att[key] = v;
+                    att[keys[i]] = v;
                     continue;
                 }
             } else if (v && typeof v === 'object' && v.__cloud === true) {
@@ -356,15 +361,29 @@
                 continue;
             }
             if (!dataUrl) continue;
-            try {
-                await uploadDataUrl(key, dataUrl);
-                att[key] = { __cloud: true, path: key };
-                uploaded++;
-            } catch (upErr) {
-                console.error('[fp-cloud] upload', key, upErr);
-                uploadErrors.push(key + ': ' + (upErr && upErr.message ? upErr.message : upErr));
-                att[key] = dataUrl;
+            queue.push({ key: key, dataUrl: dataUrl });
+        }
+        var conc = g.FP_CLOUD_UPLOAD_CONCURRENCY || 12;
+        var qi = 0;
+        async function uploadWorker() {
+            while (true) {
+                var ix = qi++;
+                if (ix >= queue.length) break;
+                var job = queue[ix];
+                try {
+                    await uploadDataUrl(job.key, job.dataUrl);
+                    att[job.key] = { __cloud: true, path: job.key };
+                    uploaded++;
+                } catch (upErr) {
+                    console.error('[fp-cloud] upload', job.key, upErr);
+                    uploadErrors.push(job.key + ': ' + (upErr && upErr.message ? upErr.message : upErr));
+                    att[job.key] = job.dataUrl;
+                }
             }
+        }
+        if (queue.length) {
+            fpCloudSetStatus('A enviar ' + queue.length + ' ficheiro(s) em paralelo…');
+            await Promise.all(Array.from({ length: Math.min(conc, queue.length) }, uploadWorker));
         }
         snap.attachments = att;
         return {
@@ -376,8 +395,99 @@
         };
     }
 
-    g.fpResolveCloudAttachmentMarkers = async function (db) {
+    function fpNormalizeCloudMarkersOnly(db) {
+        if (!db.attachments || typeof db.attachments !== 'object') db.attachments = {};
+        var att = db.attachments;
+        collectAttachmentRefKeys(db).forEach(function (key) {
+            key = sanitizeStoragePath(key);
+            var v = att[key];
+            if (v && typeof v === 'object' && v.__cloud === true) {
+                att[key] = { __cloud: true, path: sanitizeStoragePath(v.path || key) };
+            } else if (typeof v === 'string' && v.indexOf('http') === 0) {
+                var disp = g.window.__FP_CLOUD_DISPLAY_URLS__ || (g.window.__FP_CLOUD_DISPLAY_URLS__ = {});
+                disp[key] = v;
+            }
+        });
+        db.attachments = att;
+        g.window.__FP_EMBEDDED_ATTACHMENTS__ = att;
+    }
+
+    g.fpScheduleCloudMediaPrefetch = function (db) {
+        if (g.__fpCloudPrefetchRunning) return;
+        g.__fpCloudPrefetchRunning = true;
+        queueMicrotask(async function () {
+            try {
+                var keys = collectAttachmentRefKeys(db || {});
+                var list = Array.from(keys);
+                var foto = list.filter(function (k) { return k.indexOf('/foto/') >= 0; });
+                var rest = list.filter(function (k) { return k.indexOf('/foto/') < 0; });
+                list = foto.concat(rest);
+                var conc = g.FP_CLOUD_MEDIA_PREFETCH_CONCURRENCY || 16;
+                var pi = 0;
+                var ok = 0;
+                async function worker() {
+                    while (true) {
+                        var i = pi++;
+                        if (i >= list.length) break;
+                        var key = sanitizeStoragePath(list[i]);
+                        var disp = g.window.__FP_CLOUD_DISPLAY_URLS__ || (g.window.__FP_CLOUD_DISPLAY_URLS__ = {});
+                        if (disp[key]) { ok++; continue; }
+                        try {
+                            var url = await resolveCloudPathToDisplayUrl(key);
+                            disp[key] = url;
+                            ok++;
+                            g.document.dispatchEvent(new CustomEvent('fp-cloud-media-ready', { detail: { path: key, url: url } }));
+                        } catch (e) { /* próximo */ }
+                    }
+                }
+                if (list.length) {
+                    await Promise.all(Array.from({ length: Math.min(conc, list.length) }, worker));
+                }
+                if (typeof g.fpMatchEmployeeMediaFromStorageIndex === 'function' && db && db.state) {
+                    g.fpMatchEmployeeMediaFromStorageIndex(db);
+                }
+                g.document.dispatchEvent(new CustomEvent('fp-cloud-media-batch-ready'));
+            } catch (e) {
+                console.warn('[fp-cloud] prefetch', e);
+            } finally {
+                g.__fpCloudPrefetchRunning = false;
+            }
+        });
+    };
+
+    g.fpEnsureCloudDisplayUrl = function (path) {
+        path = sanitizeStoragePath(path);
+        if (!path) return Promise.resolve(null);
+        var disp = g.window.__FP_CLOUD_DISPLAY_URLS__ || (g.window.__FP_CLOUD_DISPLAY_URLS__ = {});
+        if (disp[path]) return Promise.resolve(disp[path]);
+        if (g.__fpCloudUrlPending && g.__fpCloudUrlPending[path]) {
+            return g.__fpCloudUrlPending[path];
+        }
+        g.__fpCloudUrlPending = g.__fpCloudUrlPending || {};
+        g.__fpCloudUrlPending[path] = resolveCloudPathToDisplayUrl(path).then(function (url) {
+            disp[path] = url;
+            delete g.__fpCloudUrlPending[path];
+            g.document.dispatchEvent(new CustomEvent('fp-cloud-media-ready', { detail: { path: path, url: url } }));
+            return url;
+        }).catch(function (err) {
+            delete g.__fpCloudUrlPending[path];
+            throw err;
+        });
+        return g.__fpCloudUrlPending[path];
+    };
+
+    g.fpResolveCloudAttachmentMarkers = async function (db, opts) {
+        opts = opts || {};
         if (!db) return { ok: 0, fail: 0, total: 0 };
+        var useFast = opts.full !== true && opts.fast !== false && g.FP_CLOUD_FAST_SYNC !== false;
+        if (useFast) {
+            fpNormalizeCloudMarkersOnly(db);
+            if (typeof g.fpScheduleCloudMediaPrefetch === 'function') {
+                g.fpScheduleCloudMediaPrefetch(db);
+            }
+            var nKeys = collectAttachmentRefKeys(db).size;
+            return { ok: 0, fail: 0, total: nKeys, fast: true, pending: true };
+        }
         if (!db.attachments || typeof db.attachments !== 'object') db.attachments = {};
         var att = db.attachments;
         var keys = collectAttachmentRefKeys(db);
@@ -439,11 +549,13 @@
         await Promise.all(Array.from({ length: workers }, runWorker));
 
         var indexStats = { ok: 0, fail: 0, total: 0 };
-        try {
-            indexStats = await fpCloudIndexStorageBucket();
-            ok += indexStats.ok;
-        } catch (idxErr) {
-            console.warn('[fp-cloud] index bucket', idxErr);
+        if (opts.indexBucket === true) {
+            try {
+                indexStats = await fpCloudIndexStorageBucket();
+                ok += indexStats.ok;
+            } catch (idxErr) {
+                console.warn('[fp-cloud] index bucket', idxErr);
+            }
         }
 
         if (typeof g.fpMatchEmployeeMediaFromStorageIndex === 'function' && db.state) {
@@ -457,7 +569,8 @@
     };
 
     /** Reúne planilha + todas as abas + documentos antes de gravar na nuvem. */
-    g.fpPrepareDataForCloudSave = async function () {
+    g.fpPrepareDataForCloudSave = async function (opts) {
+        opts = opts || {};
         if (typeof g.fpLoadEmployeesFromLocalStorage === 'function') {
             g.fpLoadEmployeesFromLocalStorage();
         }
@@ -470,7 +583,10 @@
         if (typeof g.fpLoadQuadroGeralFromLocalStorage === 'function') {
             g.fpLoadQuadroGeralFromLocalStorage();
         }
-        await g.fpPullStateFromDashboardIframes(3000);
+        var quick = opts.quick !== false && opts.autosave && g.FP_CLOUD_QUICK_SAVE !== false && g.FP_CLOUD_FAST_SYNC !== false;
+        if (!quick) {
+            await g.fpPullStateFromDashboardIframes(opts.iframeMs || 3000);
+        }
         if (typeof g.syncBeneficiosFuncionariosFromEmployees === 'function') {
             g.syncBeneficiosFuncionariosFromEmployees();
         }
@@ -550,7 +666,7 @@
         } else {
             fpCloudSetStatus('A guardar automaticamente (dados + documentos)…');
         }
-        await g.fpPrepareDataForCloudSave();
+        await g.fpPrepareDataForCloudSave({ autosave: !!opts.autosave, quick: !!opts.autosave });
         if (typeof g.fpHydrateEmployeesMediaForSnapshot === 'function' && g.state && Array.isArray(g.state.employees)) {
             g.state.employees = g.fpHydrateEmployeesMediaForSnapshot(g.state.employees, g.window.__FP_EMBEDDED_ATTACHMENTS__ || {});
         }
@@ -721,9 +837,14 @@
             }
             var db = res.data.snapshot;
             var attStats = { ok: 0, fail: 0, total: 0 };
-            if (typeof g.fpResolveCloudAttachmentMarkers === 'function') {
+            var useFast = g.FP_CLOUD_FAST_SYNC !== false;
+            if (useFast) {
+                fpCloudSetStatus(opts.autoload ? 'A carregar dados da nuvem…' : 'A carregar dados…');
+                fpNormalizeCloudMarkersOnly(db);
+                attStats = { ok: 0, fail: 0, total: collectAttachmentRefKeys(db).size, fast: true };
+            } else if (typeof g.fpResolveCloudAttachmentMarkers === 'function') {
                 fpCloudSetStatus('A transferir documentos da nuvem…');
-                attStats = await g.fpResolveCloudAttachmentMarkers(db) || attStats;
+                attStats = await g.fpResolveCloudAttachmentMarkers(db, { full: true }) || attStats;
             }
             if (typeof g.fpResolveDiskAttachmentMarkers === 'function') {
                 await g.fpResolveDiskAttachmentMarkers(db);
@@ -732,6 +853,9 @@
                 throw new Error('Função applyFpEmbeddedIntranetDb não encontrada.');
             }
             await g.applyFpEmbeddedIntranetDb(db, { fromCloud: true });
+            if (useFast && typeof g.fpScheduleCloudMediaPrefetch === 'function') {
+                g.fpScheduleCloudMediaPrefetch(db);
+            }
             if (typeof g.fpPersistEmployeeAttBagFromState === 'function') {
                 await g.fpPersistEmployeeAttBagFromState();
             }
@@ -749,7 +873,9 @@
             var msg = (opts.autoload ? 'Carregado automaticamente' : 'Carregado da nuvem') +
                 ': ' + nEmp + ' colaborador(es)' +
                 (when ? ' (' + new Date(when).toLocaleString('pt-BR') + ')' : '') + '.';
-            if (attStats.total || attStats.storageFiles) {
+            if (attStats.fast && attStats.total) {
+                msg += ' Fotos/docs a carregar em segundo plano (' + attStats.total + ').';
+            } else if (attStats.total || attStats.storageFiles) {
                 msg += ' Anexos: ' + attStats.ok + '/' + (attStats.total || attStats.storageFiles);
                 if (attStats.storageFiles) msg += ' (' + attStats.storageFiles + ' ficheiros no Storage)';
                 if (attStats.fail) msg += ' (' + attStats.fail + ' falha(s))';

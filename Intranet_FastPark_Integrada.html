@@ -13018,15 +13018,38 @@ function renderSinistrosList(){
 }
 
 // ========== INICIALIZAÇÃO ==========
+(function fpInitCloudMediaListeners(){
+    if(window.__fpCloudMediaListeners) return;
+    window.__fpCloudMediaListeners = true;
+    document.addEventListener('fp-cloud-media-ready', function(){
+        if(!state || !Array.isArray(state.employees)) return;
+        state.employees = fpHydrateEmployeesMediaForSnapshot(state.employees, window.__FP_EMBEDDED_ATTACHMENTS__ || {});
+        try { renderAll(); } catch(e) { /* ignore */ }
+    });
+    document.addEventListener('fp-cloud-media-batch-ready', function(){
+        if(typeof window.fpOnCloudDataReady === 'function'){
+            window.fpOnCloudDataReady().catch(function(e){ console.warn('[fp-cloud] media batch', e); });
+        }
+    });
+})();
+
 (async function fpBootIntranet(){
     window.__fpIntranetBootComplete = false;
     fpInitAutosaveSystem();
+    fpLoadEmployeesFromLocalStorage();
+    try { await fpHydrateEmployeeAttachmentsFromIdb(); } catch(eIdb) { console.warn('[FP] idb boot', eIdb); }
+    state.employees = fpHydrateEmployeesMediaForSnapshot(state.employees || [], window.__FP_EMBEDDED_ATTACHMENTS__ || {});
+    fpLoadPagasFromLocalStorage();
+    fpLoadQuadroGeralFromLocalStorage();
+    if(typeof fpInitExternalTabsAndDashboard === 'function') fpInitExternalTabsAndDashboard();
+    try { switchTab('fp-home'); } catch(_tab) {}
+    try { renderAll(); } catch(renderBoot) { console.warn('[FP] render boot local', renderBoot); }
     var cloudLoaded = false;
     if(window.FP_AUTH_REQUIRED !== false){
         var sess = await fpWaitForAuthSession(12000);
         if(!sess){
             if(typeof fpCloudSetStatus === 'function'){
-                fpCloudSetStatus('Faça login em index.html para carregar os dados da nuvem.', true);
+                fpCloudSetStatus('Dados locais visíveis. Faça login em index.html para sincronizar a nuvem.', false);
             }
             window.__fpIntranetBootComplete = true;
             return;
@@ -13051,17 +13074,9 @@ function renderSinistrosList(){
         window.__FP_EMBEDDED_PARSED__ = getFpEmbeddedFromDom();
         if(window.__FP_EMBEDDED_PARSED__ && window.__FP_EMBEDDED_PARSED__.state){
             await applyFpEmbeddedIntranetDb(window.__FP_EMBEDDED_PARSED__, { fromEmbeddedFile: true });
-        } else {
-            fpLoadEmployeesFromLocalStorage();
-            await fpHydrateEmployeeAttachmentsFromIdb();
-            state.employees = fpHydrateEmployeesMediaForSnapshot(state.employees || [], window.__FP_EMBEDDED_ATTACHMENTS__ || {});
-            fpLoadPagasFromLocalStorage();
-            fpLoadQuadroGeralFromLocalStorage();
         }
-    } else {
-        state.employees = fpHydrateEmployeesMediaForSnapshot(state.employees || [], window.__FP_EMBEDDED_ATTACHMENTS__ || {});
     }
-    if(typeof fpInitExternalTabsAndDashboard === 'function') fpInitExternalTabsAndDashboard();
+    state.employees = fpHydrateEmployeesMediaForSnapshot(state.employees || [], window.__FP_EMBEDDED_ATTACHMENTS__ || {});
     if(typeof window.fpOnCloudDataReady === 'function') await window.fpOnCloudDataReady();
     else {
         try { renderAll(); } catch (renderErr) {

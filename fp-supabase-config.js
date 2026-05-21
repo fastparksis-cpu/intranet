@@ -24,12 +24,22 @@
 
     /** Auto-gravação na nuvem após alterações (debounce em ms) */
     g.FP_CLOUD_AUTOSAVE = true;
-    g.FP_CLOUD_AUTOSAVE_DEBOUNCE_MS = 1000;
+    g.FP_CLOUD_AUTOSAVE_DEBOUNCE_MS = 500;
+
+    /**
+     * Modo rápido: carrega JSON na hora; fotos/docs com URL assinada em segundo plano.
+     * Gravação envia ficheiros novos em paralelo (não espera listar o bucket inteiro).
+     */
+    g.FP_CLOUD_FAST_SYNC = true;
+    g.FP_CLOUD_UPLOAD_CONCURRENCY = 12;
+    g.FP_CLOUD_MEDIA_PREFETCH_CONCURRENCY = 16;
+    /** Em auto-gravação não espera 3s pelos iframes — usa dados já em memória */
+    g.FP_CLOUD_QUICK_SAVE = true;
 
     /** Ao abrir a intranet com login, carrega snapshot + ficheiros do Supabase automaticamente */
     g.FP_CLOUD_AUTOLOAD = true;
     /** Após auto-carregar, não gravar de volta na nuvem durante este tempo (evita sobrescrever com cache local) */
-    g.FP_CLOUD_AUTOLOAD_AUTOSAVE_PAUSE_MS = 90000;
+    g.FP_CLOUD_AUTOLOAD_AUTOSAVE_PAUSE_MS = 60000;
 
     /** Rotas (Vercel: intranet-fastpark.html com cleanUrls, ou Intranet_FastPark_Integrada.html) */
     g.FP_LOGIN_URL = '/';
