@@ -24,5 +24,5 @@
     /** Ponte local: grava Excel na pasta GESTÃO DE FUNCIONARIOS (Iniciar Ponte Rede.bat). */
     g.FP_BRIDGE_ENABLED = false;
     g.FP_BRIDGE_WRITE_HTML = false;
-    g.FP_AUTH_REQUIRED = false;
+    g.FP_AUTH_REQUIRED = true;
 })(typeof window !== 'undefined' ? window : globalThis);
