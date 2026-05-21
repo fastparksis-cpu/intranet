@@ -24,11 +24,16 @@
 
     /** Auto-gravação na nuvem após alterações (debounce em ms) */
     g.FP_CLOUD_AUTOSAVE = true;
-    g.FP_CLOUD_AUTOSAVE_DEBOUNCE_MS = 12000;
+    g.FP_CLOUD_AUTOSAVE_DEBOUNCE_MS = 1000;
+
+    /** Ao abrir a intranet com login, carrega snapshot + ficheiros do Supabase automaticamente */
+    g.FP_CLOUD_AUTOLOAD = true;
+    /** Após auto-carregar, não gravar de volta na nuvem durante este tempo (evita sobrescrever com cache local) */
+    g.FP_CLOUD_AUTOLOAD_AUTOSAVE_PAUSE_MS = 90000;
 
     /** Rotas (local: ficheiros .html | Vercel: vercel.json rewrites) */
     g.FP_LOGIN_URL = '/';
-    g.FP_APP_URL = '/Intranet_FastPark_Integrada.html';
+    g.FP_APP_URL = '/intranet-fastpark';
 
     g.fpSupabaseConfigIsReady = function () {
         var url = String(g.FP_SUPABASE_URL || '').trim();
