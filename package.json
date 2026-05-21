@@ -1,9 +1,5 @@
 {
   "name": "intranet-fastpark",
   "private": true,
-  "description": "Site estático — deploy Vercel não exige npm install (ver vercel.json).",
-  "scripts": {
-    "build": "node scripts/generate-supabase-config.mjs",
-    "vercel-build": "node scripts/generate-supabase-config.mjs"
-  }
+  "description": "Site estático HTML. Deploy Vercel: sem build npm (fp-supabase-config.js já está no repositório)."
 }

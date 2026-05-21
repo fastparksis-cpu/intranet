@@ -1,22 +1,25 @@
-{
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "cleanUrls": true,
-  "trailingSlash": false,
-  "rewrites": [
-    { "source": "/intranet-fastpark", "destination": "/Intranet_FastPark_Integrada.html" },
-    { "source": "/intranet-fastpark/", "destination": "/Intranet_FastPark_Integrada.html" },
-    { "source": "/intranet", "destination": "/Intranet_FastPark_Integrada.html" },
-    { "source": "/intranet/", "destination": "/Intranet_FastPark_Integrada.html" },
-    { "source": "/cadastro", "destination": "/DashBoard RH.html" },
-    { "source": "/cadastro/", "destination": "/DashBoard RH.html" }
-  ],
-  "headers": [
-    {
-      "source": "/(.*)",
-      "headers": [
-        { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
-      ]
-    }
-  ]
-}
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "",
+  "buildCommand": "",
+  "outputDirectory": ".",
+  "cleanUrls": true,
+  "trailingSlash": false,
+  "rewrites": [
+    { "source": "/intranet-fastpark", "destination": "/Intranet_FastPark_Integrada.html" },
+    { "source": "/intranet-fastpark/", "destination": "/Intranet_FastPark_Integrada.html" },
+    { "source": "/intranet", "destination": "/Intranet_FastPark_Integrada.html" },
+    { "source": "/intranet/", "destination": "/Intranet_FastPark_Integrada.html" },
+    { "source": "/cadastro", "destination": "/DashBoard RH.html" },
+    { "source": "/cadastro/", "destination": "/DashBoard RH.html" }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
+      ]
+    }
+  ]
+}
