@@ -1395,14 +1395,14 @@ td { color: var(--t); font-weight: 500;}
         <img src="/Design%20sem%20nome.png" alt="FastPark">
     </div>
     <nav class="fp-sidebar-nav">
-        <button type="button" class="fp-menu-home active" data-tab="fp-home" onclick="fpMenuSwitchTab('fp-home')">Página inicial</button>
+        <button type="button" class="fp-menu-home" data-tab="fp-home" onclick="fpMenuSwitchTab('fp-home')">Página inicial</button>
         <div class="fp-menu-modules-label">Módulos</div>
         <div class="fp-menu-group open" data-fp-group="dp">
             <button type="button" class="fp-menu-group-btn" onclick="fpToggleMenuGroup('dp')" aria-expanded="true">
                 <span>Departamento Pessoal</span><span class="fp-menu-chevron">▶</span>
             </button>
             <div class="fp-menu-sub">
-                <button type="button" class="fp-menu-item" data-tab="inicio" onclick="fpMenuSwitchTab('inicio', 'dp')">Início</button>
+                <button type="button" class="fp-menu-item active" data-tab="inicio" onclick="fpMenuSwitchTab('inicio', 'dp')">Início</button>
                 <button type="button" class="fp-menu-item" data-tab="dashboard" onclick="fpMenuSwitchTab('dashboard', 'dp')">Cadastro</button>
                 <button type="button" class="fp-menu-item" data-tab="cestas" onclick="fpMenuSwitchTab('cestas', 'dp')">Gestão de Benefícios</button>
                 <button type="button" class="fp-menu-item" data-tab="ferias" onclick="fpMenuSwitchTab('ferias', 'dp')">Férias</button>
@@ -1478,7 +1478,7 @@ td { color: var(--t); font-weight: 500;}
 
 <div class="tab-container">
 
-    <div id="fp-home" class="tab-content active">
+    <div id="fp-home" class="tab-content">
         <div class="fp-home-page">
             <img class="fp-home-logo" src="/Design%20sem%20nome.png" alt="FastPark">
             <p class="fp-home-desc">Sistema integrado de gestão de pessoas, benefícios, unidades e operações da FastPark.</p>
@@ -1486,7 +1486,7 @@ td { color: var(--t); font-weight: 500;}
         </div>
     </div>
 
-    <div id="inicio" class="tab-content"></div>
+    <div id="inicio" class="tab-content active"></div>
 
     <!-- Tab 1: Gestão de Cestas -->
     <div id="cestas" class="tab-content">
@@ -5507,15 +5507,19 @@ function fpInitTabPageLayout() {
     });
 }
 
-/** URL do DashBoard: Vercel /cadastro ou ficheiro directo; local = DashBoard RH.html */
+/** URL do DashBoard — igual ao Desktop: DashBoard RH.html?view=inicio|cadastro (rede/local); Vercel usa FP_CADASTRO_URL */
 function fpIframeCadastroUrl(query){
     const q = query ? (query.indexOf('?') === 0 ? query : '?' + query) : '';
     try {
-        if(location.protocol === 'file:') return 'DashBoard RH.html' + q;
+        var host = String(location.hostname || '').toLowerCase();
+        var onVercel = /\.vercel\.app$/i.test(host);
+        if(!onVercel && (location.protocol === 'file:' || host === 'localhost' || host === '127.0.0.1' || /^192\.168\./.test(host) || !host)) {
+            return 'DashBoard RH.html' + q;
+        }
         const base = (typeof window.FP_CADASTRO_URL === 'string' && window.FP_CADASTRO_URL) ? window.FP_CADASTRO_URL : '/DashBoard%20RH.html';
         return base + q;
     } catch(e) {
-        return '/DashBoard%20RH.html' + q;
+        return 'DashBoard RH.html' + q;
     }
 }
 function configureExternalTab(tabId, fileName){
@@ -5528,12 +5532,7 @@ function configureExternalTab(tabId, fileName){
     });
     const frame = document.createElement('iframe');
     frame.className = 'external-tab-frame';
-    try {
-        var u = new URL(fileName, window.location.origin);
-        frame.src = u.pathname + u.search;
-    } catch(urlErr) {
-        frame.src = fileName.split('?').map(function(part, i){ return i ? part : encodeURI(part); }).join('?');
-    }
+    frame.src = encodeURI(fileName);
     frame.title = fileName;
     frame.addEventListener('load', () => {
         queueMicrotask(() => {
@@ -5553,11 +5552,22 @@ window.fpInitExternalTabsAndDashboard = function () {
     }
     if (typeof configureExternalTab !== 'function') return;
     try {
-        configureExternalTab('dashboard', fpIframeCadastroUrl('view=cadastro&fpv=5'));
-        configureExternalTab('inicio', fpIframeCadastroUrl('view=inicio&fpv=5'));
+        configureExternalTab('dashboard', fpIframeCadastroUrl('view=cadastro'));
+        configureExternalTab('inicio', fpIframeCadastroUrl('view=inicio'));
         window.__fpExternalTabsReady = true;
     } catch (e) { console.warn('[FP] iframes', e); }
 };
+window.addEventListener('DOMContentLoaded', function () {
+    if (window.__fpExternalTabsReady) return;
+    if (typeof configureExternalTab !== 'function') return;
+    configureExternalTab('dashboard', fpIframeCadastroUrl('view=cadastro'));
+    configureExternalTab('inicio', fpIframeCadastroUrl('view=inicio'));
+    window.__fpExternalTabsReady = true;
+    if (typeof switchTab === 'function') switchTab('inicio');
+    queueMicrotask(function () {
+        if (typeof propagateStateToDashboardIframes === 'function') propagateStateToDashboardIframes();
+    });
+});
 function fpPushDashboardWithRetry(){
     var n = (state.employees && state.employees.length) || 0;
     var delays = [0, 350, 900, 1800, 3200];
@@ -12902,7 +12912,8 @@ function renderSinistrosList(){
         }
         fpPushDashboardWithRetry();
     }
-    switchTab('fp-home');
+    if (typeof fpMenuSwitchTab === 'function') fpMenuSwitchTab('inicio', 'dp');
+    else if (typeof switchTab === 'function') switchTab('inicio');
     queueMicrotask(() => {
         if(typeof fpUpdateCloudNavUi === 'function') fpUpdateCloudNavUi().catch(function(){});
         if(typeof fpBridgeInit === 'function' && window.FP_BRIDGE_ENABLED !== false){
