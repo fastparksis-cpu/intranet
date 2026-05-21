@@ -1397,8 +1397,8 @@ td { color: var(--t); font-weight: 500;}
     <nav class="fp-sidebar-nav">
         <button type="button" class="fp-menu-home active" data-tab="fp-home" onclick="fpMenuSwitchTab('fp-home')">Página inicial</button>
         <div class="fp-menu-modules-label">Módulos</div>
-        <div class="fp-menu-group" data-fp-group="dp">
-            <button type="button" class="fp-menu-group-btn" onclick="fpToggleMenuGroup('dp')" aria-expanded="false">
+        <div class="fp-menu-group open" data-fp-group="dp">
+            <button type="button" class="fp-menu-group-btn" onclick="fpToggleMenuGroup('dp')" aria-expanded="true">
                 <span>Departamento Pessoal</span><span class="fp-menu-chevron">▶</span>
             </button>
             <div class="fp-menu-sub">
@@ -2492,10 +2492,17 @@ function fpSyncSidebarMenu(tab) {
 function fpMenuSwitchTab(tab, groupId) {
     if (tab === 'fp-home') {
         document.querySelectorAll('.fp-menu-group.open').forEach(function (group) {
+            if (group.getAttribute('data-fp-group') === 'dp') return;
             group.classList.remove('open');
             const btn = group.querySelector('.fp-menu-group-btn');
             if (btn) btn.setAttribute('aria-expanded', 'false');
         });
+        var dpGroup = document.querySelector('.fp-menu-group[data-fp-group="dp"]');
+        if (dpGroup && !dpGroup.classList.contains('open')) {
+            dpGroup.classList.add('open');
+            var dpBtn = dpGroup.querySelector('.fp-menu-group-btn');
+            if (dpBtn) dpBtn.setAttribute('aria-expanded', 'true');
+        }
     } else if (groupId) {
         const group = document.querySelector('.fp-menu-group[data-fp-group="' + groupId + '"]');
         if (group) {
@@ -5540,6 +5547,7 @@ function configureExternalTab(tabId, fileName){
     tab.dataset.externalConfigured = '1';
 }
 window.fpInitExternalTabsAndDashboard = function () {
+    if (window.__fpExternalTabsReady) return;
     if (typeof fpInitTabPageLayout === 'function') {
         try { fpInitTabPageLayout(); } catch (e) { console.warn('[FP] layout abas', e); }
     }
@@ -5547,13 +5555,42 @@ window.fpInitExternalTabsAndDashboard = function () {
     try {
         configureExternalTab('dashboard', fpIframeCadastroUrl('view=cadastro&fpv=5'));
         configureExternalTab('inicio', fpIframeCadastroUrl('view=inicio&fpv=5'));
+        window.__fpExternalTabsReady = true;
     } catch (e) { console.warn('[FP] iframes', e); }
-    switchTab('fp-home');
-    queueMicrotask(function () {
-        if (typeof propagateStateToDashboardIframes === 'function') propagateStateToDashboardIframes();
-    });
 };
-window.fpInitExternalTabsAndDashboard();
+function fpPushDashboardWithRetry(){
+    var n = (state.employees && state.employees.length) || 0;
+    var delays = [0, 350, 900, 1800, 3200];
+    delays.forEach(function(ms){
+        setTimeout(function(){
+            if(typeof propagateStateToDashboardIframes === 'function') propagateStateToDashboardIframes();
+        }, ms);
+    });
+    if(typeof fpCloudSetStatus === 'function' && n){
+        fpCloudSetStatus('Cadastro na memória: ' + n + ' colaborador(es). Abas Início/Cadastro actualizadas.', false);
+    }
+}
+window.fpOnCloudDataReady = function () {
+    if(typeof fpInitExternalTabsAndDashboard === 'function') fpInitExternalTabsAndDashboard();
+    try { renderAll(); } catch(e) { console.warn('[FP] renderAll pós-nuvem', e); }
+    if(typeof refreshDashboardFilters === 'function') refreshDashboardFilters();
+    if(typeof renderBeneficiosCestas === 'function') renderBeneficiosCestas();
+    fpPushDashboardWithRetry();
+};
+async function fpWaitForAuthSession(maxMs){
+    maxMs = maxMs || 10000;
+    var t0 = Date.now();
+    while(Date.now() - t0 < maxMs){
+        try {
+            if(typeof fpGetAuthContext === 'function'){
+                var ctx = await fpGetAuthContext();
+                if(ctx && ctx.session) return ctx.session;
+            }
+        } catch(e) { /* retry */ }
+        await new Promise(function(r){ setTimeout(r, 250); });
+    }
+    return null;
+}
 
 function detectFolhaTipoFromLines(lines, fileName){
     const blob = (lines || []).join('\n').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -6965,7 +7002,8 @@ async function collectFpIntranetSnapshot(){
         attachments
     };
 }
-async function applyFpEmbeddedIntranetDb(db){
+async function applyFpEmbeddedIntranetDb(db, opts){
+    opts = opts || {};
     window.__fpLsHookPause = true;
     try {
     if(db && db.version && db.version !== FP_DB_VERSION && db.version !== 1) console.warn('[FP] Versão de banco embutido (compatível):', db.version);
@@ -6975,7 +7013,12 @@ async function applyFpEmbeddedIntranetDb(db){
         await fpResolveCloudAttachmentMarkers(db);
     }
     const att = db.attachments || {};
-    window.__FP_EMBEDDED_FROM_FILE__ = true;
+    if(opts.fromEmbeddedFile){
+        window.__FP_EMBEDDED_FROM_FILE__ = true;
+    } else {
+        window.__FP_EMBEDDED_FROM_FILE__ = false;
+        window.__FP_CLOUD_SNAPSHOT_LOADED__ = true;
+    }
     window.__FP_EMBEDDED_ATTACHMENTS__ = att;
     fpPrimeEmployeeAttBagFromDb(db.state.employees, att);
     state.employees = expandEmployeeRefsInEmployees(db.state.employees, att);
@@ -12822,14 +12865,15 @@ function renderSinistrosList(){
 (async function fpBootIntranet(){
     fpInitAutosaveSystem();
     var cloudLoaded = false;
-    try {
-        if (typeof fpGetAuthContext === 'function') {
-            var authCtx = await fpGetAuthContext();
-            if (window.FP_AUTH_REQUIRED !== false && !(authCtx && authCtx.session)) {
-                return;
+    if(window.FP_AUTH_REQUIRED !== false){
+        var sess = await fpWaitForAuthSession(12000);
+        if(!sess){
+            if(typeof fpCloudSetStatus === 'function'){
+                fpCloudSetStatus('Faça login em index.html para carregar os dados da nuvem.', true);
             }
+            return;
         }
-    } catch(authWaitErr) { console.warn('[fp-auth] boot', authWaitErr); }
+    }
     if(typeof fpTryCloudAutoload === 'function'){
         try {
             var autoload = await fpTryCloudAutoload({ boot: true });
@@ -12839,7 +12883,7 @@ function renderSinistrosList(){
     if(!cloudLoaded){
         window.__FP_EMBEDDED_PARSED__ = getFpEmbeddedFromDom();
         if(window.__FP_EMBEDDED_PARSED__ && window.__FP_EMBEDDED_PARSED__.state){
-            await applyFpEmbeddedIntranetDb(window.__FP_EMBEDDED_PARSED__);
+            await applyFpEmbeddedIntranetDb(window.__FP_EMBEDDED_PARSED__, { fromEmbeddedFile: true });
         } else {
             fpLoadEmployeesFromLocalStorage();
             await fpHydrateEmployeeAttachmentsFromIdb();
@@ -12850,12 +12894,16 @@ function renderSinistrosList(){
     } else {
         state.employees = fpHydrateEmployeesMediaForSnapshot(state.employees || [], window.__FP_EMBEDDED_ATTACHMENTS__ || {});
     }
-    try { renderAll(); } catch (renderErr) {
-        console.error('[FP] renderAll', renderErr);
-        alert('Erro ao mostrar dados na tela. Abra a aba Cadastro e importe o Excel. Detalhe: ' + (renderErr && renderErr.message));
+    if(typeof fpInitExternalTabsAndDashboard === 'function') fpInitExternalTabsAndDashboard();
+    if(typeof window.fpOnCloudDataReady === 'function') window.fpOnCloudDataReady();
+    else {
+        try { renderAll(); } catch (renderErr) {
+            console.error('[FP] renderAll', renderErr);
+        }
+        fpPushDashboardWithRetry();
     }
+    switchTab('fp-home');
     queueMicrotask(() => {
-        if(typeof propagateStateToDashboardIframes === 'function') propagateStateToDashboardIframes();
         if(typeof fpUpdateCloudNavUi === 'function') fpUpdateCloudNavUi().catch(function(){});
         if(typeof fpBridgeInit === 'function' && window.FP_BRIDGE_ENABLED !== false){
             fpBridgeInit().catch(function(e){ console.warn('[fp-bridge] init', e); });

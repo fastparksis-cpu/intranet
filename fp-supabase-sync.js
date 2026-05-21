@@ -538,11 +538,13 @@
             if (typeof g.applyFpEmbeddedIntranetDb !== 'function') {
                 throw new Error('Função applyFpEmbeddedIntranetDb não encontrada.');
             }
-            await g.applyFpEmbeddedIntranetDb(db);
+            await g.applyFpEmbeddedIntranetDb(db, { fromCloud: true });
             if (typeof g.fpPersistEmployeeAttBagFromState === 'function') {
                 await g.fpPersistEmployeeAttBagFromState();
             }
-            if (typeof g.propagateStateToDashboardIframes === 'function') {
+            if (typeof g.fpOnCloudDataReady === 'function') {
+                g.fpOnCloudDataReady();
+            } else if (typeof g.propagateStateToDashboardIframes === 'function') {
                 g.propagateStateToDashboardIframes();
             }
             var when = res.data.updated_at || res.data.exported_at || '';
@@ -642,11 +644,15 @@
                 if (typeof g.fpResetCloudAutoloadForRetry === 'function') g.fpResetCloudAutoloadForRetry();
                 g.fpTryCloudAutoload({ afterLogin: true }).then(function (r) {
                     if (!r || !r.loaded) return;
-                    if (typeof g.renderAll === 'function') {
-                        try { g.renderAll(); } catch (e) { console.warn('[fp-cloud] renderAll', e); }
-                    }
-                    if (typeof g.propagateStateToDashboardIframes === 'function') {
-                        g.propagateStateToDashboardIframes();
+                    if (typeof g.fpOnCloudDataReady === 'function') {
+                        g.fpOnCloudDataReady();
+                    } else {
+                        if (typeof g.renderAll === 'function') {
+                            try { g.renderAll(); } catch (e) { console.warn('[fp-cloud] renderAll', e); }
+                        }
+                        if (typeof g.propagateStateToDashboardIframes === 'function') {
+                            g.propagateStateToDashboardIframes();
+                        }
                     }
                 }).catch(function (e) { console.warn('[fp-cloud] autoload pós-login', e); });
             }
