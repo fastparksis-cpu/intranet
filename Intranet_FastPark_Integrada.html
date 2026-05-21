@@ -12657,14 +12657,23 @@ function renderSinistrosList(){
 // ========== INICIALIZAÇÃO ==========
 (async function fpBootIntranet(){
     fpInitAutosaveSystem();
-    window.__FP_EMBEDDED_PARSED__ = getFpEmbeddedFromDom();
-    if(window.__FP_EMBEDDED_PARSED__ && window.__FP_EMBEDDED_PARSED__.state){
-        await applyFpEmbeddedIntranetDb(window.__FP_EMBEDDED_PARSED__);
-    } else {
-        fpLoadEmployeesFromLocalStorage();
-        await fpHydrateEmployeeAttachmentsFromIdb();
-        fpLoadPagasFromLocalStorage();
-        fpLoadQuadroGeralFromLocalStorage();
+    var cloudLoaded = false;
+    if(typeof fpTryCloudAutoload === 'function'){
+        try {
+            var autoload = await fpTryCloudAutoload({ boot: true });
+            cloudLoaded = !!(autoload && autoload.loaded);
+        } catch(e) { console.warn('[fp-cloud] boot autoload', e); }
+    }
+    if(!cloudLoaded){
+        window.__FP_EMBEDDED_PARSED__ = getFpEmbeddedFromDom();
+        if(window.__FP_EMBEDDED_PARSED__ && window.__FP_EMBEDDED_PARSED__.state){
+            await applyFpEmbeddedIntranetDb(window.__FP_EMBEDDED_PARSED__);
+        } else {
+            fpLoadEmployeesFromLocalStorage();
+            await fpHydrateEmployeeAttachmentsFromIdb();
+            fpLoadPagasFromLocalStorage();
+            fpLoadQuadroGeralFromLocalStorage();
+        }
     }
     try { renderAll(); } catch (renderErr) {
         console.error('[FP] renderAll', renderErr);
