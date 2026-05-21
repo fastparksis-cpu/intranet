@@ -456,10 +456,13 @@
         fpCloudSetStatus('Auto-gravação ligada (~' + sec + ' s após alterações).' + loadHint, false);
     };
 
-    /** Carrega da nuvem ao iniciar (uma vez por sessão de página). */
+    /** Carrega da nuvem ao iniciar (repete se ainda não houver sessão). */
     g.fpTryCloudAutoload = function (opts) {
         if (g.FP_CLOUD_AUTOLOAD === false) {
             return Promise.resolve({ loaded: false, reason: 'disabled' });
+        }
+        if (g.__fpCloudAutoloadDone) {
+            return Promise.resolve(g.__fpCloudAutoloadResult || { loaded: false, reason: 'already-done' });
         }
         if (g.__fpCloudAutoloadPromise) return g.__fpCloudAutoloadPromise;
         opts = opts || {};
@@ -470,7 +473,10 @@
                 var supa = g.fpSupabase;
                 if (!supa) return { loaded: false, reason: 'no-client' };
                 var ur = await supa.auth.getUser();
-                if (!ur.data || !ur.data.user) return { loaded: false, reason: 'not-logged' };
+                if (!ur.data || !ur.data.user) {
+                    fpCloudSetStatus('Entre com login para carregar os dados da nuvem (☁️).', false);
+                    return { loaded: false, reason: 'not-logged' };
+                }
                 var peek = await supa.from('intranet_snapshots')
                     .select('id, updated_at')
                     .eq('id', ROW_ID)
@@ -481,7 +487,10 @@
                     return { loaded: false, reason: 'no-snapshot' };
                 }
                 await g.fpCloudLoadSnapshot({ autoload: true });
-                return { loaded: true, updatedAt: peek.data.updated_at || null };
+                var result = { loaded: true, updatedAt: peek.data.updated_at || null };
+                g.__fpCloudAutoloadDone = true;
+                g.__fpCloudAutoloadResult = result;
+                return result;
             } catch (err) {
                 var msg = err && err.message ? err.message : String(err);
                 if (/ainda não há dados/i.test(msg)) {
@@ -491,9 +500,17 @@
                 console.warn('[fp-cloud] autoload', err);
                 fpCloudSetStatus('Erro ao carregar da nuvem: ' + msg, true);
                 return { loaded: false, reason: 'error', error: err };
+            } finally {
+                g.__fpCloudAutoloadPromise = null;
             }
         })();
         return g.__fpCloudAutoloadPromise;
+    };
+
+    g.fpResetCloudAutoloadForRetry = function () {
+        g.__fpCloudAutoloadDone = false;
+        g.__fpCloudAutoloadResult = null;
+        g.__fpCloudAutoloadPromise = null;
     };
 
     g.fpCloudLoadSnapshot = async function (opts) {
@@ -622,6 +639,7 @@
         if (session) {
             if (g.FP_CLOUD_AUTOSAVE !== false) g.fpInitCloudAutosave();
             if (g.FP_CLOUD_AUTOLOAD !== false && typeof g.fpTryCloudAutoload === 'function') {
+                if (typeof g.fpResetCloudAutoloadForRetry === 'function') g.fpResetCloudAutoloadForRetry();
                 g.fpTryCloudAutoload({ afterLogin: true }).then(function (r) {
                     if (!r || !r.loaded) return;
                     if (typeof g.renderAll === 'function') {
@@ -650,7 +668,7 @@
 
     if (g.fpSupabase && g.fpSupabase.auth && typeof g.fpSupabase.auth.onAuthStateChange === 'function') {
         g.fpSupabase.auth.onAuthStateChange(function (event, session) {
-            if (event === 'SIGNED_IN' && session) {
+            if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session) {
                 fpApplyCloudAutosaveSession(session);
             }
             if (event === 'SIGNED_OUT') {

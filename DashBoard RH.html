@@ -3753,6 +3753,9 @@ window.addEventListener('message', (ev) => {
     if(msg.type === 'fastpark-employees-sync') {
         try {
             applyEmployeesSyncFromParent(msg);
+            if(IS_INICIO_VIEW) {
+                try { renderDashInicioSinistrosUnidadesCard(); } catch(e2) { console.warn('[DashBoard] inicio sinistros', e2); }
+            }
         } catch(err) {
             console.error('Falha ao aplicar sincronização de cadastro da intranet', err);
         }

@@ -10,12 +10,12 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.5.136/pdf.min.js"></script>
-<script src="fp-intranet-base-path.js"></script>
-<script src="fp-local-bridge-client.js"></script>
-<script src="fp-supabase-config.js"></script>
+<script src="/fp-intranet-base-path.js"></script>
+<script src="/fp-local-bridge-client.js"></script>
+<script src="/fp-supabase-config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="fp-auth.js"></script>
-<script src="fp-supabase-sync.js"></script>
+<script src="/fp-auth.js"></script>
+<script src="/fp-supabase-sync.js"></script>
 <script>
 (function () {
     if (window.FP_AUTH_REQUIRED === false) return;
@@ -1392,7 +1392,7 @@ td { color: var(--t); font-weight: 500;}
 <div class="fp-app-shell">
 <aside class="fp-sidebar" id="fpSidebar" aria-label="Menu principal">
     <div class="fp-sidebar-brand" onclick="fpGoHomePage()" title="Página inicial">
-        <img src="Design sem nome.png" alt="FastPark">
+        <img src="/Design%20sem%20nome.png" alt="FastPark">
     </div>
     <nav class="fp-sidebar-nav">
         <button type="button" class="fp-menu-home active" data-tab="fp-home" onclick="fpMenuSwitchTab('fp-home')">Página inicial</button>
@@ -1480,7 +1480,7 @@ td { color: var(--t); font-weight: 500;}
 
     <div id="fp-home" class="tab-content active">
         <div class="fp-home-page">
-            <img class="fp-home-logo" src="Design sem nome.png" alt="FastPark">
+            <img class="fp-home-logo" src="/Design%20sem%20nome.png" alt="FastPark">
             <p class="fp-home-desc">Sistema integrado de gestão de pessoas, benefícios, unidades e operações da FastPark.</p>
             <p class="fp-home-tagline">Use o menu à esquerda para aceder aos módulos.</p>
         </div>
@@ -2551,6 +2551,10 @@ function switchTab(tab) {
         if(typeof fpSyncDarkModeToDashboardIframes === 'function') {
             fpSyncDarkModeToDashboardIframes(localStorage.getItem('fp_darkmode') === '1');
         }
+        if(typeof propagateStateToDashboardIframes === 'function') propagateStateToDashboardIframes();
+        document.querySelectorAll('#' + tab + ' iframe.external-tab-frame').forEach(function(fr){
+            try { fr.contentWindow.postMessage({ type: 'fastpark-request-full-state' }, '*'); } catch(e) {}
+        });
     }
     if(tab === 'movimentos' && typeof refreshMovGestaoPagamentosUi === 'function') refreshMovGestaoPagamentosUi();
     if(tab === 'vt' && typeof renderVtReport === 'function') renderVtReport();
@@ -5498,7 +5502,7 @@ function fpIframeCadastroUrl(query){
     const q = query ? (query.indexOf('?') === 0 ? query : '?' + query) : '';
     try {
         if(location.protocol === 'file:') return 'DashBoard RH.html' + q;
-        const base = (typeof window.FP_CADASTRO_URL === 'string' && window.FP_CADASTRO_URL) ? window.FP_CADASTRO_URL : '/cadastro';
+        const base = (typeof window.FP_CADASTRO_URL === 'string' && window.FP_CADASTRO_URL) ? window.FP_CADASTRO_URL : '/DashBoard%20RH.html';
         return base + q;
     } catch(e) {
         return '/DashBoard%20RH.html' + q;
@@ -5514,7 +5518,12 @@ function configureExternalTab(tabId, fileName){
     });
     const frame = document.createElement('iframe');
     frame.className = 'external-tab-frame';
-    frame.src = fileName.split('?').map(function(part, i){ return i ? part : encodeURI(part); }).join('?');
+    try {
+        var u = new URL(fileName, window.location.origin);
+        frame.src = u.pathname + u.search;
+    } catch(urlErr) {
+        frame.src = fileName.split('?').map(function(part, i){ return i ? part : encodeURI(part); }).join('?');
+    }
     frame.title = fileName;
     frame.addEventListener('load', () => {
         queueMicrotask(() => {
@@ -12810,6 +12819,14 @@ function renderSinistrosList(){
 (async function fpBootIntranet(){
     fpInitAutosaveSystem();
     var cloudLoaded = false;
+    try {
+        if (typeof fpGetAuthContext === 'function') {
+            var authCtx = await fpGetAuthContext();
+            if (window.FP_AUTH_REQUIRED !== false && !(authCtx && authCtx.session)) {
+                return;
+            }
+        }
+    } catch(authWaitErr) { console.warn('[fp-auth] boot', authWaitErr); }
     if(typeof fpTryCloudAutoload === 'function'){
         try {
             var autoload = await fpTryCloudAutoload({ boot: true });
@@ -12836,6 +12853,7 @@ function renderSinistrosList(){
     }
     queueMicrotask(() => {
         if(typeof propagateStateToDashboardIframes === 'function') propagateStateToDashboardIframes();
+        if(typeof fpUpdateCloudNavUi === 'function') fpUpdateCloudNavUi().catch(function(){});
         if(typeof fpBridgeInit === 'function' && window.FP_BRIDGE_ENABLED !== false){
             fpBridgeInit().catch(function(e){ console.warn('[fp-bridge] init', e); });
         }
