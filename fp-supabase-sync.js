@@ -8,9 +8,11 @@
     var BUCKET = g.FP_STORAGE_BUCKET || 'intranet-files';
     var ROW_ID = g.FP_SNAPSHOT_ROW_ID || 'main';
     var cloudTimer = null;
+    var mediaTimer = null;
     var cloudUnpauseTimer = null;
     var cloudRunning = false;
     var cloudPending = false;
+    var mediaUploadRunning = false;
 
     function clientOrThrow() {
         if (!g.fpSupabase) throw new Error('Supabase não inicializado. Faça login novamente.');
@@ -263,20 +265,48 @@
         });
         var bag = g.window.__FP_EMBEDDED_ATTACHMENTS__ || {};
         Object.keys(bag).forEach(function (k) { add(k); });
+        var empBag = g.window.__FP_EMPLOYEE_ATT_BAG__ || {};
+        Object.keys(empBag).forEach(function (k) {
+            if (typeof empBag[k] === 'string') add(k);
+        });
         return keys;
     }
 
-    async function resolveAttachmentToDataUrl(key, att, bag) {
+    function fpEmployeeAttBagFlat() {
+        var flat = {};
+        var bag = g.window.__FP_EMPLOYEE_ATT_BAG__ || {};
+        Object.keys(bag).forEach(function (k) {
+            var v = bag[k];
+            if (typeof v === 'string' && v.indexOf('data:') === 0) {
+                flat[sanitizeStoragePath(k)] = v;
+            }
+        });
+        return flat;
+    }
+
+    async function resolveAttachmentToDataUrl(key, att, embBag, empBagFlat) {
+        key = sanitizeStoragePath(key);
         var v = att[key];
         if (typeof v === 'string' && v.indexOf('data:') === 0) return v;
-        v = bag[key];
+        if (empBagFlat && empBagFlat[key]) return empBagFlat[key];
+        v = embBag[key];
         if (typeof v === 'string' && v.indexOf('data:') === 0) return v;
+        if (typeof g.fpResolveEmployeeMediaRef === 'function' && g.state && Array.isArray(g.state.employees)) {
+            for (var ei = 0; ei < g.state.employees.length; ei++) {
+                var emp = g.state.employees[ei];
+                if (emp.fotoRef === key || key.indexOf('colaboradores/') === 0) {
+                    var u = g.fpResolveEmployeeMediaRef(key, emp, att, g.window.__FP_EMPLOYEE_ATT_BAG__ || {});
+                    if (u && String(u).indexOf('data:') === 0) return u;
+                }
+            }
+        }
         return await readDiskAttachmentAsDataUrl(key);
     }
 
     async function hydrateAttachmentsForCloud(snap) {
         var att = snap.attachments || {};
-        var bag = g.window.__FP_EMBEDDED_ATTACHMENTS__ || {};
+        var embBag = g.window.__FP_EMBEDDED_ATTACHMENTS__ || {};
+        var empBagFlat = fpEmployeeAttBagFlat();
         var keys = collectAttachmentRefKeys(snap);
         var hydrated = 0;
         var failed = 0;
@@ -285,7 +315,7 @@
             var cur = att[key];
             if (typeof cur === 'string' && cur.indexOf('data:') === 0) continue;
             if (cur && typeof cur === 'object' && cur.__cloud === true) continue;
-            var dataUrl = await resolveAttachmentToDataUrl(key, att, bag);
+            var dataUrl = await resolveAttachmentToDataUrl(key, att, embBag, empBagFlat);
             if (dataUrl) {
                 att[key] = dataUrl;
                 hydrated++;
@@ -306,6 +336,10 @@
             if (cur && typeof cur === 'object' && cur.__cloud === true) return;
             att[key] = dataUrl;
         }
+        var empFlat = fpEmployeeAttBagFlat();
+        Object.keys(empFlat).forEach(function (k) {
+            put(k, empFlat[k]);
+        });
         var emps = (snap.state && snap.state.employees) || [];
         emps.forEach(function (e, ei) {
             if (e.foto) put('colaboradores/foto/inline_' + ei, e.foto);
@@ -755,6 +789,107 @@
         return false;
     }
 
+    g.fpCloudUploadMediaNow = async function (path, dataUrl) {
+        path = sanitizeStoragePath(path);
+        if (!path || !dataUrl || String(dataUrl).indexOf('data:') !== 0) return null;
+        if (typeof g.fpGetAuthContext === 'function') await g.fpGetAuthContext();
+        else if (g.fpAuthReady) await g.fpAuthReady;
+        var emb = g.window.__FP_EMBEDDED_ATTACHMENTS__ || (g.window.__FP_EMBEDDED_ATTACHMENTS__ = {});
+        var cur = emb[path];
+        if (cur && typeof cur === 'object' && cur.__cloud === true) return path;
+        await uploadDataUrl(path, dataUrl);
+        emb[path] = { __cloud: true, path: path };
+        return path;
+    };
+
+    g.fpCloudUploadAllPendingMedia = async function () {
+        if (g.FP_CLOUD_IMMEDIATE_MEDIA_UPLOAD === false) return { uploaded: 0, skipped: 0 };
+        if (fpCloudAutosavePaused() && g.__fpCloudLoadRunning) return { uploaded: 0, skipped: 0 };
+        if (mediaUploadRunning) return { uploaded: 0, skipped: 0, busy: true };
+        mediaUploadRunning = true;
+        var uploaded = 0;
+        var skipped = 0;
+        try {
+            if (typeof g.fpGetAuthContext === 'function') await g.fpGetAuthContext();
+            else if (g.fpAuthReady) await g.fpAuthReady;
+            var ur = await clientOrThrow().auth.getUser();
+            if (!ur.data || !ur.data.user) return { uploaded: 0, skipped: 0, reason: 'not-logged' };
+            if (typeof g.fpPersistEmployeeAttBagFromState === 'function') {
+                try { await g.fpPersistEmployeeAttBagFromState(); } catch (bagErr) {
+                    console.warn('[fp-cloud] bag persist', bagErr);
+                }
+            } else if (typeof g.fpPrimeEmployeeAttBagFromDb === 'function' && g.state) {
+                g.fpPrimeEmployeeAttBagFromDb(g.state.employees || [], g.window.__FP_EMBEDDED_ATTACHMENTS__ || {});
+            }
+            var emb = g.window.__FP_EMBEDDED_ATTACHMENTS__ || (g.window.__FP_EMBEDDED_ATTACHMENTS__ = {});
+            var bag = g.window.__FP_EMPLOYEE_ATT_BAG__ || {};
+            var queue = [];
+            function consider(key, dataUrl) {
+                key = sanitizeStoragePath(key);
+                if (!key || !dataUrl || String(dataUrl).indexOf('data:') !== 0) return;
+                var cur = emb[key];
+                if (cur && typeof cur === 'object' && cur.__cloud === true) {
+                    skipped++;
+                    return;
+                }
+                if (typeof cur === 'string' && cur.indexOf('http') === 0) {
+                    skipped++;
+                    return;
+                }
+                queue.push({ key: key, dataUrl: dataUrl });
+            }
+            Object.keys(bag).forEach(function (k) {
+                consider(k, bag[k]);
+            });
+            Object.keys(emb).forEach(function (k) {
+                if (typeof emb[k] === 'string' && emb[k].indexOf('data:') === 0) consider(k, emb[k]);
+            });
+            if (!queue.length) return { uploaded: 0, skipped: skipped };
+            fpCloudSetStatus('A enviar ' + queue.length + ' anexo(s) para a nuvem…');
+            var conc = g.FP_CLOUD_UPLOAD_CONCURRENCY || 12;
+            var qi = 0;
+            async function worker() {
+                while (true) {
+                    var ix = qi++;
+                    if (ix >= queue.length) break;
+                    var job = queue[ix];
+                    try {
+                        await g.fpCloudUploadMediaNow(job.key, job.dataUrl);
+                        uploaded++;
+                    } catch (upErr) {
+                        console.warn('[fp-cloud] media now', job.key, upErr);
+                    }
+                }
+            }
+            await Promise.all(Array.from({ length: Math.min(conc, queue.length) }, worker));
+            if (uploaded) {
+                fpCloudSetStatus(uploaded + ' anexo(s) guardado(s) na nuvem. A sincronizar dados…', false);
+            }
+            return { uploaded: uploaded, skipped: skipped };
+        } finally {
+            mediaUploadRunning = false;
+        }
+    };
+
+    g.fpScheduleCloudMediaSave = function () {
+        if (g.FP_CLOUD_IMMEDIATE_MEDIA_UPLOAD === false) {
+            g.fpScheduleCloudSave();
+            return;
+        }
+        clearTimeout(mediaTimer);
+        var ms = g.FP_CLOUD_MEDIA_SAVE_DEBOUNCE_MS || 400;
+        mediaTimer = setTimeout(function () {
+            (async function () {
+                try {
+                    await g.fpCloudUploadAllPendingMedia();
+                } catch (e) {
+                    console.warn('[fp-cloud] media upload', e);
+                }
+                g.fpScheduleCloudSave();
+            })().catch(function (e) { console.warn('[fp-cloud] media save', e); });
+        }, ms);
+    };
+
     g.fpScheduleCloudSave = function () {
         if (g.FP_CLOUD_AUTOSAVE === false) return;
         g.__fpCloudUserEditedAt = Date.now();
@@ -783,7 +918,11 @@
                     g.__fpCloudSkipAutosaveUntil = 0;
                 }
             }
-            g.fpScheduleCloudSave();
+            if (typeof g.fpScheduleCloudMediaSave === 'function') {
+                g.fpScheduleCloudMediaSave();
+            } else {
+                g.fpScheduleCloudSave();
+            }
         });
         var sec = Math.round((g.FP_CLOUD_AUTOSAVE_DEBOUNCE_MS || 8000) / 1000);
         var loadHint = g.FP_CLOUD_AUTOLOAD !== false ? ' Carregamento automático ao abrir.' : '';

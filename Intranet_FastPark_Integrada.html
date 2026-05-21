@@ -5280,7 +5280,8 @@ window.addEventListener('message', (ev) => {
             if(typeof refreshDashboardFilters === 'function') refreshDashboardFilters();
             if(typeof renderBeneficiosCestas === 'function') renderBeneficiosCestas();
             if(typeof fpNotifyIntranetChanged === 'function') fpNotifyIntranetChanged();
-            if(typeof fpScheduleCloudSave === 'function') fpScheduleCloudSave();
+            if(typeof fpScheduleCloudMediaSave === 'function') fpScheduleCloudMediaSave();
+            else if(typeof fpScheduleCloudSave === 'function') fpScheduleCloudSave();
             addAudit('Cadastro do DashBoard (anexos e dados) sincronizado com a intranet.', 'action');
         }catch(err){
             console.error('Falha ao receber cadastro do iframe do DashBoard', err);
@@ -7033,8 +7034,15 @@ async function collectFpIntranetSnapshot(){
             const ref = await putAtt(e.fotoRef && String(e.fotoRef).indexOf('colaboradores/foto/') === 0 ? e.fotoRef : fotoPath, e.foto);
             e.foto = '';
             e.fotoRef = ref;
-        } else if(e.fotoRef && attachments[e.fotoRef]){
-            /* já na nuvem/disco — mantém caminho */
+        } else if(e.fotoRef){
+            const fotoFromBag = fpResolveEmployeeMediaRef(e.fotoRef, emp, attachments, window.__FP_EMPLOYEE_ATT_BAG__ || {});
+            if(fotoFromBag && String(fotoFromBag).startsWith('data:')){
+                const ref = await putAtt(e.fotoRef, fotoFromBag);
+                e.foto = '';
+                e.fotoRef = ref;
+            } else if(attachments[e.fotoRef]){
+                /* já na nuvem/disco — mantém caminho */
+            }
         }
         if(Array.isArray(e.documentos)){
             const docs = [];
@@ -7044,8 +7052,16 @@ async function collectFpIntranetSnapshot(){
                 if(d && d.dataUrl && fpIsDisplayableMediaUrl(d.dataUrl)){
                     const ref = await putAtt(d.dataRef && String(d.dataRef).indexOf('colaboradores/docs/') === 0 ? d.dataRef : docPath, d.dataUrl);
                     docs.push({ ...d, dataUrl: '', dataRef: ref });
-                } else if(d && d.dataRef && attachments[d.dataRef]) {
-                    docs.push({ ...d });
+                } else if(d && d.dataRef){
+                    const docUrl = fpResolveEmployeeMediaRef(d.dataRef, emp, attachments, window.__FP_EMPLOYEE_ATT_BAG__ || {});
+                    if(docUrl && String(docUrl).startsWith('data:')){
+                        const ref = await putAtt(d.dataRef, docUrl);
+                        docs.push({ ...d, dataUrl: '', dataRef: ref });
+                    } else if(attachments[d.dataRef]) {
+                        docs.push({ ...d });
+                    } else {
+                        docs.push({ ...d });
+                    }
                 } else {
                     docs.push({ ...d });
                 }
@@ -7060,8 +7076,16 @@ async function collectFpIntranetSnapshot(){
                 if(d && d.dataUrl && fpIsDisplayableMediaUrl(d.dataUrl)){
                     const ref = await putAtt(d.dataRef && String(d.dataRef).indexOf('colaboradores/rescisao/') === 0 ? d.dataRef : docPath, d.dataUrl);
                     dr.push({ ...d, dataUrl: '', dataRef: ref });
-                } else if(d && d.dataRef && attachments[d.dataRef]) {
-                    dr.push({ ...d });
+                } else if(d && d.dataRef){
+                    const docUrl = fpResolveEmployeeMediaRef(d.dataRef, emp, attachments, window.__FP_EMPLOYEE_ATT_BAG__ || {});
+                    if(docUrl && String(docUrl).startsWith('data:')){
+                        const ref = await putAtt(d.dataRef, docUrl);
+                        dr.push({ ...d, dataUrl: '', dataRef: ref });
+                    } else if(attachments[d.dataRef]) {
+                        dr.push({ ...d });
+                    } else {
+                        dr.push({ ...d });
+                    }
                 } else {
                     dr.push({ ...d });
                 }
@@ -7135,7 +7159,20 @@ async function collectFpIntranetSnapshot(){
         unidadesResolved,
         faltasResolved,
         pagasSignedSlim,
-        attachments
+        attachments: (function mergeEmpBagAtt(){
+            const empBag = window.__FP_EMPLOYEE_ATT_BAG__ || {};
+            Object.keys(empBag).forEach(k => {
+                const v = empBag[k];
+                if(typeof v === 'string' && v.startsWith('data:') && !attachments[k]) attachments[k] = v;
+            });
+            const emb = window.__FP_EMBEDDED_ATTACHMENTS__ || {};
+            Object.keys(emb).forEach(k => {
+                const v = emb[k];
+                if(typeof v === 'string' && v.startsWith('data:') && !attachments[k]) attachments[k] = v;
+                else if(v && typeof v === 'object' && v.__cloud === true && !attachments[k]) attachments[k] = v;
+            });
+            return attachments;
+        })()
     };
 }
 async function applyFpEmbeddedIntranetDb(db, opts){
@@ -7407,6 +7444,7 @@ function fpAfterPersistentStorageWrite(){
     try {
         if(typeof window !== 'undefined' && window.__fpLsHookPause) return;
         fpNotifyIntranetChanged();
+        if(typeof fpScheduleCloudMediaSave === 'function') fpScheduleCloudMediaSave();
     } catch(_){}
 }
 function fpOpenIdb(){

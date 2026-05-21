@@ -3247,8 +3247,17 @@ function handleEmployeePhotoSelected(ev){
     if(!file) return;
     const reader = new FileReader();
     reader.onload = e => {
-        employeePhotoDraft = String(e.target?.result || '');
+        const dataUrl = String(e.target?.result || '');
+        employeePhotoDraft = dataUrl;
         renderEmployeePhotoPreview();
+        if(state.selected){
+            const idx = state.employees.findIndex(emp => emp === state.selected || String(emp.nome) === String(state.selected.nome));
+            if(idx >= 0){
+                state.employees[idx].foto = dataUrl;
+                state.selected = state.employees[idx];
+            }
+        }
+        fpPostFullStateToParentIfEmbedded();
     };
     reader.readAsDataURL(file);
 }
@@ -3271,6 +3280,7 @@ async function handleEmployeeDocsSelected(ev){
     }
     if(EF.docs) EF.docs.value = '';
     renderEmployeeDocsList();
+    fpPostFullStateToParentIfEmbedded();
 }
 function fpIsDisplayableMediaUrl(u){
     if(!u || typeof u !== 'string') return false;

@@ -35,6 +35,9 @@
     g.FP_CLOUD_MEDIA_PREFETCH_CONCURRENCY = 16;
     /** Em auto-gravação não espera 3s pelos iframes — usa dados já em memória */
     g.FP_CLOUD_QUICK_SAVE = true;
+    /** Envia cada foto/documento ao Storage assim que é anexado (antes do snapshot completo) */
+    g.FP_CLOUD_IMMEDIATE_MEDIA_UPLOAD = true;
+    g.FP_CLOUD_MEDIA_SAVE_DEBOUNCE_MS = 400;
 
     /** Ao abrir a intranet com login, carrega snapshot + ficheiros do Supabase automaticamente */
     g.FP_CLOUD_AUTOLOAD = true;
