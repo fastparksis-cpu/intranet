@@ -86,6 +86,8 @@
         return uploadBlob(path, dataUrlToBlob(dataUrl));
     }
 
+    var signedUrlCache = {};
+
     async function downloadDataUrl(path) {
         var supa = clientOrThrow();
         path = sanitizeStoragePath(path);
@@ -99,6 +101,36 @@
         for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
         return 'data:' + mime + ';base64,' + btoa(bin);
     }
+
+    /** URL para exibir ficheiro na nuvem (signed URL; evita base64 gigante no browser). */
+    async function cloudMediaDisplayUrl(path) {
+        path = sanitizeStoragePath(path);
+        var cached = signedUrlCache[path];
+        if (cached && cached.exp > Date.now()) return cached.url;
+        var supa = clientOrThrow();
+        var signed = await supa.storage.from(BUCKET).createSignedUrl(path, 3600);
+        if (signed.error) throw signed.error;
+        if (!signed.data || !signed.data.signedUrl) throw new Error('URL assinada indisponível: ' + path);
+        signedUrlCache[path] = { url: signed.data.signedUrl, exp: Date.now() + 3500000 };
+        return signed.data.signedUrl;
+    }
+
+    async function resolveCloudPathToDisplayUrl(path) {
+        path = sanitizeStoragePath(path);
+        try {
+            return await cloudMediaDisplayUrl(path);
+        } catch (signedErr) {
+            console.warn('[fp-cloud] signedUrl', path, signedErr);
+            try {
+                return await downloadDataUrl(path);
+            } catch (dlErr) {
+                console.warn('[fp-cloud] download', path, dlErr);
+                throw dlErr;
+            }
+        }
+    }
+
+    g.fpResolveCloudMediaUrl = resolveCloudPathToDisplayUrl;
 
     async function readDiskAttachmentAsDataUrl(path) {
         if (g.__fpBridgeActive && typeof g.fpBridgeReadAttachmentAsDataUrl === 'function') {
@@ -138,7 +170,11 @@
             var v = slim[id];
             if (v && v.ref) add(v.ref);
         });
-        Object.keys(snap.attachments || {}).forEach(function (k) { add(k); });
+        Object.keys(snap.attachments || {}).forEach(function (k) {
+            add(k);
+            var v = snap.attachments[k];
+            if (v && typeof v === 'object' && v.__cloud === true && v.path) add(v.path);
+        });
         var bag = g.window.__FP_EMBEDDED_ATTACHMENTS__ || {};
         Object.keys(bag).forEach(function (k) { add(k); });
         return keys;
@@ -230,6 +266,9 @@
             } else if (v && typeof v === 'object' && v.__cloud === true) {
                 alreadyCloud++;
                 continue;
+            } else if (typeof v === 'string' && v.indexOf('http') === 0) {
+                alreadyCloud++;
+                continue;
             }
             if (!dataUrl) continue;
             try {
@@ -267,21 +306,25 @@
         async function downloadKey(key) {
             key = sanitizeStoragePath(key);
             var v = att[key];
-            if (typeof v === 'string' && v.indexOf('data:') === 0) {
+            var disp = g.window.__FP_CLOUD_DISPLAY_URLS__ || (g.window.__FP_CLOUD_DISPLAY_URLS__ = {});
+            if (typeof v === 'string' && (v.indexOf('data:') === 0 || v.indexOf('http') === 0)) {
+                disp[key] = v;
                 ok++;
                 return;
             }
-            var path = key;
+            var cloudPath = key;
             if (v && typeof v === 'object' && v.__cloud === true) {
-                path = sanitizeStoragePath(v.path || key);
+                cloudPath = sanitizeStoragePath(v.path || key);
             } else if (!(v === undefined || v === null || v === '')) {
                 return;
             }
             try {
-                att[key] = await downloadDataUrl(path);
+                var url = await resolveCloudPathToDisplayUrl(cloudPath);
+                disp[key] = url;
+                disp[cloudPath] = url;
+                att[key] = { __cloud: true, path: cloudPath };
                 ok++;
             } catch (e) {
-                console.warn('[fp-cloud] download', path, e);
                 fail++;
             }
         }
@@ -300,6 +343,7 @@
         await Promise.all(Array.from({ length: workers }, runWorker));
         db.attachments = att;
         g.window.__FP_EMBEDDED_ATTACHMENTS__ = att;
+        g.window.__FP_CLOUD_DISPLAY_URLS__ = g.window.__FP_CLOUD_DISPLAY_URLS__ || {};
         return { ok: ok, fail: fail, total: total };
     };
 

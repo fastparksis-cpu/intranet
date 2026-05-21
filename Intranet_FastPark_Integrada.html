@@ -5194,6 +5194,7 @@ function propagateStateToDashboardIframes() {
     const payload = {
         type: 'fastpark-employees-sync',
         employees,
+        empAttachmentsBag: window.__FP_EMPLOYEE_ATT_BAG__ || {},
         ferias: Array.isArray(state.ferias) ? state.ferias : [],
         movimentacoes: Array.isArray(state.movimentacoes) ? state.movimentacoes : [],
         cnhMapObj: mapToPlainObjectFromMap(state.cnhMap),
@@ -5573,7 +5574,10 @@ function fpPushDashboardWithRetry(){
 }
 window.fpOnCloudDataReady = async function () {
     if(typeof fpInitExternalTabsAndDashboard === 'function') fpInitExternalTabsAndDashboard();
-    state.employees = fpHydrateEmployeesMediaForSnapshot(state.employees || [], window.__FP_EMBEDDED_ATTACHMENTS__ || {});
+    state.employees = fpApplyEmployeeMediaFromAttachments(state.employees || [], window.__FP_EMBEDDED_ATTACHMENTS__ || {});
+    fpPrimeEmployeeAttBagFromDb(state.employees, window.__FP_EMBEDDED_ATTACHMENTS__ || {});
+    state.employees = fpMergeEmployeeAttachments(state.employees, window.__FP_EMPLOYEE_ATT_BAG__ || {});
+    state.employees = fpHydrateEmployeesMediaForSnapshot(state.employees, window.__FP_EMBEDDED_ATTACHMENTS__ || {});
     if(typeof fpPersistEmployeeAttBagFromState === 'function'){
         try { await fpPersistEmployeeAttBagFromState(); } catch(e) { console.warn('[FP] persist bag pós-nuvem', e); }
     }
@@ -6342,11 +6346,36 @@ function fpStableEmployeeSlug(emp, fallbackIdx){
     const cpf = String(emp && emp.cpf || '').replace(/\D/g, '').slice(0, 11);
     return cpf ? (n + '_' + cpf) : (n + (fallbackIdx != null ? '_' + fallbackIdx : ''));
 }
+function fpIsDisplayableMediaUrl(u){
+    if(!u || typeof u !== 'string') return false;
+    return u.indexOf('data:') === 0 || u.indexOf('http://') === 0 || u.indexOf('https://') === 0;
+}
 function fpAttDataUrlFromMapValue(v){
     if(!v) return null;
-    if(typeof v === 'string' && v.indexOf('data:') === 0) return v;
-    if(v && typeof v === 'object' && v.__cloud === true) return null;
+    if(typeof v === 'string' && fpIsDisplayableMediaUrl(v)) return v;
+    if(v && typeof v === 'object' && v.__cloud === true && v.path && typeof window.fpResolveCloudMediaUrl === 'function'){
+        return null;
+    }
     return null;
+}
+function fpLookupAttMedia(att, ref){
+    if(!ref || !att || typeof att !== 'object') return null;
+    const r = sanitizeStoragePathForAtt(ref);
+    const disp = window.__FP_CLOUD_DISPLAY_URLS__ || {};
+    if(disp[ref]) return disp[ref];
+    if(disp[r]) return disp[r];
+    const v = att[ref] || att[r];
+    if(typeof v === 'string' && fpIsDisplayableMediaUrl(v)) return v;
+    if(v && typeof v === 'object' && v.__cloud === true && v.path){
+        const p = sanitizeStoragePathForAtt(v.path);
+        if(disp[p]) return disp[p];
+        const v2 = att[p];
+        if(typeof v2 === 'string' && fpIsDisplayableMediaUrl(v2)) return v2;
+    }
+    return null;
+}
+function sanitizeStoragePathForAtt(p){
+    return String(p || '').replace(/[^\w./\-]/g, '_').replace(/_+/g, '_').replace(/^\/+/, '');
 }
 /** Resolve foto/documento a partir de refs (nuvem, IDB ou caminho estável). */
 function fpResolveEmployeeMediaRef(ref, emp, attMap, bag){
@@ -6354,7 +6383,7 @@ function fpResolveEmployeeMediaRef(ref, emp, attMap, bag){
     const r = String(ref);
     const att = attMap && typeof attMap === 'object' ? attMap : {};
     const b = bag && typeof bag === 'object' ? bag : {};
-    const inline = fpAttDataUrlFromMapValue(att[r]);
+    const inline = fpLookupAttMedia(att, r) || fpAttDataUrlFromMapValue(att[r]);
     if(inline) return inline;
     if(fpAttDataUrlFromMapValue(b[r])) return b[r];
     const key = fpNormEmployeeAttKey(emp && emp.nome);
@@ -6379,7 +6408,7 @@ function fpPrimeEmployeeAttBagFromDb(employees, attMap){
     (employees || []).forEach((emp, ei) => {
         const key = fpNormEmployeeAttKey(emp && emp.nome);
         if(!key) return;
-        const fotoUrl = (emp.foto && String(emp.foto).startsWith('data:')) ? emp.foto
+        const fotoUrl = fpIsDisplayableMediaUrl(emp.foto) ? emp.foto
             : fpResolveEmployeeMediaRef(emp.fotoRef, emp, att, bag);
         if(fotoUrl){
             if(!bag[key]) bag[key] = {};
@@ -6392,7 +6421,7 @@ function fpPrimeEmployeeAttBagFromDb(employees, attMap){
             const stored = [];
             docs.forEach((d, di) => {
                 if(!d) return;
-                let dataUrl = (d.dataUrl && String(d.dataUrl).startsWith('data:')) ? d.dataUrl
+                let dataUrl = fpIsDisplayableMediaUrl(d.dataUrl) ? d.dataUrl
                     : fpResolveEmployeeMediaRef(d.dataRef, emp, att, bag);
                 if(!dataUrl) return;
                 const slug = fpStableEmployeeSlug(emp, ei);
@@ -6423,7 +6452,34 @@ async function fpPersistEmployeeAttBagFromState(){
     state.employees = fpMergeEmployeeAttachments(slim, bag);
 }
 window.fpStableEmployeeSlug = fpStableEmployeeSlug;
+window.fpIsDisplayableMediaUrl = fpIsDisplayableMediaUrl;
+window.fpLookupAttMedia = fpLookupAttMedia;
 window.fpResolveEmployeeMediaRef = fpResolveEmployeeMediaRef;
+function fpApplyEmployeeMediaFromAttachments(employees, att){
+    att = att || window.__FP_EMBEDDED_ATTACHMENTS__ || {};
+    return (employees || []).map((emp, ei) => {
+        const e = { ...emp };
+        if(!fpIsDisplayableMediaUrl(e.foto) && e.fotoRef){
+            const u = fpLookupAttMedia(att, e.fotoRef);
+            if(u) e.foto = u;
+        }
+        const mapDocs = (docs) => {
+            if(!Array.isArray(docs)) return docs;
+            return docs.map((d) => {
+                const o = { ...d };
+                if(!fpIsDisplayableMediaUrl(o.dataUrl) && o.dataRef){
+                    const u = fpLookupAttMedia(att, o.dataRef);
+                    if(u) o.dataUrl = u;
+                }
+                return o;
+            });
+        };
+        e.documentos = mapDocs(e.documentos);
+        e.documentosRescisao = mapDocs(e.documentosRescisao);
+        return e;
+    });
+}
+window.fpApplyEmployeeMediaFromAttachments = fpApplyEmployeeMediaFromAttachments;
 window.fpPrimeEmployeeAttBagFromDb = fpPrimeEmployeeAttBagFromDb;
 window.fpPersistEmployeeAttBagFromState = fpPersistEmployeeAttBagFromState;
 /** Separa foto/documentos (base64) para IndexedDB; devolve colaboradores «leves» para localStorage. */
@@ -6434,7 +6490,7 @@ function fpSlimEmployeesForLocalStorage(arr){
         const key = fpNormEmployeeAttKey(emp.nome);
         if(!key) return e;
         const slug = fpStableEmployeeSlug(emp, ei);
-        if(emp.foto && String(emp.foto).startsWith('data:')){
+        if(emp.foto && fpIsDisplayableMediaUrl(emp.foto)){
             const fotoPath = 'colaboradores/foto/' + slug;
             if(!bag[key]) bag[key] = {};
             bag[key].foto = emp.foto;
@@ -6448,7 +6504,7 @@ function fpSlimEmployeesForLocalStorage(arr){
             const stored = [];
             e.documentos = emp.documentos.map((d, i) => {
                 const o = { ...d };
-                if(d && d.dataUrl && String(d.dataUrl).startsWith('data:')){
+                if(d && d.dataUrl && fpIsDisplayableMediaUrl(d.dataUrl)){
                     const docPath = 'colaboradores/docs/' + slug + '_' + i + '_' + fpSlugAttSeg(d.name || 'doc', 32);
                     if(!bag[key]) bag[key] = {};
                     if(!bag[key].documentos) bag[key].documentos = [];
@@ -6465,7 +6521,7 @@ function fpSlimEmployeesForLocalStorage(arr){
             const storedR = [];
             e.documentosRescisao = emp.documentosRescisao.map((d, i) => {
                 const o = { ...d };
-                if(d && d.dataUrl && String(d.dataUrl).startsWith('data:')){
+                if(d && d.dataUrl && fpIsDisplayableMediaUrl(d.dataUrl)){
                     const docPath = 'colaboradores/rescisao/' + slug + '_' + i + '_' + fpSlugAttSeg(d.name || 'rescisao', 32);
                     if(!bag[key]) bag[key] = {};
                     if(!bag[key].documentosRescisao) bag[key].documentosRescisao = [];
@@ -6506,7 +6562,7 @@ function fpMergeEmployeeAttachments(arr, bag){
         const e = { ...emp };
         const key = fpNormEmployeeAttKey(emp.nome);
         const att = b[key];
-        if(!e.foto || !String(e.foto).startsWith('data:')){
+        if(!fpIsDisplayableMediaUrl(e.foto)){
             const fromRef = fpResolveEmployeeMediaRef(e.fotoRef, emp, attMap, b);
             if(fromRef) e.foto = fromRef;
         }
@@ -6519,7 +6575,7 @@ function fpMergeEmployeeAttachments(arr, bag){
             if(!Array.isArray(docs)) return docs;
             return docs.map((d, i) => {
                 const o = { ...d };
-                if((!o.dataUrl || !String(o.dataUrl).startsWith('data:')) && o.dataRef){
+                if(!fpIsDisplayableMediaUrl(o.dataUrl) && o.dataRef){
                     const u = fpResolveEmployeeMediaRef(o.dataRef, emp, attMap, b);
                     if(u) o.dataUrl = u;
                 } else if(!o.dataUrl && Array.isArray(att && att.documentos)){
@@ -6677,7 +6733,7 @@ function fpHydrateEmployeesMediaForSnapshot(emps, attExtra){
     const bag = window.__FP_EMPLOYEE_ATT_BAG__ || {};
     return (emps || []).map((emp, ei) => {
         const e = { ...emp };
-        if(!e.foto || !String(e.foto).startsWith('data:')){
+        if(!fpIsDisplayableMediaUrl(e.foto)){
             const u = fpResolveEmployeeMediaRef(e.fotoRef, emp, att, bag);
             if(u) e.foto = u;
         }
@@ -6685,7 +6741,7 @@ function fpHydrateEmployeesMediaForSnapshot(emps, attExtra){
             if(!Array.isArray(docs)) return docs;
             return docs.map((d, di) => {
                 const o = { ...d };
-                if((!o.dataUrl || !String(o.dataUrl).startsWith('data:')) && o.dataRef){
+                if(!fpIsDisplayableMediaUrl(o.dataUrl) && o.dataRef){
                     const u = fpResolveEmployeeMediaRef(o.dataRef, emp, att, bag);
                     if(u) o.dataUrl = u;
                 }
@@ -6924,7 +6980,7 @@ async function collectFpIntranetSnapshot(){
             for(let di = 0; di < e.documentos.length; di++){
                 const d = e.documentos[di];
                 const docPath = 'colaboradores/docs/' + slug + '_' + di + '_' + fpSlugAttSeg(d && d.name || 'doc', 48);
-                if(d && d.dataUrl && String(d.dataUrl).startsWith('data:')){
+                if(d && d.dataUrl && fpIsDisplayableMediaUrl(d.dataUrl)){
                     const ref = await putAtt(d.dataRef && String(d.dataRef).indexOf('colaboradores/docs/') === 0 ? d.dataRef : docPath, d.dataUrl);
                     docs.push({ ...d, dataUrl: '', dataRef: ref });
                 } else if(d && d.dataRef && attachments[d.dataRef]) {
@@ -6940,7 +6996,7 @@ async function collectFpIntranetSnapshot(){
             for(let di = 0; di < e.documentosRescisao.length; di++){
                 const d = e.documentosRescisao[di];
                 const docPath = 'colaboradores/rescisao/' + slug + '_' + di + '_' + fpSlugAttSeg(d && d.name || 'rescisao', 48);
-                if(d && d.dataUrl && String(d.dataUrl).startsWith('data:')){
+                if(d && d.dataUrl && fpIsDisplayableMediaUrl(d.dataUrl)){
                     const ref = await putAtt(d.dataRef && String(d.dataRef).indexOf('colaboradores/rescisao/') === 0 ? d.dataRef : docPath, d.dataUrl);
                     dr.push({ ...d, dataUrl: '', dataRef: ref });
                 } else if(d && d.dataRef && attachments[d.dataRef]) {
@@ -7087,6 +7143,9 @@ async function applyFpEmbeddedIntranetDb(db, opts){
     fpPrimeEmployeeAttBagFromDb(state.employees, window.__FP_EMBEDDED_ATTACHMENTS__ || att);
     state.employees = fpMergeEmployeeAttachments(state.employees || [], window.__FP_EMPLOYEE_ATT_BAG__ || {});
     state.employees = fpHydrateEmployeesMediaForSnapshot(state.employees, window.__FP_EMBEDDED_ATTACHMENTS__ || att);
+    state.employees = fpApplyEmployeeMediaFromAttachments(state.employees, window.__FP_EMBEDDED_ATTACHMENTS__ || att);
+    fpPrimeEmployeeAttBagFromDb(state.employees, window.__FP_EMBEDDED_ATTACHMENTS__ || att);
+    state.employees = fpMergeEmployeeAttachments(state.employees, window.__FP_EMPLOYEE_ATT_BAG__ || {});
     if(typeof fpApplyDarkModePreference === 'function') fpApplyDarkModePreference();
     if(db.movState){
         movState.rows = db.movState.rows || [];

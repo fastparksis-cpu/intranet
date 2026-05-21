@@ -3272,9 +3272,17 @@ async function handleEmployeeDocsSelected(ev){
     if(EF.docs) EF.docs.value = '';
     renderEmployeeDocsList();
 }
+function fpIsDisplayableMediaUrl(u){
+    if(!u || typeof u !== 'string') return false;
+    if(u.indexOf('data:') === 0 || u.indexOf('http://') === 0 || u.indexOf('https://') === 0) return true;
+    if(window.parent && typeof window.parent.fpIsDisplayableMediaUrl === 'function'){
+        return window.parent.fpIsDisplayableMediaUrl(u);
+    }
+    return false;
+}
 function fpResolveDocDataUrl(doc, emp){
     if(!doc) return '';
-    if(doc.dataUrl && String(doc.dataUrl).startsWith('data:')) return doc.dataUrl;
+    if(doc.dataUrl && fpIsDisplayableMediaUrl(doc.dataUrl)) return doc.dataUrl;
     if(doc.dataRef && window.parent && typeof window.parent.fpResolveEmployeeMediaRef === 'function'){
         try {
             const u = window.parent.fpResolveEmployeeMediaRef(doc.dataRef, emp || state.selected, window.parent.__FP_EMBEDDED_ATTACHMENTS__ || {}, window.parent.__FP_EMPLOYEE_ATT_BAG__ || {});
@@ -3285,7 +3293,7 @@ function fpResolveDocDataUrl(doc, emp){
 }
 function fpResolveEmployeeFotoUrl(emp){
     if(!emp) return '';
-    if(emp.foto && String(emp.foto).startsWith('data:')) return emp.foto;
+    if(emp.foto && fpIsDisplayableMediaUrl(emp.foto)) return emp.foto;
     if(emp.fotoRef && window.parent && typeof window.parent.fpResolveEmployeeMediaRef === 'function'){
         try {
             const u = window.parent.fpResolveEmployeeMediaRef(emp.fotoRef, emp, window.parent.__FP_EMBEDDED_ATTACHMENTS__ || {}, window.parent.__FP_EMPLOYEE_ATT_BAG__ || {});
@@ -3727,6 +3735,11 @@ if(E.file){
 
 function applyEmployeesSyncFromParent(msg) {
     __fpLastParentSyncAt = Date.now();
+    if(msg.empAttachmentsBag && typeof msg.empAttachmentsBag === 'object'){
+        if(window.parent){
+            window.parent.__FP_EMPLOYEE_ATT_BAG__ = { ...(window.parent.__FP_EMPLOYEE_ATT_BAG__ || {}), ...msg.empAttachmentsBag };
+        }
+    }
     state.employees = (Array.isArray(msg.employees) ? msg.employees : []).map(emp => {
         const e = { ...emp };
         const foto = fpResolveEmployeeFotoUrl(e);
