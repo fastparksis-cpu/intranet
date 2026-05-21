@@ -363,6 +363,9 @@
             fpCloudSetStatus('A guardar automaticamente (dados + documentos)…');
         }
         await g.fpPrepareDataForCloudSave();
+        if (typeof g.fpHydrateEmployeesMediaForSnapshot === 'function' && g.state && Array.isArray(g.state.employees)) {
+            g.state.employees = g.fpHydrateEmployeesMediaForSnapshot(g.state.employees, g.window.__FP_EMBEDDED_ATTACHMENTS__ || {});
+        }
         var preview = g.fpCloudSavePreview();
         if (!preview.employees && typeof g.fpIntranetHasDataForSnapshot === 'function' && !g.fpIntranetHasDataForSnapshot()) {
             throw new Error('Nenhum colaborador encontrado. Importe a planilha Excel ou abra a aba Cadastro/Início antes de salvar.');
@@ -519,6 +522,12 @@
                 throw new Error('Função applyFpEmbeddedIntranetDb não encontrada.');
             }
             await g.applyFpEmbeddedIntranetDb(db);
+            if (typeof g.fpPersistEmployeeAttBagFromState === 'function') {
+                await g.fpPersistEmployeeAttBagFromState();
+            }
+            if (typeof g.propagateStateToDashboardIframes === 'function') {
+                g.propagateStateToDashboardIframes();
+            }
             var when = res.data.updated_at || res.data.exported_at || '';
             var pauseMs = g.FP_CLOUD_AUTOLOAD_AUTOSAVE_PAUSE_MS || 90000;
             g.__fpCloudSkipAutosaveUntil = Date.now() + pauseMs;
