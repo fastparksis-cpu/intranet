@@ -486,7 +486,7 @@
                     fpCloudSetStatus('Sem dados na nuvem — importe o Excel e use ☁️ Salvar.', false);
                     return { loaded: false, reason: 'no-snapshot' };
                 }
-                await g.fpCloudLoadSnapshot({ autoload: true });
+                await g.fpCloudLoadSnapshot({ autoload: true, skipIframeSync: true });
                 var result = { loaded: true, updatedAt: peek.data.updated_at || null };
                 g.__fpCloudAutoloadDone = true;
                 g.__fpCloudAutoloadResult = result;
@@ -542,10 +542,12 @@
             if (typeof g.fpPersistEmployeeAttBagFromState === 'function') {
                 await g.fpPersistEmployeeAttBagFromState();
             }
-            if (typeof g.fpOnCloudDataReady === 'function') {
-                g.fpOnCloudDataReady();
-            } else if (typeof g.propagateStateToDashboardIframes === 'function') {
-                g.propagateStateToDashboardIframes();
+            if (!opts.skipIframeSync) {
+                if (typeof g.fpOnCloudDataReady === 'function') {
+                    g.fpOnCloudDataReady();
+                } else if (typeof g.propagateStateToDashboardIframes === 'function') {
+                    g.propagateStateToDashboardIframes();
+                }
             }
             var when = res.data.updated_at || res.data.exported_at || '';
             var pauseMs = g.FP_CLOUD_AUTOLOAD_AUTOSAVE_PAUSE_MS || 90000;
@@ -637,24 +639,25 @@
         }
     };
 
+    /** Autoload após boot da intranet (iframes prontos). Não chamar no fpAuthReady do head. */
+    g.fpScheduleCloudAutoload = function (opts) {
+        opts = opts || {};
+        if (g.FP_CLOUD_AUTOLOAD === false) {
+            return Promise.resolve({ loaded: false, reason: 'disabled' });
+        }
+        if (typeof g.fpResetCloudAutoloadForRetry === 'function') {
+            g.fpResetCloudAutoloadForRetry();
+        }
+        return g.fpTryCloudAutoload(opts);
+    };
+
     function fpApplyCloudAutosaveSession(session) {
         if (session) {
             if (g.FP_CLOUD_AUTOSAVE !== false) g.fpInitCloudAutosave();
-            if (g.FP_CLOUD_AUTOLOAD !== false && typeof g.fpTryCloudAutoload === 'function') {
-                if (typeof g.fpResetCloudAutoloadForRetry === 'function') g.fpResetCloudAutoloadForRetry();
-                g.fpTryCloudAutoload({ afterLogin: true }).then(function (r) {
-                    if (!r || !r.loaded) return;
-                    if (typeof g.fpOnCloudDataReady === 'function') {
-                        g.fpOnCloudDataReady();
-                    } else {
-                        if (typeof g.renderAll === 'function') {
-                            try { g.renderAll(); } catch (e) { console.warn('[fp-cloud] renderAll', e); }
-                        }
-                        if (typeof g.propagateStateToDashboardIframes === 'function') {
-                            g.propagateStateToDashboardIframes();
-                        }
-                    }
-                }).catch(function (e) { console.warn('[fp-cloud] autoload pós-login', e); });
+            if (g.__fpIntranetBootComplete && g.FP_CLOUD_AUTOLOAD !== false && typeof g.fpScheduleCloudAutoload === 'function') {
+                g.fpScheduleCloudAutoload({ afterLogin: true }).catch(function (e) {
+                    console.warn('[fp-cloud] autoload pós-login', e);
+                });
             }
             return;
         }
