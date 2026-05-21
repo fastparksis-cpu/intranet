@@ -5,13 +5,11 @@
   "outputDirectory": ".",
   "cleanUrls": true,
   "trailingSlash": false,
-  "rewrites": [
-    { "source": "/intranet-fastpark", "destination": "/Intranet_FastPark_Integrada.html" },
-    { "source": "/intranet-fastpark/", "destination": "/Intranet_FastPark_Integrada.html" },
-    { "source": "/intranet", "destination": "/Intranet_FastPark_Integrada.html" },
-    { "source": "/intranet/", "destination": "/Intranet_FastPark_Integrada.html" },
-    { "source": "/cadastro", "destination": "/DashBoard RH.html" },
-    { "source": "/cadastro/", "destination": "/DashBoard RH.html" }
+  "redirects": [
+    { "source": "/intranet", "destination": "/intranet-fastpark", "permanent": false },
+    { "source": "/intranet/", "destination": "/intranet-fastpark", "permanent": false },
+    { "source": "/DashBoard%20RH.html", "destination": "/DashBoard%20RH", "permanent": false },
+    { "source": "/Intranet_FastPark_Integrada.html", "destination": "/Intranet_FastPark_Integrada", "permanent": false }
   ],
   "headers": [
     {

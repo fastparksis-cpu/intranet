@@ -33,8 +33,8 @@
 
     /** Rotas (Vercel: intranet-fastpark.html com cleanUrls, ou Intranet_FastPark_Integrada.html) */
     g.FP_LOGIN_URL = '/';
-    g.FP_APP_URL = '/intranet-fastpark';
-    g.FP_CADASTRO_URL = '/cadastro';
+    g.FP_APP_URL = '/Intranet_FastPark_Integrada.html';
+    g.FP_CADASTRO_URL = '/DashBoard%20RH';
 
     g.fpSupabaseConfigIsReady = function () {
         var url = String(g.FP_SUPABASE_URL || '').trim();

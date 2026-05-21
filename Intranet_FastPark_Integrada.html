@@ -83,6 +83,51 @@ body {
     z-index: 1000;
     border-bottom: 4px solid var(--fp-orange);
 }
+.fp-desktop-navbar { display: none; }
+/* Vercel: layout igual ao Desktop (barra superior + iframe Início) */
+body.fp-layout-desktop .fp-sidebar { display: none !important; }
+body.fp-layout-desktop .fp-app-shell { display: block; height: auto; min-height: 100vh; overflow: visible; }
+body.fp-layout-desktop .fp-main-wrap {
+    margin-left: 0;
+    width: 100%;
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+}
+body.fp-layout-desktop .fp-topbar { display: none !important; }
+body.fp-layout-desktop .fp-desktop-navbar { display: block !important; }
+body.fp-layout-desktop .navbar-container {
+    max-width: none;
+    width: 100%;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    height: auto;
+    min-height: 70px;
+    padding: 8px 16px;
+}
+body.fp-layout-desktop .nav-tabs { flex-wrap: wrap; border-bottom: none; }
+body.fp-layout-desktop .tab-container {
+    max-width: 100%;
+    margin: 0 auto;
+    padding: 16px;
+    flex: none;
+}
+body.fp-layout-desktop #inicio.tab-content.active,
+body.fp-layout-desktop #dashboard.tab-content.active {
+    display: block;
+    overflow: visible;
+    padding: 0;
+}
+body.fp-layout-desktop .external-tab-frame {
+    width: 100%;
+    height: calc(100vh - 120px);
+    min-height: 480px;
+    border: 0;
+    border-radius: 8px;
+    background: #fff;
+    flex: none;
+}
 
 /* Layout: menu lateral + conteúdo */
 .fp-app-shell {
@@ -1389,6 +1434,7 @@ td { color: var(--t); font-weight: 500;}
 </style>
 </head>
 <body>
+<script>if(window.FP_LAYOUT_DESKTOP){document.body.classList.add('fp-layout-desktop');}</script>
 <div class="fp-app-shell">
 <aside class="fp-sidebar" id="fpSidebar" aria-label="Menu principal">
     <div class="fp-sidebar-brand" onclick="fpGoHomePage()" title="Página inicial">
@@ -1468,6 +1514,30 @@ td { color: var(--t); font-weight: 500;}
     </nav>
 </aside>
 <div class="fp-main-wrap">
+<div class="navbar fp-desktop-navbar" id="fpDesktopNavbar" role="navigation" aria-label="Intranet FastPark">
+    <div class="navbar-container">
+        <div class="nav-tabs" role="tablist" aria-label="Módulos principais">
+            <button class="nav-tab active" type="button" onclick="switchTab('inicio')" role="tab" aria-controls="inicio" aria-selected="true">🏠 Início</button>
+            <button class="nav-tab" type="button" onclick="switchTab('dashboard')" role="tab" aria-controls="dashboard" aria-selected="false">👥 Cadastro</button>
+            <button class="nav-tab" type="button" onclick="switchTab('cestas')" role="tab" aria-controls="cestas" aria-selected="false">📋 Gestão de Benefícios</button>
+            <button class="nav-tab" type="button" onclick="switchTab('ferias')" role="tab" aria-controls="ferias" aria-selected="false">🏖️ Férias</button>
+            <button class="nav-tab" type="button" onclick="switchTab('movimentos')" role="tab" aria-controls="movimentos" aria-selected="false">💰 Gestão de Folha de Pagamento</button>
+            <button class="nav-tab" type="button" onclick="switchTab('movfunc')" role="tab" aria-controls="movfunc" aria-selected="false">🔄 Movimentação</button>
+            <button class="nav-tab" type="button" onclick="switchTab('cadunidades')" role="tab" aria-controls="cadunidades" aria-selected="false">🏢 Unidades</button>
+            <button class="nav-tab" type="button" onclick="switchTab('cadpostos')" role="tab" aria-controls="cadpostos" aria-selected="false">📌 Postos/Quadro</button>
+            <button class="nav-tab" type="button" onclick="switchTab('vt')" role="tab" aria-controls="vt" aria-selected="false">🚌 Vale Transporte</button>
+            <button class="nav-tab" type="button" onclick="switchTab('pagas')" role="tab" aria-controls="pagas" aria-selected="false">💵 Pagas</button>
+            <button class="nav-tab" type="button" onclick="switchTab('faltas')" role="tab" aria-controls="faltas" aria-selected="false">🩺 Faltas/Atestados</button>
+            <button class="nav-tab" type="button" onclick="switchTab('sinistros')" role="tab" aria-controls="sinistros" aria-selected="false">🛡️ Sinistros</button>
+            <button class="nav-tab" type="button" onclick="switchTab('laudos')" role="tab" aria-controls="laudos" aria-selected="false">📋 Laudos</button>
+        </div>
+        <div class="navbar-actions">
+            <button type="button" class="nav-btn-cloud" onclick="fpCloudSaveSnapshotUi()" title="Salvar na nuvem">☁️ Salvar</button>
+            <button type="button" class="nav-btn-cloud" onclick="fpCloudLoadSnapshotUi()" title="Carregar da nuvem">☁️ Carregar</button>
+            <button type="button" class="nav-btn-sair" onclick="fpLogout()" title="Sair">Sair</button>
+        </div>
+    </div>
+</div>
 <header class="fp-topbar">
     <div class="navbar-actions">
         <button type="button" class="nav-btn-cloud" onclick="fpCloudSaveSnapshotUi()" title="Salvar todos os dados e documentos no Supabase">☁️ Salvar</button>
@@ -5507,16 +5577,22 @@ function fpInitTabPageLayout() {
     });
 }
 
-/** URL do DashBoard — igual ao Desktop: DashBoard RH.html?view=inicio|cadastro (rede/local); Vercel usa FP_CADASTRO_URL */
+/** URL do DashBoard — Desktop: DashBoard RH.html?view=… | Vercel (cleanUrls): /DashBoard%20RH?view=… */
 function fpIframeCadastroUrl(query){
     const q = query ? (query.indexOf('?') === 0 ? query : '?' + query) : '';
     try {
         var host = String(location.hostname || '').toLowerCase();
-        var onVercel = /\.vercel\.app$/i.test(host);
-        if(!onVercel && (location.protocol === 'file:' || host === 'localhost' || host === '127.0.0.1' || /^192\.168\./.test(host) || !host)) {
+        var onVercel = window.FP_LAYOUT_DESKTOP || /\.vercel\.app$/i.test(host);
+        if (onVercel) {
+            var baseV = (typeof window.FP_CADASTRO_URL === 'string' && window.FP_CADASTRO_URL)
+                ? window.FP_CADASTRO_URL.replace(/\.html$/i, '') : '/DashBoard%20RH';
+            return baseV + q;
+        }
+        if (location.protocol === 'file:' || host === 'localhost' || host === '127.0.0.1' || /^192\.168\./.test(host) || !host) {
             return 'DashBoard RH.html' + q;
         }
-        const base = (typeof window.FP_CADASTRO_URL === 'string' && window.FP_CADASTRO_URL) ? window.FP_CADASTRO_URL : '/DashBoard%20RH.html';
+        const base = (typeof window.FP_CADASTRO_URL === 'string' && window.FP_CADASTRO_URL)
+            ? window.FP_CADASTRO_URL.replace(/\.html$/i, '') : '/DashBoard%20RH';
         return base + q;
     } catch(e) {
         return 'DashBoard RH.html' + q;
