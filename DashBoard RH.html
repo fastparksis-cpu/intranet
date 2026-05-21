@@ -2368,6 +2368,7 @@ function renderProfile(e, qtd) {
     if(E.selectionInfo) E.selectionInfo.textContent = qtd ? `${qtd} registro(s) no filtro` : 'Sem registros';
     if(!E.profile) return;
     if(!e) { E.profile.innerHTML = '<div class="empty">Nenhum funcionário encontrado.</div>'; return; }
+    const fotoDisplay = fpResolveEmployeeFotoUrl(e);
     const cd = daysTo(e.cnh), ad = daysTo(e.aso), xd = daysSince(e.admissao);
     const tc = tempoDeCasaLabels(e.admissao);
     const tempoPlanilha = [e.tempo, e.faixa].filter(Boolean).join(' · ');
@@ -2416,9 +2417,9 @@ function renderProfile(e, qtd) {
             <div class="band">Ficha Cadastral</div>
             <div class="top">
                 <div class="photo photo-clickable" data-fp-photo-zone role="button" tabindex="0" title="Clique para carregar ou alterar a foto">
-                    ${e.foto ? `<img src="${esc(e.foto)}" alt="Foto ${esc(e.nome)}" class="profile-photo-img" style="width:146px;height:146px;border-radius:10px;object-fit:cover;border:1px solid var(--l);display:block;">` : `<div class="av profile-photo-av" style="width:146px;height:146px;border-radius:10px;font-size:42px;">${esc(ini(e.nome))}</div>`}
-                    <span class="photo-change-hint">${e.foto ? 'Alterar foto' : 'Carregar foto'}</span>
-                    ${e.foto ? `<button type="button" class="photo-zoom-btn" data-fp-photo-zoom title="Ver ampliada" aria-label="Ampliar foto">🔍</button>` : ''}
+                    ${fotoDisplay ? `<img src="${esc(fotoDisplay)}" alt="Foto ${esc(e.nome)}" class="profile-photo-img" style="width:146px;height:146px;border-radius:10px;object-fit:cover;border:1px solid var(--l);display:block;">` : `<div class="av profile-photo-av" style="width:146px;height:146px;border-radius:10px;font-size:42px;">${esc(ini(e.nome))}</div>`}
+                    <span class="photo-change-hint">${fotoDisplay ? 'Alterar foto' : 'Carregar foto'}</span>
+                    ${fotoDisplay ? `<button type="button" class="photo-zoom-btn" data-fp-photo-zoom title="Ver ampliada" aria-label="Ampliar foto">🔍</button>` : ''}
                 </div>
                 <div class="info">
                     <div class="nm">${esc(e.nome)}</div>
@@ -3208,7 +3209,7 @@ function bindProfilePhotoInteractions(){
         if(!state.selected) return;
         if(ev.target.closest('[data-fp-photo-zoom]')){
             ev.stopPropagation();
-            openEmployeePhotoLarge(state.selected.foto, state.selected.nome);
+            openEmployeePhotoLarge(fpResolveEmployeeFotoUrl(state.selected), state.selected.nome);
             return;
         }
         if(ev.target.closest('[data-fp-photo-zone]')) pickProfilePhoto();
@@ -3254,10 +3255,33 @@ async function handleEmployeeDocsSelected(ev){
     if(EF.docs) EF.docs.value = '';
     renderEmployeeDocsList();
 }
+function fpResolveDocDataUrl(doc, emp){
+    if(!doc) return '';
+    if(doc.dataUrl && String(doc.dataUrl).startsWith('data:')) return doc.dataUrl;
+    if(doc.dataRef && window.parent && typeof window.parent.fpResolveEmployeeMediaRef === 'function'){
+        try {
+            const u = window.parent.fpResolveEmployeeMediaRef(doc.dataRef, emp || state.selected, window.parent.__FP_EMBEDDED_ATTACHMENTS__ || {}, window.parent.__FP_EMPLOYEE_ATT_BAG__ || {});
+            if(u) return u;
+        } catch(e) { console.warn('[DashBoard] resolve doc', e); }
+    }
+    return doc.dataUrl || '';
+}
+function fpResolveEmployeeFotoUrl(emp){
+    if(!emp) return '';
+    if(emp.foto && String(emp.foto).startsWith('data:')) return emp.foto;
+    if(emp.fotoRef && window.parent && typeof window.parent.fpResolveEmployeeMediaRef === 'function'){
+        try {
+            const u = window.parent.fpResolveEmployeeMediaRef(emp.fotoRef, emp, window.parent.__FP_EMBEDDED_ATTACHMENTS__ || {}, window.parent.__FP_EMPLOYEE_ATT_BAG__ || {});
+            if(u) return u;
+        } catch(e) { console.warn('[DashBoard] resolve foto', e); }
+    }
+    return emp.foto || '';
+}
 function viewEmployeeDocDraft(idx){
     const doc = employeeDocsDraft[idx];
-    if(!doc?.dataUrl) return;
-    openDocumentInNewTab(doc.dataUrl, doc.name || 'documento');
+    const url = fpResolveDocDataUrl(doc, state.employees[employeeEditIndex]);
+    if(!url) return;
+    openDocumentInNewTab(url, doc.name || 'documento');
 }
 function openEmployeePhotoLarge(dataUrl, nome){
     if(!dataUrl) return;
@@ -3284,14 +3308,16 @@ function removeEmployeeDocDraft(idx){
 function viewSelectedEmployeeDoc(idx){
     const docs = state.selected?.documentos || [];
     const doc = docs[idx];
-    if(!doc?.dataUrl) return;
-    openDocumentInNewTab(doc.dataUrl, doc.name || 'documento');
+    const url = fpResolveDocDataUrl(doc, state.selected);
+    if(!url) return;
+    openDocumentInNewTab(url, doc.name || 'documento');
 }
 function viewSelectedEmployeeRescisaoDoc(idx){
     const docs = state.selected?.documentosRescisao || [];
     const doc = docs[idx];
-    if(!doc?.dataUrl) return;
-    openDocumentInNewTab(doc.dataUrl, doc.name || 'rescisao');
+    const url = fpResolveDocDataUrl(doc, state.selected);
+    if(!url) return;
+    openDocumentInNewTab(url, doc.name || 'rescisao');
 }
 async function pickRescisaoDocs(){
     const input = document.createElement('input');
@@ -3676,7 +3702,28 @@ if(E.file){
 }
 
 function applyEmployeesSyncFromParent(msg) {
-    state.employees = Array.isArray(msg.employees) ? msg.employees : [];
+    state.employees = (Array.isArray(msg.employees) ? msg.employees : []).map(emp => {
+        const e = { ...emp };
+        const foto = fpResolveEmployeeFotoUrl(e);
+        if(foto) e.foto = foto;
+        if(Array.isArray(e.documentos)){
+            e.documentos = e.documentos.map(d => {
+                const o = { ...d };
+                const u = fpResolveDocDataUrl(o, e);
+                if(u) o.dataUrl = u;
+                return o;
+            });
+        }
+        if(Array.isArray(e.documentosRescisao)){
+            e.documentosRescisao = e.documentosRescisao.map(d => {
+                const o = { ...d };
+                const u = fpResolveDocDataUrl(o, e);
+                if(u) o.dataUrl = u;
+                return o;
+            });
+        }
+        return e;
+    });
     state.cnhMap = new Map(Object.entries(msg.cnhMapObj || {}));
     state.cnhColBDByNome = new Map(Object.entries(msg.cnhColBDByNomeObj || {}));
     state.cnhColNumeroByNome = new Map(Object.entries(msg.cnhColNumeroByNomeObj || {}));
