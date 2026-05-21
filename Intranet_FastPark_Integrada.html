@@ -5152,7 +5152,15 @@ function loadWorkbook(data) {
         addAudit(`Planilha carregada: ${state.employees.length} funcionários`, 'action');
         fpSaveEmployeesToLocalStorage();
         fpSaveQuadroGeralToLocalStorage();
-        if(typeof document !== 'undefined') document.dispatchEvent(new CustomEvent('fp-intranet-changed'));
+        if(typeof fpNotifyIntranetChanged === 'function') fpNotifyIntranetChanged();
+        else if(typeof document !== 'undefined') document.dispatchEvent(new CustomEvent('fp-intranet-changed'));
+        queueMicrotask(function () {
+            if(window.fpSupabase && typeof fpCloudSetStatus === 'function'){
+                fpCloudSetStatus('Planilha carregada. A gravar na nuvem em ~12 s… (ou clique ☁️ Salvar).', false);
+            } else {
+                alert('Planilha carregada: ' + state.employees.length + ' funcionários.\n\nPara guardar de forma definitiva na nuvem: faça login e use o botão ☁️ Salvar no rodapé (ou aguarde a auto-gravação).');
+            }
+        });
 
     } catch (error) {
         alert("Erro ao carregar planilha: " + error.message);
