@@ -31,9 +31,10 @@
     /** Após auto-carregar, não gravar de volta na nuvem durante este tempo (evita sobrescrever com cache local) */
     g.FP_CLOUD_AUTOLOAD_AUTOSAVE_PAUSE_MS = 90000;
 
-    /** Rotas (local: ficheiros .html | Vercel: vercel.json rewrites) */
+    /** Rotas (Vercel: intranet-fastpark.html com cleanUrls, ou Intranet_FastPark_Integrada.html) */
     g.FP_LOGIN_URL = '/';
     g.FP_APP_URL = '/intranet-fastpark';
+    g.FP_CADASTRO_URL = '/cadastro';
 
     g.fpSupabaseConfigIsReady = function () {
         var url = String(g.FP_SUPABASE_URL || '').trim();
