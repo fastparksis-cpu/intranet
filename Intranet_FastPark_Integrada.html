@@ -5493,14 +5493,15 @@ function fpInitTabPageLayout() {
     });
 }
 
-/** URL do DashBoard: na Vercel usa /cadastro; em ficheiro local usa DashBoard RH.html */
+/** URL do DashBoard: Vercel /cadastro ou ficheiro directo; local = DashBoard RH.html */
 function fpIframeCadastroUrl(query){
     const q = query ? (query.indexOf('?') === 0 ? query : '?' + query) : '';
     try {
         if(location.protocol === 'file:') return 'DashBoard RH.html' + q;
-        return '/cadastro' + q;
+        const base = (typeof window.FP_CADASTRO_URL === 'string' && window.FP_CADASTRO_URL) ? window.FP_CADASTRO_URL : '/cadastro';
+        return base + q;
     } catch(e) {
-        return 'DashBoard RH.html' + q;
+        return '/DashBoard%20RH.html' + q;
     }
 }
 function configureExternalTab(tabId, fileName){
