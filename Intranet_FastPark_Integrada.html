@@ -6358,22 +6358,64 @@ function fpAttDataUrlFromMapValue(v){
     }
     return null;
 }
-function fpLookupAttMedia(att, ref){
-    if(!ref || !att || typeof att !== 'object') return null;
-    const r = sanitizeStoragePathForAtt(ref);
+function fpMediaPathCandidates(ref, emp, ei){
+    const out = [];
+    const add = (p) => {
+        if(!p) return;
+        const s = String(p).trim();
+        if(s && out.indexOf(s) < 0) out.push(s);
+        const san = sanitizeStoragePathForAtt(s);
+        if(san && out.indexOf(san) < 0) out.push(san);
+    };
+    add(ref);
+    if(emp && typeof fpStableEmployeeSlug === 'function'){
+        const slug = fpStableEmployeeSlug(emp, ei != null ? ei : 0);
+        add('colaboradores/foto/' + slug);
+        add('colaboradores/docs/' + slug);
+        add('colaboradores/rescisao/' + slug);
+    }
+    return out;
+}
+function fpLookupAttMedia(att, ref, emp, ei){
+    if(!ref && !emp) return null;
+    att = att && typeof att === 'object' ? att : {};
     const disp = window.__FP_CLOUD_DISPLAY_URLS__ || {};
-    if(disp[ref]) return disp[ref];
-    if(disp[r]) return disp[r];
-    const v = att[ref] || att[r];
+    const candidates = fpMediaPathCandidates(ref, emp, ei);
+    for(let i = 0; i < candidates.length; i++){
+        const p = candidates[i];
+        if(disp[p]) return disp[p];
+        const v = att[p];
+        if(typeof v === 'string' && fpIsDisplayableMediaUrl(v)) return v;
+    }
+    const r = ref ? sanitizeStoragePathForAtt(ref) : '';
+    const v = ref ? (att[ref] || att[r]) : null;
     if(typeof v === 'string' && fpIsDisplayableMediaUrl(v)) return v;
     if(v && typeof v === 'object' && v.__cloud === true && v.path){
         const p = sanitizeStoragePathForAtt(v.path);
         if(disp[p]) return disp[p];
-        const v2 = att[p];
-        if(typeof v2 === 'string' && fpIsDisplayableMediaUrl(v2)) return v2;
     }
     return null;
 }
+/** Liga colaboradores às URLs já indexadas no Storage (foto por slug). */
+function fpMatchEmployeeMediaFromStorageIndex(db){
+    const disp = window.__FP_CLOUD_DISPLAY_URLS__ || {};
+    const emps = (db && db.state && db.state.employees) || [];
+    emps.forEach((emp, ei) => {
+        const fotoPath = 'colaboradores/foto/' + fpStableEmployeeSlug(emp, ei);
+        if(disp[fotoPath]){
+            disp[emp.fotoRef || ''] = disp[emp.fotoRef || ''] || disp[fotoPath];
+            disp[fotoPath] = disp[fotoPath];
+        }
+        const docPrefix = 'colaboradores/docs/' + fpStableEmployeeSlug(emp, ei);
+        const rescPrefix = 'colaboradores/rescisao/' + fpStableEmployeeSlug(emp, ei);
+        Object.keys(disp).forEach(k => {
+            if(k.indexOf(docPrefix) === 0 || k.indexOf(rescPrefix) === 0){
+                disp[k] = disp[k];
+            }
+        });
+    });
+}
+window.fpMatchEmployeeMediaFromStorageIndex = fpMatchEmployeeMediaFromStorageIndex;
 function sanitizeStoragePathForAtt(p){
     return String(p || '').replace(/[^\w./\-]/g, '_').replace(/_+/g, '_').replace(/^\/+/, '');
 }
@@ -6383,7 +6425,7 @@ function fpResolveEmployeeMediaRef(ref, emp, attMap, bag){
     const r = String(ref);
     const att = attMap && typeof attMap === 'object' ? attMap : {};
     const b = bag && typeof bag === 'object' ? bag : {};
-    const inline = fpLookupAttMedia(att, r) || fpAttDataUrlFromMapValue(att[r]);
+    const inline = fpLookupAttMedia(att, r, emp, null) || fpAttDataUrlFromMapValue(att[r]);
     if(inline) return inline;
     if(fpAttDataUrlFromMapValue(b[r])) return b[r];
     const key = fpNormEmployeeAttKey(emp && emp.nome);
@@ -6455,27 +6497,45 @@ window.fpStableEmployeeSlug = fpStableEmployeeSlug;
 window.fpIsDisplayableMediaUrl = fpIsDisplayableMediaUrl;
 window.fpLookupAttMedia = fpLookupAttMedia;
 window.fpResolveEmployeeMediaRef = fpResolveEmployeeMediaRef;
+function fpDispKeysByPrefix(prefix){
+    const disp = window.__FP_CLOUD_DISPLAY_URLS__ || {};
+    const p = String(prefix || '');
+    return Object.keys(disp).filter(k => k.indexOf(p) === 0).sort();
+}
 function fpApplyEmployeeMediaFromAttachments(employees, att){
     att = att || window.__FP_EMBEDDED_ATTACHMENTS__ || {};
+    const disp = window.__FP_CLOUD_DISPLAY_URLS__ || {};
     return (employees || []).map((emp, ei) => {
         const e = { ...emp };
-        if(!fpIsDisplayableMediaUrl(e.foto) && e.fotoRef){
-            const u = fpLookupAttMedia(att, e.fotoRef);
+        const slug = fpStableEmployeeSlug(emp, ei);
+        if(!fpIsDisplayableMediaUrl(e.foto)){
+            const u = fpLookupAttMedia(att, e.fotoRef, emp, ei)
+                || disp['colaboradores/foto/' + slug]
+                || (fpDispKeysByPrefix('colaboradores/foto/' + slug)[0] ? disp[fpDispKeysByPrefix('colaboradores/foto/' + slug)[0]] : null);
             if(u) e.foto = u;
         }
-        const mapDocs = (docs) => {
+        const mapDocs = (docs, folder) => {
             if(!Array.isArray(docs)) return docs;
-            return docs.map((d) => {
+            const keys = fpDispKeysByPrefix(folder + slug);
+            return docs.map((d, di) => {
                 const o = { ...d };
                 if(!fpIsDisplayableMediaUrl(o.dataUrl) && o.dataRef){
-                    const u = fpLookupAttMedia(att, o.dataRef);
+                    const u = fpLookupAttMedia(att, o.dataRef, emp, ei);
                     if(u) o.dataUrl = u;
+                }
+                if(!fpIsDisplayableMediaUrl(o.dataUrl)){
+                    if(keys[di] && disp[keys[di]]) o.dataUrl = disp[keys[di]];
+                    else {
+                        const guess = folder + slug + '_' + di;
+                        const u = fpLookupAttMedia(att, guess, emp, ei) || disp[guess];
+                        if(u) o.dataUrl = u;
+                    }
                 }
                 return o;
             });
         };
-        e.documentos = mapDocs(e.documentos);
-        e.documentosRescisao = mapDocs(e.documentosRescisao);
+        e.documentos = mapDocs(e.documentos, 'colaboradores/docs/');
+        e.documentosRescisao = mapDocs(e.documentosRescisao, 'colaboradores/rescisao/');
         return e;
     });
 }
@@ -6576,7 +6636,7 @@ function fpMergeEmployeeAttachments(arr, bag){
             return docs.map((d, i) => {
                 const o = { ...d };
                 if(!fpIsDisplayableMediaUrl(o.dataUrl) && o.dataRef){
-                    const u = fpResolveEmployeeMediaRef(o.dataRef, emp, attMap, b);
+                    const u = fpResolveEmployeeMediaRef(o.dataRef, emp, attMap, b) || fpLookupAttMedia(attMap, o.dataRef, emp, i);
                     if(u) o.dataUrl = u;
                 } else if(!o.dataUrl && Array.isArray(att && att.documentos)){
                     const src = att.documentos.find(x => x && x.i === i) || att.documentos[i];
@@ -7143,6 +7203,9 @@ async function applyFpEmbeddedIntranetDb(db, opts){
     fpPrimeEmployeeAttBagFromDb(state.employees, window.__FP_EMBEDDED_ATTACHMENTS__ || att);
     state.employees = fpMergeEmployeeAttachments(state.employees || [], window.__FP_EMPLOYEE_ATT_BAG__ || {});
     state.employees = fpHydrateEmployeesMediaForSnapshot(state.employees, window.__FP_EMBEDDED_ATTACHMENTS__ || att);
+    if(window.__FP_CLOUD_SNAPSHOT_LOADED__ && typeof fpMatchEmployeeMediaFromStorageIndex === 'function'){
+        fpMatchEmployeeMediaFromStorageIndex({ state: { employees: state.employees } });
+    }
     state.employees = fpApplyEmployeeMediaFromAttachments(state.employees, window.__FP_EMBEDDED_ATTACHMENTS__ || att);
     fpPrimeEmployeeAttBagFromDb(state.employees, window.__FP_EMBEDDED_ATTACHMENTS__ || att);
     state.employees = fpMergeEmployeeAttachments(state.employees, window.__FP_EMPLOYEE_ATT_BAG__ || {});

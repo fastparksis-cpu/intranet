@@ -132,6 +132,91 @@
 
     g.fpResolveCloudMediaUrl = resolveCloudPathToDisplayUrl;
 
+    /** Lista recursivamente ficheiros no bucket (pastas no Storage não têm metadata). */
+    async function listStorageFilesRecursive(prefix) {
+        var supa = clientOrThrow();
+        prefix = prefix ? String(prefix).replace(/\/+$/, '') + '/' : '';
+        var out = [];
+
+        async function walk(folder) {
+            var offset = 0;
+            var pageSize = 200;
+            while (true) {
+                var res = await supa.storage.from(BUCKET).list(folder, {
+                    limit: pageSize,
+                    offset: offset,
+                    sortBy: { column: 'name', order: 'asc' }
+                });
+                if (res.error) {
+                    console.warn('[fp-cloud] list ' + folder, res.error);
+                    return;
+                }
+                var items = res.data || [];
+                if (!items.length) break;
+                for (var i = 0; i < items.length; i++) {
+                    var item = items[i];
+                    var itemPath = (folder + item.name).replace(/\/+/g, '/');
+                    if (item.metadata != null) {
+                        out.push(itemPath.replace(/^\//, ''));
+                    } else {
+                        await walk(itemPath + '/');
+                    }
+                }
+                if (items.length < pageSize) break;
+                offset += pageSize;
+            }
+        }
+
+        await walk(prefix);
+        return out;
+    }
+
+    async function fpCloudSignPathsToDisplayMap(paths) {
+        var disp = g.window.__FP_CLOUD_DISPLAY_URLS__ || (g.window.__FP_CLOUD_DISPLAY_URLS__ = {});
+        var ok = 0;
+        var fail = 0;
+        for (var i = 0; i < paths.length; i++) {
+            var raw = paths[i];
+            var p = sanitizeStoragePath(raw);
+            if (disp[p] || disp[raw]) {
+                ok++;
+                continue;
+            }
+            try {
+                var url = await resolveCloudPathToDisplayUrl(p);
+                disp[p] = url;
+                disp[raw] = url;
+                ok++;
+            } catch (e) {
+                fail++;
+            }
+            if (i % 10 === 0) {
+                fpCloudSetStatus('A ligar ficheiros do Storage… ' + (i + 1) + '/' + paths.length);
+            }
+        }
+        g.window.__FP_CLOUD_DISPLAY_URLS__ = disp;
+        return { ok: ok, fail: fail, total: paths.length };
+    }
+
+    /** Indexa o bucket e preenche URLs de exibição (quando snapshot e Storage divergem). */
+    async function fpCloudIndexStorageBucket() {
+        fpCloudSetStatus('A listar ficheiros no Storage…');
+        var prefixes = ['colaboradores', 'faltas', 'unidades', 'pagas'];
+        var paths = [];
+        for (var pi = 0; pi < prefixes.length; pi++) {
+            try {
+                var sub = await listStorageFilesRecursive(prefixes[pi]);
+                paths = paths.concat(sub);
+            } catch (e) {
+                console.warn('[fp-cloud] list prefix', prefixes[pi], e);
+            }
+        }
+        console.log('[fp-cloud] ficheiros no Storage:', paths.length);
+        return fpCloudSignPathsToDisplayMap(paths);
+    }
+
+    g.fpCloudIndexStorageBucket = fpCloudIndexStorageBucket;
+
     async function readDiskAttachmentAsDataUrl(path) {
         if (g.__fpBridgeActive && typeof g.fpBridgeReadAttachmentAsDataUrl === 'function') {
             try {
@@ -318,15 +403,26 @@
             } else if (!(v === undefined || v === null || v === '')) {
                 return;
             }
-            try {
-                var url = await resolveCloudPathToDisplayUrl(cloudPath);
-                disp[key] = url;
-                disp[cloudPath] = url;
-                att[key] = { __cloud: true, path: cloudPath };
-                ok++;
-            } catch (e) {
-                fail++;
+            var pathsToTry = [cloudPath, key];
+            if (v && typeof v === 'object' && v.__cloud === true && v.path) {
+                pathsToTry.push(sanitizeStoragePath(v.path));
             }
+            var resolved = false;
+            for (var ti = 0; ti < pathsToTry.length; ti++) {
+                var tryP = sanitizeStoragePath(pathsToTry[ti]);
+                if (!tryP) continue;
+                try {
+                    var url = await resolveCloudPathToDisplayUrl(tryP);
+                    disp[key] = url;
+                    disp[tryP] = url;
+                    disp[cloudPath] = url;
+                    att[key] = { __cloud: true, path: tryP };
+                    ok++;
+                    resolved = true;
+                    break;
+                } catch (e1) { /* tenta próximo caminho */ }
+            }
+            if (!resolved) fail++;
         }
 
         async function runWorker() {
@@ -341,10 +437,23 @@
         }
 
         await Promise.all(Array.from({ length: workers }, runWorker));
+
+        var indexStats = { ok: 0, fail: 0, total: 0 };
+        try {
+            indexStats = await fpCloudIndexStorageBucket();
+            ok += indexStats.ok;
+        } catch (idxErr) {
+            console.warn('[fp-cloud] index bucket', idxErr);
+        }
+
+        if (typeof g.fpMatchEmployeeMediaFromStorageIndex === 'function' && db.state) {
+            g.fpMatchEmployeeMediaFromStorageIndex(db);
+        }
+
         db.attachments = att;
         g.window.__FP_EMBEDDED_ATTACHMENTS__ = att;
         g.window.__FP_CLOUD_DISPLAY_URLS__ = g.window.__FP_CLOUD_DISPLAY_URLS__ || {};
-        return { ok: ok, fail: fail, total: total };
+        return { ok: ok, fail: fail, total: total, storageFiles: indexStats.total || 0 };
     };
 
     /** Reúne planilha + todas as abas + documentos antes de gravar na nuvem. */
@@ -640,9 +749,10 @@
             var msg = (opts.autoload ? 'Carregado automaticamente' : 'Carregado da nuvem') +
                 ': ' + nEmp + ' colaborador(es)' +
                 (when ? ' (' + new Date(when).toLocaleString('pt-BR') + ')' : '') + '.';
-            if (attStats.total) {
-                msg += ' Anexos: ' + attStats.ok + '/' + attStats.total;
-                if (attStats.fail) msg += ' (' + attStats.fail + ' falha(s) — verifique Storage/login)';
+            if (attStats.total || attStats.storageFiles) {
+                msg += ' Anexos: ' + attStats.ok + '/' + (attStats.total || attStats.storageFiles);
+                if (attStats.storageFiles) msg += ' (' + attStats.storageFiles + ' ficheiros no Storage)';
+                if (attStats.fail) msg += ' (' + attStats.fail + ' falha(s))';
             }
             fpCloudSetStatus(msg, attStats.fail > 0 && nEmp === 0);
             if (typeof g.addAudit === 'function') {
