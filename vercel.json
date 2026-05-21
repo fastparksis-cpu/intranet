@@ -7,7 +7,10 @@
   "trailingSlash": false,
   "redirects": [
     { "source": "/intranet", "destination": "/intranet-fastpark", "permanent": false },
-    { "source": "/intranet/", "destination": "/intranet-fastpark", "permanent": false }
+    { "source": "/intranet/", "destination": "/intranet-fastpark", "permanent": false },
+    { "source": "/DashBoard%20RH.html", "destination": "/DashBoard%20RH", "permanent": false },
+    { "source": "/DashBoard%2520RH", "destination": "/DashBoard%20RH", "permanent": false },
+    { "source": "/DashBoard%2520RH.html", "destination": "/DashBoard%20RH", "permanent": false }
   ],
   "headers": [
     {

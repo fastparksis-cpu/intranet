@@ -5499,17 +5499,23 @@ function fpInitTabPageLayout() {
     });
 }
 
-/** URL do DashBoard: ficheiro local ou FP_CADASTRO_URL na Vercel */
+/** URL do DashBoard: ficheiro local ou FP_CADASTRO_URL na Vercel (cleanUrls, sem .html) */
 function fpIframeCadastroUrl(query){
     const q = query ? (query.indexOf('?') === 0 ? query : '?' + query) : '';
     try {
         if (location.protocol === 'file:') return 'DashBoard RH.html' + q;
         const base = (typeof window.FP_CADASTRO_URL === 'string' && window.FP_CADASTRO_URL)
-            ? window.FP_CADASTRO_URL : '/DashBoard%20RH.html';
+            ? window.FP_CADASTRO_URL : '/DashBoard%20RH';
         return base + q;
     } catch (e) {
-        return '/DashBoard%20RH.html' + q;
+        return '/DashBoard%20RH' + q;
     }
+}
+/** Evita %20 → %2520: não voltar a codificar caminhos que já têm % (ex.: /DashBoard%20RH) */
+function fpResolveIframeSrc(fileName){
+    if (!fileName) return fileName;
+    if (fileName.charAt(0) === '/') return fileName;
+    return encodeURI(fileName);
 }
 function configureExternalTab(tabId, fileName){
     const tab = document.getElementById(tabId);
@@ -5521,7 +5527,7 @@ function configureExternalTab(tabId, fileName){
     });
     const frame = document.createElement('iframe');
     frame.className = 'external-tab-frame';
-    frame.src = encodeURI(fileName);
+    frame.src = fpResolveIframeSrc(fileName);
     frame.title = fileName;
     frame.addEventListener('load', () => {
         queueMicrotask(() => {
