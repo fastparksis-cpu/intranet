@@ -62,18 +62,9 @@
 
         g.FP_AUTH_REQUIRED = isVercel || !isLocalNet;
 
-        /** Na Vercel: barra superior com abas (igual ao ficheiro do Desktop), sem menu lateral. */
-        g.FP_LAYOUT_DESKTOP = isVercel;
-
-        if (isVercel) {
-            g.FP_CADASTRO_URL = '/DashBoard%20RH';
-        }
-
     } catch (e) {
 
         g.FP_AUTH_REQUIRED = true;
-
-        g.FP_LAYOUT_DESKTOP = false;
 
     }
 
