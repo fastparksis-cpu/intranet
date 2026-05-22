@@ -327,6 +327,29 @@
         return { hydrated: hydrated, failed: failed };
     }
 
+    function fpHarvestDataUrlsFromJsonTree(obj, att, prefix) {
+        if (!obj || typeof obj !== 'object') return;
+        prefix = prefix || 'misc';
+        if (typeof obj === 'string' && obj.indexOf('data:') === 0) return;
+        if (Array.isArray(obj)) {
+            obj.forEach(function (item, i) {
+                fpHarvestDataUrlsFromJsonTree(item, att, prefix + '/' + i);
+            });
+            return;
+        }
+        Object.keys(obj).forEach(function (k) {
+            var v = obj[k];
+            if (typeof v === 'string' && v.indexOf('data:') === 0) {
+                var path = sanitizeStoragePath(prefix + '/' + k);
+                if (!att[path] || (typeof att[path] === 'string' && att[path].indexOf('data:') === 0)) {
+                    att[path] = v;
+                }
+            } else if (v && typeof v === 'object') {
+                fpHarvestDataUrlsFromJsonTree(v, att, prefix + '/' + k);
+            }
+        });
+    }
+
     function harvestInlineDataUrlsIntoAttachments(snap) {
         var att = snap.attachments || {};
         function put(key, dataUrl) {
@@ -359,6 +382,14 @@
             });
         });
         snap.attachments = att;
+        if (snap.localStrings && typeof snap.localStrings === 'object') {
+            Object.keys(snap.localStrings).forEach(function (lsKey) {
+                try {
+                    var parsed = JSON.parse(snap.localStrings[lsKey]);
+                    fpHarvestDataUrlsFromJsonTree(parsed, att, 'local/' + sanitizeStoragePath(lsKey).slice(0, 48));
+                } catch (parseErr) { /* não-JSON */ }
+            });
+        }
     }
 
     async function prepareSnapshotForCloud(snap) {
@@ -618,13 +649,16 @@
         if (typeof g.fpLoadQuadroGeralFromLocalStorage === 'function') {
             g.fpLoadQuadroGeralFromLocalStorage();
         }
+        if (typeof g.fpPersistEmployeeAttBagFromState === 'function') {
+            try { await g.fpPersistEmployeeAttBagFromState(); } catch (bagPrep) { console.warn('[fp-cloud] bag prepare', bagPrep); }
+        }
         var quick = opts.quick !== false && opts.autosave && g.FP_CLOUD_QUICK_SAVE !== false && g.FP_CLOUD_FAST_SYNC !== false;
-        await g.fpPullStateFromDashboardIframes(quick ? (opts.iframeMs || 900) : (opts.iframeMs || 3000));
+        await g.fpPullStateFromDashboardIframes(quick ? (opts.iframeMs || 1200) : (opts.iframeMs || 4000));
         if (typeof g.syncBeneficiosFuncionariosFromEmployees === 'function') {
             g.syncBeneficiosFuncionariosFromEmployees();
         }
         if (typeof g.fpFlushAllTabsToLocalStorage === 'function') {
-            g.fpFlushAllTabsToLocalStorage();
+            await g.fpFlushAllTabsToLocalStorage();
         } else {
             if (typeof g.fpSaveEmployeesToLocalStorage === 'function') g.fpSaveEmployeesToLocalStorage();
             if (typeof g.fpSavePagasToLocalStorage === 'function') g.fpSavePagasToLocalStorage();
@@ -695,9 +729,9 @@
         else await g.fpAuthReady;
         var supa = clientOrThrow();
         if (!opts.autosave) {
-            fpCloudSetStatus('A reunir dados de todas as abas…');
+            fpCloudSetStatus('A reunir dados de todas as abas (DP, Financeiro, Unidades, Sinistros, Estoque, Postos, Pagas)…');
         } else {
-            fpCloudSetStatus('A guardar automaticamente (dados + documentos)…');
+            fpCloudSetStatus('A guardar automaticamente todas as abas (dados + documentos)…');
         }
         await g.fpPrepareDataForCloudSave({ autosave: !!opts.autosave, quick: !!opts.autosave });
         if (typeof g.fpHydrateEmployeesMediaForSnapshot === 'function' && g.state && Array.isArray(g.state.employees)) {

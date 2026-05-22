@@ -2563,6 +2563,11 @@ function switchTab(tab) {
     }
     fpSyncSidebarMenu(tab);
     if(tab === 'cestas' && typeof renderBeneficiosCestas === 'function') renderBeneficiosCestas();
+    if(tab !== 'fp-home' && !window.__fpLsHookPause){
+        queueMicrotask(function(){
+            if(typeof fpAfterPersistentStorageWrite === 'function') fpAfterPersistentStorageWrite();
+        });
+    }
     if(tab === 'cadpostos'){
         if(typeof refreshPostosUnidadeOptions === 'function') refreshPostosUnidadeOptions();
         if(typeof refreshPostoColaboradorOptions === 'function') refreshPostoColaboradorOptions();
@@ -6370,8 +6375,68 @@ const FP_QUADRO_GERAL_KEY = 'fp_quadro_geral_json';
 const FP_SINISTROS_KEY = 'fp_sinistros';
 const FP_LAUDOS_KEY = 'fp_laudos';
 const FP_GESTAO_PAGAMENTOS_KEY = 'fp_gestao_pagamentos_rubricas_v1';
-const FP_DB_VERSION = 2;
+const FP_DB_VERSION = 3;
+/** Chaves reservadas para módulos ainda em placeholder (Financeiro / Estoque). */
+const FP_FIN_CONTAS_PAGAR_KEY = 'fp_fin_contas_pagar';
+const FP_FIN_CONTAS_RECEBER_KEY = 'fp_fin_contas_receber';
+const FP_FIN_RELATORIOS_KEY = 'fp_fin_relatorios';
+const FP_EST_FORNECEDORES_KEY = 'fp_est_fornecedores';
+const FP_EST_ESTOQUE_KEY = 'fp_est_estoque';
+const FP_EST_SAIDAS_KEY = 'fp_est_saidas';
 const FP_PEDIDOS_KEY = 'fastparkPedidosCestas';
+/** Registo de todas as áreas que devem ir para o Supabase (snapshot.localStrings). */
+const FP_SNAPSHOT_STORAGE_REGISTRY = [
+    { key: FP_EMPLOYEES_STORE_KEY, area: 'DP — Cadastro / Início' },
+    { key: FP_EMPLOYEES_ATTACHMENTS_IDB_KEY, area: 'DP — Fotos e documentos (bag)' },
+    { key: FP_QUADRO_GERAL_KEY, area: 'Quadro de Postos' },
+    { key: POSTOS_EXTRAS_KEY, area: 'Quadro de Postos (extras)' },
+    { key: FP_UNIDADES_POSTOS_KEY, area: 'Unidades — Postos' },
+    { key: UNI_KEY, area: 'Unidades' },
+    { key: FP_PEDIDOS_KEY, area: 'Gestão de Benefícios' },
+    { key: FERIAS_HIST_KEY, area: 'Férias' },
+    { key: FP_GESTAO_PAGAMENTOS_KEY, area: 'Gestão de Folha de Pagamento' },
+    { key: MOV_CAD_KEY, area: 'Movimentações' },
+    { key: 'fp_vt_cfg', area: 'Vale Transporte' },
+    { key: 'fp_vt_monthly', area: 'Vale Transporte (histórico)' },
+    { key: FALTAS_KEY, area: 'Faltas e Atestados' },
+    { key: FP_LAUDOS_KEY, area: 'Laudos' },
+    { key: FP_SINISTROS_KEY, area: 'Sinistros' },
+    { key: FP_PAGAS_LANCAMENTOS_KEY, area: 'Pagas' },
+    { key: PAGAS_SIGNED_KEY, area: 'Pagas (recibos assinados)' },
+    { key: FP_FIN_CONTAS_PAGAR_KEY, area: 'Financeiro — Contas a pagar' },
+    { key: FP_FIN_CONTAS_RECEBER_KEY, area: 'Financeiro — Contas a receber' },
+    { key: FP_FIN_RELATORIOS_KEY, area: 'Financeiro — Relatórios' },
+    { key: FP_EST_FORNECEDORES_KEY, area: 'Estoque — Fornecedores' },
+    { key: FP_EST_ESTOQUE_KEY, area: 'Estoque' },
+    { key: FP_EST_SAIDAS_KEY, area: 'Estoque — Saídas' },
+    { key: 'fastparkHistorico', area: 'Benefícios (histórico cestas)' },
+    { key: 'fp_audit', area: 'Auditoria' },
+    { key: 'pagasEmpresaPagadora', area: 'Pagas (empresa pagadora)' },
+    { key: 'fp_darkmode', area: 'Preferências UI' }
+];
+function fpCollectAllIntranetLocalStorage(){
+    const out = {};
+    const seen = new Set();
+    function addKey(k){
+        if(!k || seen.has(k)) return;
+        try {
+            const v = localStorage.getItem(k);
+            if(v !== null && v !== undefined){ out[k] = v; seen.add(k); }
+        } catch(e) { console.warn('[FP] snapshot ls', k, e); }
+    }
+    (FP_SNAPSHOT_STORAGE_REGISTRY || []).forEach(function(x){ addKey(x.key); });
+    try {
+        for(let i = 0; i < localStorage.length; i++){
+            const k = localStorage.key(i);
+            if(!k) continue;
+            const kl = k.toLowerCase();
+            if(kl.indexOf('fp_') === 0 || kl.indexOf('fastpark') === 0 || k === 'pagasEmpresaPagadora')
+                addKey(k);
+        }
+    } catch(e2) { console.warn('[FP] snapshot sweep', e2); }
+    return out;
+}
+window.fpCollectAllIntranetLocalStorage = fpCollectAllIntranetLocalStorage;
 let unidadeAditivosTemp = [];
 let unidadeCompactMode = false;
 
@@ -6997,6 +7062,12 @@ function fpSlugAttSeg(s, maxLen){
     return String(s || 'x').replace(/[^\w.\-]/g, '_').replace(/_+/g, '_').slice(0, maxLen || 40);
 }
 async function collectFpIntranetSnapshot(){
+    if(typeof fpFlushAllTabsToLocalStorage === 'function'){
+        try { await fpFlushAllTabsToLocalStorage(); } catch(flushErr) { console.warn('[FP] flush pré-snapshot', flushErr); }
+    }
+    if(typeof fpPersistEmployeeAttBagFromState === 'function'){
+        try { await fpPersistEmployeeAttBagFromState(); } catch(bagErr) { console.warn('[FP] bag pré-snapshot', bagErr); }
+    }
     const attachments = {};
     async function putAtt(relPath, dataUrl){
         if(!dataUrl || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:')) return null;
@@ -7172,28 +7243,25 @@ async function collectFpIntranetSnapshot(){
             competenciaInput: compEl ? compEl.value : ''
         },
         historico: Array.isArray(historico) ? historico : [],
-        localStrings: {
-            [FP_PEDIDOS_KEY]: localStorage.getItem(FP_PEDIDOS_KEY) || '[]',
-            [MOV_CAD_KEY]: localStorage.getItem(MOV_CAD_KEY) || '[]',
-            [POSTOS_EXTRAS_KEY]: localStorage.getItem(POSTOS_EXTRAS_KEY) || '[]',
-            [FP_UNIDADES_POSTOS_KEY]: localStorage.getItem(FP_UNIDADES_POSTOS_KEY) || '[]',
-            [UNI_KEY]: localStorage.getItem(UNI_KEY) || '[]',
-            [FALTAS_KEY]: localStorage.getItem(FALTAS_KEY) || '[]',
-            [FP_EMPLOYEES_STORE_KEY]: JSON.stringify(state.employees || []),
-            [FP_QUADRO_GERAL_KEY]: JSON.stringify(state.quadroGeral || []),
-            [FERIAS_HIST_KEY]: localStorage.getItem(FERIAS_HIST_KEY) || '{}',
-            [PAGAS_SIGNED_KEY]: localStorage.getItem(PAGAS_SIGNED_KEY) || '{}',
-            fastparkHistorico: JSON.stringify(Array.isArray(historico) ? historico : []),
-            fp_vt_cfg: localStorage.getItem('fp_vt_cfg') || '{}',
-            fp_vt_monthly: localStorage.getItem('fp_vt_monthly') || '[]',
-            fp_audit: localStorage.getItem('fp_audit') || '[]',
-            pagasEmpresaPagadora: localStorage.getItem('pagasEmpresaPagadora') || '',
-            fp_darkmode: localStorage.getItem('fp_darkmode') || '0',
-            [FP_PAGAS_LANCAMENTOS_KEY]: JSON.stringify(state.pagas || []),
-            [FP_SINISTROS_KEY]: localStorage.getItem(FP_SINISTROS_KEY) || '[]',
-            [FP_LAUDOS_KEY]: localStorage.getItem(FP_LAUDOS_KEY) || '[]',
-            [FP_GESTAO_PAGAMENTOS_KEY]: localStorage.getItem(FP_GESTAO_PAGAMENTOS_KEY) || '{}'
-        },
+        localStrings: (function(){
+            const ls = typeof fpCollectAllIntranetLocalStorage === 'function'
+                ? fpCollectAllIntranetLocalStorage()
+                : {};
+            try {
+                const bag = window.__FP_EMPLOYEE_ATT_BAG__ || {};
+                ls[FP_EMPLOYEES_ATTACHMENTS_IDB_KEY] = JSON.stringify(bag);
+            } catch(bagLs) { console.warn('[FP] bag snapshot', bagLs); }
+            ls[FP_EMPLOYEES_STORE_KEY] = JSON.stringify(
+                typeof fpSlimEmployeesForLocalStorage === 'function'
+                    ? fpSlimEmployeesForLocalStorage(state.employees || []).slim
+                    : (state.employees || [])
+            );
+            ls[FP_QUADRO_GERAL_KEY] = JSON.stringify(state.quadroGeral || []);
+            ls[FP_PAGAS_LANCAMENTOS_KEY] = JSON.stringify(state.pagas || []);
+            ls.fastparkHistorico = JSON.stringify(Array.isArray(historico) ? historico : []);
+            return ls;
+        })(),
+        modulesIncluded: (FP_SNAPSHOT_STORAGE_REGISTRY || []).map(function(x){ return x.area; }),
         unidadesResolved,
         faltasResolved,
         pagasSignedSlim,
@@ -7264,6 +7332,15 @@ async function applyFpEmbeddedIntranetDb(db, opts){
     Object.keys(ls).forEach(k => {
         if(ls[k] !== undefined && ls[k] !== null) try { localStorage.setItem(k, ls[k]); } catch(e2) { console.warn('localStorage', k, e2); }
     });
+    if(ls[FP_EMPLOYEES_ATTACHMENTS_IDB_KEY]){
+        try {
+            const bagParsed = JSON.parse(ls[FP_EMPLOYEES_ATTACHMENTS_IDB_KEY]);
+            if(bagParsed && typeof bagParsed === 'object'){
+                window.__FP_EMPLOYEE_ATT_BAG__ = bagParsed;
+                fpIdbPut(FP_EMPLOYEES_ATTACHMENTS_IDB_KEY, bagParsed).catch(function(eBag) { console.warn('[FP] IDB bag cloud', eBag); });
+            }
+        } catch(eBagLs) { console.warn('[FP] bag localStrings', eBagLs); }
+    }
     if(!Array.isArray(state.employees) || !state.employees.length){
         if(ls[FP_EMPLOYEES_STORE_KEY]){
             try {
@@ -7451,13 +7528,19 @@ function fpSetEmbeddedStatusLine(msg){
     if(st) st.textContent = msg;
 }
 /** Grava em localStorage o estado de todas as abas antes da nuvem (sem disparar novo auto-save). */
-function fpFlushAllTabsToLocalStorage(){
+async function fpFlushAllTabsToLocalStorage(){
     const prevPause = window.__fpLsHookPause;
     window.__fpLsHookPause = true;
     try {
-        fpSaveEmployeesToLocalStorage();
+        if(typeof syncBeneficiosFuncionariosFromEmployees === 'function') syncBeneficiosFuncionariosFromEmployees();
+        if(typeof fpPersistEmployeeAttBagFromState === 'function'){
+            try { await fpPersistEmployeeAttBagFromState(); } catch(bagE) { console.warn('[FP] flush bag', bagE); }
+        } else {
+            fpSaveEmployeesToLocalStorage();
+        }
         fpSavePagasToLocalStorage();
         fpSaveQuadroGeralToLocalStorage();
+        if(typeof fpPersistPostosQuadroState === 'function') fpPersistPostosQuadroState();
         try { localStorage.setItem('fastparkHistorico', JSON.stringify(historico)); } catch(e1) { console.warn(e1); }
         try { localStorage.setItem(UNI_KEY, JSON.stringify(getUnidades())); } catch(e2) { console.warn(e2); }
         try { localStorage.setItem(FALTAS_KEY, JSON.stringify(getFaltasCad())); } catch(e3) { console.warn(e3); }
@@ -7467,11 +7550,13 @@ function fpFlushAllTabsToLocalStorage(){
         try { localStorage.setItem(MOV_CAD_KEY, JSON.stringify(getMovCad())); } catch(e6) { console.warn(e6); }
         try { localStorage.setItem(POSTOS_EXTRAS_KEY, JSON.stringify(getPostosExtras())); } catch(e7) { console.warn(e7); }
         try { localStorage.setItem(FP_UNIDADES_POSTOS_KEY, JSON.stringify(getUnidadesPostosCatalog())); } catch(e7b) { console.warn(e7b); }
-        try { localStorage.setItem(FP_GESTAO_PAGAMENTOS_KEY, localStorage.getItem(FP_GESTAO_PAGAMENTOS_KEY) || '{}'); } catch(e8) { console.warn(e8); }
-        try { localStorage.setItem('fp_vt_cfg', localStorage.getItem('fp_vt_cfg') || '{}'); } catch(e9) { console.warn(e9); }
-        try { localStorage.setItem('fp_vt_monthly', localStorage.getItem('fp_vt_monthly') || '[]'); } catch(e10) { console.warn(e10); }
-        try { localStorage.setItem(FERIAS_HIST_KEY, localStorage.getItem(FERIAS_HIST_KEY) || '{}'); } catch(e11) { console.warn(e11); }
-        try { localStorage.setItem(FP_PEDIDOS_KEY, localStorage.getItem(FP_PEDIDOS_KEY) || '[]'); } catch(e12) { console.warn(e12); }
+        try { localStorage.setItem(FP_GESTAO_PAGAMENTOS_KEY, JSON.stringify(movGestGetStore())); } catch(e8) { console.warn(e8); }
+        try { localStorage.setItem(FERIAS_HIST_KEY, JSON.stringify(getFeriasHist())); } catch(e11) { console.warn(e11); }
+        try { localStorage.setItem(FP_PEDIDOS_KEY, JSON.stringify(loadPedidos())); } catch(e12) { console.warn(e12); }
+        [FP_FIN_CONTAS_PAGAR_KEY, FP_FIN_CONTAS_RECEBER_KEY, FP_FIN_RELATORIOS_KEY,
+            FP_EST_FORNECEDORES_KEY, FP_EST_ESTOQUE_KEY, FP_EST_SAIDAS_KEY].forEach(function(k){
+            try { if(localStorage.getItem(k) === null) localStorage.setItem(k, '[]'); } catch(_e) {}
+        });
     } finally {
         window.__fpLsHookPause = prevPause;
     }
