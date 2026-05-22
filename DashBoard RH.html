@@ -405,7 +405,7 @@
 <div class="wrap">
   <section class="hero">
     <div class="hero-brand">
-        <img src="Design sem nome.png" alt="Logo FastPark">
+        <img id="fpDashLogo" data-fp-logo src="Design sem nome.png" alt="Logo FastPark">
         <div>
             <h1>Gestão de Colaboradores</h1>
             <p class="hero-subtitle">Visão Geral de Funcionários, Alertas de Vencimentos, Benefícios e Aniversariantes.</p>
@@ -424,13 +424,8 @@
     <button onclick="editSelectedEmployee()" title="Editar funcionário selecionado">✏️ Editar Cadastro</button>
     <button onclick="terminateSelectedEmployee()" title="Desligar funcionário selecionado">⛔ Desligar Funcionário</button>
     <button onclick="deleteSelectedEmployee()" title="Excluir permanentemente o cadastro do funcionário" style="border-color:#c53030;color:#c53030;">🗑️ Excluir Cadastro</button>
-    <button onclick="exportToExcel()" title="Exportar filtro atual para Excel">📊 Exportar Excel</button>
-    <button onclick="exportToPDF()" title="Exportar relatório em PDF">📄 Exportar PDF</button>
-    <button onclick="exportAlertsPDF()" title="PDF com alertas de vencimentos">⚠️ PDF Alertas</button>
-    <button onclick="sendEmailAlerts()" title="Gerar e-mail com alertas pendentes">✉️ E-mail Alertas</button>
+    <button onclick="openRelatorioPersonalizadoModal()" title="Excel com todos os funcionários — escolha os campos da ficha">📋 Relatório personalizado</button>
     <button onclick="exportRelatorioGeral()" title="Relatório geral completo em Excel (todos os funcionários do filtro)">📑 Relatório Geral</button>
-    <button onclick="toggleCharts()" id="btnCharts" title="Mostrar/ocultar gráficos">📈 Gráficos</button>
-    <button onclick="toggleAudit()" id="btnAudit" title="Mostrar/ocultar histórico">📋 Histórico</button>
   </div>
 
   <article class="panel" id="employeeFormPanel" style="display:none; margin-bottom:12px;">
@@ -446,22 +441,23 @@
       <div class="f"><label for="empRaca">Raça / Cor</label><input id="empRaca" placeholder="Raça / Cor"></div>
       <div class="f"><label for="empInstrucao">Grau de instrução</label><input id="empInstrucao" placeholder="Grau de instrução"></div>
       <div class="f"><label for="empPcd">PCD</label><input id="empPcd" placeholder="PCD / Tipo"></div>
+      <div class="f"><label for="empRg">RG</label><input id="empRg" placeholder="RG"></div>
+      <div class="f"><label for="empCnhNumero">Número CNH</label><input id="empCnhNumero" placeholder="Registro / número"></div>
+      <div class="f"><label for="empCnhCategoria">Categoria CNH</label><input id="empCnhCategoria" placeholder="Ex: AB, D"></div>
+      <div class="f"><label for="empCnh">Vencimento CNH</label><input id="empCnh" type="date"><span id="empCnhFmt" class="date-fmt" aria-live="polite"></span></div>
 
       <div style="grid-column:1 / -1; font-weight:800; font-size:11px; color:var(--fp-mid-gray); text-transform:uppercase; letter-spacing:.5px;">Dados Contratuais</div>
-      <div class="f"><label for="empEmpresa">Empresa</label><input id="empEmpresa" placeholder="Empresa"><div id="errEmpEmpresa" class="field-error"></div></div>
+      <div class="f"><label for="empEmpresa">Registro</label><select id="empEmpresa"><option value="">Selecione a empresa</option></select><div id="errEmpEmpresa" class="field-error"></div></div>
       <div class="f"><label for="empStatus">Status</label><select id="empStatus"><option value="Funcionário Ativo">Funcionário Ativo</option><option value="Funcionário Desligado">Funcionário Desligado</option><option value="FÉRIAS">FÉRIAS</option></select></div>
       <div class="f"><label for="empAdmissao">Data de Admissão (dd/mm/aaaa)</label><input id="empAdmissao" type="text" inputmode="numeric" placeholder="dd/mm/aaaa" maxlength="10" autocomplete="off"><div id="errEmpAdmissao" class="field-error"></div></div>
       <div class="f"><label for="empTrienios">Triênios (auto)</label><input id="empTrienios" readonly placeholder="0"></div>
       <div class="f"><label for="empCargo">Cargo</label><input id="empCargo" placeholder="Cargo"><div id="errEmpCargo" class="field-error"></div></div>
       <div class="f"><label for="empNivel">Nível</label><input id="empNivel" placeholder="Nível"></div>
       <div class="f"><label for="empUnidade">Unidade / Atuando</label><select id="empUnidade"><option value="">Selecione</option></select></div>
-
-      <div style="grid-column:1 / -1; font-weight:800; font-size:11px; color:var(--fp-mid-gray); text-transform:uppercase; letter-spacing:.5px;">Férias</div>
-      <div class="f"><label for="empInicioFerias">Início de Férias (atual)</label><input id="empInicioFerias" type="date"></div>
-      <div class="f"><label for="empFimFerias">Fim de Férias (atual)</label><input id="empFimFerias" type="date"></div>
-      <div class="f"><label for="empObsFerias">Observação de Férias</label><input id="empObsFerias" placeholder="Ex: retorno antecipado"></div>
-      <div class="f" style="display:flex;align-items:flex-end;"><button type="button" onclick="addFeriasToHistory()">Adicionar ao histórico</button></div>
-      <div class="f" style="grid-column:1 / -1;"><label for="empFeriasHistorico">Histórico de Férias</label><textarea id="empFeriasHistorico" rows="4" placeholder="Cada linha: dd/mm/aaaa a dd/mm/aaaa - observação"></textarea></div>
+      <div class="f"><label for="empEscala">Escala</label><select id="empEscala"><option value="">Selecione</option></select></div>
+      <div class="f"><label for="empCarga">Carga horária</label><input id="empCarga" placeholder="Ex: 44h"></div>
+      <div class="f"><label for="empJornada">Jornada</label><input id="empJornada" placeholder="Jornada"></div>
+      <div class="f"><label for="empCestas">Cesta</label><select id="empCestas"><option value="">—</option><option value="SIM">SIM</option><option value="NÃO">NÃO</option></select></div>
 
       <div style="grid-column:1 / -1; font-weight:800; font-size:11px; color:var(--fp-mid-gray); text-transform:uppercase; letter-spacing:.5px;">Dependentes</div>
       <div class="f"><label for="empDependentesQtd">Quantidade de Dependentes</label><input id="empDependentesQtd" type="number" min="0" step="1" placeholder="0"></div>
@@ -471,19 +467,20 @@
       <div class="f"><label for="empSalario">Salário</label><input id="empSalario" type="number" step="0.01" placeholder="0,00"></div>
       <div class="f"><label for="empAjuda">Ajuda de Custos</label><input id="empAjuda" type="number" step="0.01" placeholder="0,00"></div>
       <div class="f"><label for="empVr">VR</label><input id="empVr" type="number" step="0.01" placeholder="0,00"></div>
-      <div class="f"><label for="empVt">Vale Transporte</label><input id="empVt" placeholder="SIM/NÃO"></div>
-      <div class="f"><label for="empVtTipo">Tipo de VT</label><input id="empVtTipo" placeholder="Tipo"></div>
-      <div class="f"><label for="empVtValor">VT unitário (R$)</label><input id="empVtValor" type="number" step="0.01" min="0" placeholder="0,00"></div>
+      <div class="f"><label for="empVt">Vale Transporte</label><select id="empVt"><option value="">—</option><option value="SIM">SIM</option><option value="NÃO">NÃO</option></select></div>
+      <div class="f"><label for="empVtTipo">Tipo de VT</label><select id="empVtTipo"><option value="">Selecione o tipo</option></select></div>
+      <div class="f"><label for="empVtValor">VT unitário (R$)</label><input id="empVtValor" type="number" step="0.01" min="0" placeholder="0,00" readonly></div>
+      <div class="f"><label for="empVtIdaVolta">VT ida + volta (R$)</label><input id="empVtIdaVolta" type="number" step="0.01" min="0" placeholder="0,00" readonly></div>
       <div class="f"><label for="empDepBeneficios">Dependentes p/ Benefícios</label><input id="empDepBeneficios" type="number" min="0" step="1" placeholder="0"></div>
-      <div class="f"><label for="empPlano">Plano de Saúde</label><input id="empPlano" placeholder="Plano"></div>
-      <div class="f"><label for="empDepPlano">Dependentes no Plano</label><input id="empDepPlano" type="number" min="0" step="1" placeholder="0"></div>
-      <div class="f"><label for="empValorPlano">Valor do Plano</label><input id="empValorPlano" type="number" step="0.01" placeholder="0,00"></div>
-      <div class="f"><label for="empOdonto">Odonto</label><input id="empOdonto" placeholder="Plano odontológico"></div>
+      <div class="f"><label for="empPlano">Plano de Saúde (titular)</label><select id="empPlano"><option value="">—</option></select></div>
+      <div class="f"><label for="empValorPlano">Saúde — valor titular (R$)</label><input id="empValorPlano" type="number" step="0.01" placeholder="0,00" readonly></div>
+      <div class="f"><label for="empSaudeDepValor">Saúde — valor dependente (R$)</label><input id="empSaudeDepValor" type="number" step="0.01" placeholder="0,00" readonly></div>
+      <div class="f"><label for="empDepPlano">Dependentes no plano (qtd)</label><input id="empDepPlano" type="number" min="0" step="1" placeholder="0"></div>
+      <div class="f"><label for="empOdonto">Odonto (titular)</label><select id="empOdonto"><option value="">—</option></select></div>
+      <div class="f"><label for="empOdontoTitularValor">Odonto — valor titular (R$)</label><input id="empOdontoTitularValor" type="number" step="0.01" placeholder="0,00" readonly></div>
+      <div class="f"><label for="empOdontoDepValor">Odonto — valor dependente (R$)</label><input id="empOdontoDepValor" type="number" step="0.01" placeholder="0,00" readonly></div>
       <div class="f"><label for="empCargoConfianca">Cargo de confiança</label><input id="empCargoConfianca" type="number" step="0.01" placeholder="0,00"></div>
       <div class="f"><label for="empPericulosidade">Periculosidade</label><input id="empPericulosidade" type="number" step="0.01" placeholder="0,00"></div>
-      <div class="f"><label for="empCnhNumero">Número CNH</label><input id="empCnhNumero" placeholder="Registro / número"></div>
-      <div class="f"><label for="empCnhCategoria">Categoria CNH</label><input id="empCnhCategoria" placeholder="Ex: AB, D"></div>
-      <div class="f"><label for="empCnh">Vencimento CNH</label><input id="empCnh" type="date"><span id="empCnhFmt" class="date-fmt" aria-live="polite"></span></div>
       <div class="f"><label for="empAso">Vencimento ASO</label><input id="empAso" type="date"></div>
 
       <div style="grid-column:1 / -1; font-weight:800; font-size:11px; color:var(--fp-mid-gray); text-transform:uppercase; letter-spacing:.5px;">Banco / Agência / Conta</div>
@@ -545,16 +542,44 @@
 
   <section class="main" id="mainSection">
     <div id="mainLeftColumn" style="display: flex; flex-direction: column; gap: 12px;">
-      <article class="panel">
-        <div class="head">
-          <h2>Ficha Cadastral</h2>
-          <div style="display:flex;align-items:center;gap:8px;">
-            <button onclick="exportFichaExcel()" style="padding:4px 10px;border:1px solid var(--l);border-radius:4px;background:var(--p);color:var(--t);font-size:11px;font-weight:700;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='#0f8a57';this.style.color='#0f8a57'" onmouseout="this.style.borderColor='var(--l)';this.style.color='var(--t)'" title="Exportar ficha individual em Excel">📥 Excel</button>
-            <button onclick="exportFichaPDF()" style="padding:4px 10px;border:1px solid var(--l);border-radius:4px;background:var(--p);color:var(--t);font-size:11px;font-weight:700;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='#c53030';this.style.color='#c53030'" onmouseout="this.style.borderColor='var(--l)';this.style.color='var(--t)'" title="Imprimir ficha individual em PDF">📄 PDF</button>
-            <span id="selectionInfo" class="tag n">Aguardando planilha</span>
+      <article class="panel" id="cadFichaPanel">
+        <div class="head" style="flex-wrap:wrap;align-items:center;gap:8px;">
+          <h2 style="margin:0;">Ficha Cadastral</h2>
+          <div class="cad-ficha-tabs" style="display:flex;flex-wrap:wrap;gap:6px;flex:1;min-width:200px;">
+            <button type="button" class="btn-cad-ficha-tab btn-tab-active" data-cad-tab="ficha" id="btnCadFichaTabFicha" onclick="switchCadastroFichaTab('ficha')">Ficha</button>
+            <button type="button" class="btn-cad-ficha-tab btn-tab" data-cad-tab="aso" id="btnCadFichaTabAso" onclick="switchCadastroFichaTab('aso')">Renovação ASO</button>
+            <button type="button" class="btn-cad-ficha-tab btn-tab" data-cad-tab="salario" id="btnCadFichaTabSalario" onclick="switchCadastroFichaTab('salario')">Alterações salariais</button>
           </div>
+          <span id="selectionInfo" class="tag n">Aguardando planilha</span>
         </div>
-        <div class="body" id="profilePanel"><div class="empty">Carregue a planilha para visualizar os dados.</div></div>
+        <div id="cadTabPanelFicha" class="cad-ficha-tab-panel body">
+          <div id="profilePanel"><div class="empty">Carregue a planilha para visualizar os dados.</div></div>
+        </div>
+        <div id="cadTabPanelAso" class="cad-ficha-tab-panel body" style="display:none;">
+          <div id="cadTabAsoSemFunc" class="empty" style="display:none;padding:12px 0;">Selecione um funcionário no filtro acima.</div>
+          <div id="cadTabAsoConteudo" style="display:grid;grid-template-columns:repeat(3,minmax(180px,1fr));gap:10px;align-items:end;">
+            <div class="f"><label>Funcionário</label><input id="asoRenFuncNome" type="text" readonly placeholder="—"></div>
+            <div class="f"><label for="asoRenVencAtual">Vencimento atual</label><input id="asoRenVencAtual" type="date" readonly></div>
+            <div class="f"><label for="asoRenData">Data da renovação</label><input id="asoRenData" type="date"></div>
+            <div class="f"><label for="asoRenVencNovo">Novo vencimento</label><input id="asoRenVencNovo" type="date"></div>
+            <div class="f" style="grid-column:span 2;"><label for="asoRenObs">Observação</label><input id="asoRenObs" placeholder="Opcional"></div>
+            <div><button type="button" onclick="salvarRenovacaoAso()" style="background:#0f8a57;color:#fff;border:1px solid #0f8a57;border-radius:6px;padding:8px 14px;font-weight:700;">Registrar renovação</button></div>
+          </div>
+          <div class="inner" id="asoRenHistList" style="max-height:280px;overflow-y:auto;margin-top:12px;"><div class="empty">Nenhuma renovação para este funcionário.</div></div>
+        </div>
+        <div id="cadTabPanelSalario" class="cad-ficha-tab-panel body" style="display:none;">
+          <div id="cadTabSalSemFunc" class="empty" style="display:none;padding:12px 0;">Selecione um funcionário no filtro acima.</div>
+          <div id="cadTabSalConteudo" style="display:grid;grid-template-columns:repeat(3,minmax(180px,1fr));gap:10px;align-items:end;">
+            <div class="f"><label>Funcionário</label><input id="salAltFuncNome" type="text" readonly placeholder="—"></div>
+            <div class="f"><label for="salAltAtual">Salário atual (R$)</label><input id="salAltAtual" type="number" step="0.01" readonly></div>
+            <div class="f"><label for="salAltNovo">Salário novo (R$)</label><input id="salAltNovo" type="number" step="0.01" min="0" oninput="salAltCalcPct()"></div>
+            <div class="f"><label for="salAltPct">% reajuste</label><input id="salAltPct" readonly placeholder="0,00%"></div>
+            <div class="f"><label for="salAltData">Data do reajuste</label><input id="salAltData" type="date"></div>
+            <div class="f" style="grid-column:span 2;"><label for="salAltMotivo">Motivo</label><input id="salAltMotivo" placeholder="Motivo do reajuste"></div>
+            <div><button type="button" onclick="salvarAlteracaoSalarial()" style="background:#0f8a57;color:#fff;border:1px solid #0f8a57;border-radius:6px;padding:8px 14px;font-weight:700;">Salvar reajuste</button></div>
+          </div>
+          <div class="inner" id="salAltHistList" style="max-height:280px;overflow-y:auto;margin-top:12px;"><div class="empty">Nenhuma alteração para este funcionário.</div></div>
+        </div>
       </article>
 
       <!-- MOVIMENTAÇÕES: logo abaixo da ficha, mesma coluna -->
@@ -577,6 +602,7 @@
           <div class="empty">Selecione um funcionário para ver o histórico de sinistros e parcelas.</div>
         </div>
       </article>
+
     </div>
 
     <div id="mainRightColumn" style="display: flex; flex-direction: column; gap: 12px;">
@@ -595,7 +621,7 @@
                     <div class="panel list"><h3>🟡 CNH a Vencer (90d)</h3><div class="inner" id="expiringCnhList"></div></div>
                     <div class="panel list"><h3>🏖️ Férias Próximas (30d)</h3><div class="inner" id="ferias30List"></div></div>
                     <div class="panel list"><h3>🟠 Em Férias Agora</h3><div class="inner" id="feriasAgoraList"></div></div>
-                    <div class="panel list"><h3>📅 Data Limite (90d)</h3><div class="inner" id="feriasLimite90List"></div></div>
+                    <div class="panel list"><h3>📅 Data limite férias (90d)</h3><div class="inner" id="feriasLimite90List"></div></div>
                 </div>
             </div>
         </article>
@@ -629,6 +655,20 @@
 
 <!-- ÁREA DE IMPRESSÃO (preenchida via JS antes de window.print()) -->
 <div id="printArea" style="display:none;"></div>
+<div id="relPersonalizadoModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;align-items:center;justify-content:center;padding:16px;">
+  <div style="background:var(--p);border:1px solid var(--l);border-radius:10px;max-width:720px;width:100%;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;">
+    <div style="padding:12px 16px;border-bottom:1px solid var(--l);display:flex;justify-content:space-between;align-items:center;">
+      <strong>Relatório personalizado (Excel) — todos os funcionários</strong>
+      <button type="button" onclick="closeRelatorioPersonalizadoModal()" style="border:none;background:transparent;font-size:18px;cursor:pointer;">✕</button>
+    </div>
+    <div id="relPersonalizadoFields" style="padding:12px 16px;overflow-y:auto;flex:1;display:grid;grid-template-columns:repeat(2,1fr);gap:6px 14px;font-size:12px;"></div>
+    <div style="padding:12px 16px;border-top:1px solid var(--l);display:flex;gap:8px;justify-content:flex-end;">
+      <button type="button" onclick="relPersonalizadoToggleAll(true)">Marcar todos</button>
+      <button type="button" onclick="relPersonalizadoToggleAll(false)">Desmarcar</button>
+      <button type="button" onclick="exportRelatorioPersonalizadoExcel()" style="background:#0f8a57;color:#fff;border:1px solid #0f8a57;border-radius:6px;padding:8px 14px;font-weight:700;">Exportar Excel</button>
+    </div>
+  </div>
+</div>
 
 <!-- MODAL ANIVERSARIANTES -->
 <div id="birthdayModalOverlay" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeBirthdayModal()">
@@ -686,6 +726,18 @@
 (function () {
     if (window.parent !== window) document.documentElement.classList.add('fp-embedded');
 })();
+function fpLogoFileName(){ return 'Design sem nome.png'; }
+function fpLogoUrl(){
+    try { return new URL(fpLogoFileName(), document.baseURI || window.location.href).href; }
+    catch(e) { return fpLogoFileName(); }
+}
+function fpApplyLogoImages(){
+    const url = fpLogoUrl();
+    document.querySelectorAll('[data-fp-logo], #fpDashLogo, .hero-brand img').forEach(el => {
+        if(el && el.tagName === 'IMG') el.src = url;
+    });
+}
+
 // ESTADO GLOBAL
 const state = { employees: [], cnhMap: new Map(), cnhColBDByNome: new Map(), cnhColNumeroByNome: new Map(), cnhColCategoriaByNome: new Map(), ferias: [], movimentacoes: [], selected: null, chartsVisible: false, auditVisible: false };
 const auditLog = JSON.parse(localStorage.getItem('fp_audit') || '[]');
@@ -694,6 +746,15 @@ let employeeEditIndex = -1;
 let employeeDocsDraft = [];
 let employeePhotoDraft = '';
 const FERIAS_HIST_KEY = 'fp_ferias_hist';
+const FP_ASO_RENOV_KEY = 'fp_aso_renov_hist';
+const FP_SALARIO_HIST_KEY = 'fp_salario_hist';
+const FP_REF_VT_TIPOS_KEY = 'fp_ref_vt_tipos';
+const FP_REF_SAUDE_KEY = 'fp_ref_saude';
+const FP_REF_ODONTO_KEY = 'fp_ref_odonto';
+const FP_REF_EMPRESAS_KEY = 'fp_ref_empresas';
+const ESCALA_OPCOES = ['5x2', '6x1', '6x2', '12x36', '8h', '44h'];
+let fpRefCache = { vtTipos: [], saude: null, odonto: null, empresas: [] };
+let cadastroFichaTabAtivo = 'ficha';
 const DASH_MODE = (new URLSearchParams(window.location.search).get('view') || 'cadastro').toLowerCase();
 const IS_INICIO_VIEW = DASH_MODE === 'inicio';
 const IS_CADASTRO_VIEW = !IS_INICIO_VIEW;
@@ -811,10 +872,15 @@ const EF = {
     fotoPreview: document.getElementById('empFotoPreview'),
     docs: document.getElementById('empDocs'),
     docsList: document.getElementById('empDocsList'),
-    inicioFerias: document.getElementById('empInicioFerias'),
-    fimFerias: document.getElementById('empFimFerias'),
-    obsFerias: document.getElementById('empObsFerias'),
-    feriasHistorico: document.getElementById('empFeriasHistorico'),
+    rg: document.getElementById('empRg'),
+    escala: document.getElementById('empEscala'),
+    carga: document.getElementById('empCarga'),
+    jornada: document.getElementById('empJornada'),
+    cestas: document.getElementById('empCestas'),
+    vtIdaVolta: document.getElementById('empVtIdaVolta'),
+    saudeDepValor: document.getElementById('empSaudeDepValor'),
+    odontoTitularValor: document.getElementById('empOdontoTitularValor'),
+    odontoDepValor: document.getElementById('empOdontoDepValor'),
     dependentesQtd: document.getElementById('empDependentesQtd'),
     dependentesNomes: document.getElementById('empDependentesNomes')
 };
@@ -1793,7 +1859,9 @@ function build(r) {
         sexo: one(r, F.sexo), estadoCivil: one(r, F.estadoCivil), raca: one(r, F.raca), jornada: one(r, F.jornada),
         carga: one(r, F.carga), instrucao: one(r, F.instrucao), deficiencia: one(r, F.deficiencia),
         camisa: one(r, F.camisa), calca: one(r, F.calca), sapato: one(r, F.sapato),
-        codigoRH: one(r, F.codigoRH), codigoESocial: one(r, F.codigoESocial)
+        codigoRH: one(r, F.codigoRH), codigoESocial: one(r, F.codigoESocial),
+        escala: one(r, ['ESCALA','JORNADA ESCALA']) || one(r, F.jornada),
+        dataLimiteFerias: one(r, ['DATA LIMITE','DATA_LIMITE','DATA LIMITE FERIAS','DATA LIMITE FÉRIAS'])
     };
 }
 
@@ -2215,11 +2283,16 @@ function getDataLimite90(){
     const lim = new Date(t); lim.setDate(lim.getDate() + 90);
     const seen = new Set();
     const out = [];
-    (state.ferias || []).forEach(f => {
-        const d = dparse(f.dataLimite);
-        if(!d || d < t || d > lim || seen.has(f.nome)) return;
-        seen.add(f.nome);
-        out.push({ nome: f.nome, empresa: f.empresa, dataLimite: f.dataLimite });
+    const pushLim = (nome, empresa, dataLimite) => {
+        const d = dparse(dataLimite);
+        if(!d || d < t || d > lim || seen.has(nome)) return;
+        seen.add(nome);
+        out.push({ nome, empresa: empresa || '', dataLimite });
+    };
+    (state.ferias || []).forEach(f => pushLim(f.nome, f.empresa, f.dataLimite));
+    (state.employees || []).forEach(e => {
+        if(!e.dataLimiteFerias || seen.has(e.nome)) return;
+        pushLim(e.nome, e.empresa, e.dataLimiteFerias);
     });
     return out.sort((a,b)=>(dparse(a.dataLimite)||0)-(dparse(b.dataLimite)||0));
 }
@@ -2269,6 +2342,7 @@ function applyFilters() {
         try { renderBenefitsSummary(list); } catch(e) { console.error('[ERRO] renderBenefitsSummary:', e); }
         try { renderMovimentacoes(); } catch(e) { console.error('[ERRO] renderMovimentacoes:', e); }
         try { renderDashCadastroSinistrosHistorico(); } catch(e) { console.error('[ERRO] renderDashCadastroSinistrosHistorico:', e); }
+        try { refreshCadastroFichaTabs(); } catch(e) { console.error('[ERRO] refreshCadastroFichaTabs:', e); }
         if(IS_INICIO_VIEW) {
             renderCharts(list);
         } else if(state.chartsVisible) {
@@ -2351,6 +2425,7 @@ function configureDashboardViewMode(){
     if(summaryTablesSection) summaryTablesSection.style.display = 'none';
     if(btnChartsInicio) btnChartsInicio.style.display = 'none';
     if(dashInicioSn) dashInicioSn.style.display = 'none';
+    if(IS_CADASTRO_VIEW) switchCadastroFichaTab(cadastroFichaTabAtivo || 'ficha');
 }
 
 function renderMetrics(list) {
@@ -2389,18 +2464,23 @@ function renderProfile(e, qtd) {
     const fotoDisplay = fpResolveEmployeeFotoUrl(e);
     const cd = daysTo(e.cnh), ad = daysTo(e.aso), xd = daysSince(e.admissao);
     const tc = tempoDeCasaLabels(e.admissao);
-    const tempoPlanilha = [e.tempo, e.faixa].filter(Boolean).join(' · ');
     const addr = [e.endereco, e.bairro, e.cidade, e.uf, e.cep].filter(Boolean).join(' • ');
     const stRaw = String(e.status || '');
     const st = stRaw.includes('Deslig') ? 'd' : stRaw.includes('FÉR') ? 'w' : 'ok';
+    const vtIv = Number(e.vtIdaVolta) > 0 ? e.vtIdaVolta : (Number(e.vtValor) > 0 ? Number(e.vtValor) * 2 : 0);
     const part1 = [
-        ['Empresa', e.empresa], ['Status', e.status], ['Admissão', fdate(e.admissao)], ['Tempo de casa (automático)', tc.linhaGrelha],
-        ...(tempoPlanilha ? [['Tempo / faixa (planilha)', tempoPlanilha]] : []),
-        ['Cargo', e.cargo], ['Nível', e.nivel], ['Atuando (Unidade)', e.atuando], ['Jornada', e.jornada],
+        ['Registro', e.empresa], ['Status', e.status], ['Admissão', fdate(e.admissao)], ['Tempo de casa (automático)', tc.linhaGrelha],
+        ['Cargo', e.cargo], ['Nível', e.nivel], ['Atuando (Unidade)', e.atuando], ['Escala', e.escala || '—'],
+        ['Carga horária', e.carga || '—'], ['Jornada', e.jornada || '—'],
         ['Salário Base', fmoney(e.salario)], ['Ajuda de custos', fmoney(e.ajuda)], ['Vale Refeição', fmoney(e.vr)], ['Cesta', e.cestas || 'NÃO'],
         ['Vale transporte', e.vt || '—'], ['Tipo VT', e.vtTipo || '—'], ['VT unitário', Number(e.vtValor) > 0 ? fmoney(e.vtValor) : '—'],
-        ['Plano de saúde', e.plano], ['Dependentes no plano', e.depPlano || 0], ['Dependentes p/ benefícios', e.depBeneficios || 0], ['Valor plano', fmoney(e.valorPlano)],
-        ['Desconto plano', fmoney(e.descontoPlano)], ['Odonto', e.odonto], ['Cargo de confiança', fmoney(e.cargoConfianca || 0)], ['Periculosidade', fmoney(e.periculosidade || 0)],
+        ['VT ida + volta', vtIv > 0 ? fmoney(vtIv) : '—'],
+        ['Plano de saúde (titular)', e.plano], ['Saúde — valor titular', fmoney(e.valorPlano)], ['Saúde — valor dependente', fmoney(e.saudeDepValor || 0)],
+        ['Dependentes no plano', e.depPlano || 0], ['Dependentes p/ benefícios', e.depBeneficios || 0],
+        ['Desconto plano', fmoney(e.descontoPlano)], ['Odonto (titular)', e.odonto],
+        ['Odonto — valor titular', fmoney(e.odontoTitularValor || 0)], ['Odonto — valor dependente', fmoney(e.odontoDepValor || 0)],
+        ['Data limite férias', fdate(e.dataLimiteFerias)],
+        ['Cargo de confiança', fmoney(e.cargoConfianca || 0)], ['Periculosidade', fmoney(e.periculosidade || 0)],
         ['Total folha (remuneração)', fmoney(folhaRemuneracao(e))]
     ];
     const feriasStore = JSON.parse(localStorage.getItem(FERIAS_HIST_KEY) || '{}');
@@ -2420,8 +2500,9 @@ function renderProfile(e, qtd) {
         };
     });
     const part2 = [
-        ['CNH', formatCnhDisplay(e)], ['Número CNH', e.cnhNumero || '—'], ['Categoria CNH', e.cnhCategoria || '—'], ['Vencimento CNH', fdate(e.cnh)], ['Vencimento ASO', fdate(e.aso)],
-        ['CPF', e.cpf], ['RG', e.rg], ['Telefone Contato', e.telefone], ['Nascimento', fdate(e.nascimento)],
+        ['CPF', e.cpf], ['RG', e.rg || '—'], ['Telefone Contato', e.telefone], ['Nascimento', fdate(e.nascimento)],
+        ['Número CNH', e.cnhNumero || '—'], ['Categoria CNH', e.cnhCategoria || '—'], ['Vencimento CNH', fdate(e.cnh)],
+        ['Vencimento ASO', fdate(e.aso)],
         ['Idade Atual', e.idade], ['Estado civil', e.estadoCivil], ['Raça / Cor', e.raca], ['Grau de instrução', e.instrucao],
         ['PCD', e.deficiencia], ['Triênios', e.trienios || '0'],
         ['Banco / Agência / Conta', [e.banco, e.agencia, e.conta].filter(Boolean).join(' • ')], ['Endereço Completo', addr],
@@ -2445,7 +2526,7 @@ function renderProfile(e, qtd) {
                     <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px;">
                         ${pill(st, e.status)}
                         ${pill('n', `Unidade: ${e.atuando || '—'}`)}
-                        ${pill('n', `Empresa: ${e.empresa || '—'}`)}
+                        ${pill('n', `Registro: ${e.empresa || '—'}`)}
                     </div>
                     <div class="mini">
                         <div class="mk"><div class="x">Salário</div><div class="y">${esc(fmoney(e.salario))}</div></div>
@@ -3443,7 +3524,6 @@ function openEmployeeForm(emp = null){
     clearEmployeeFormErrors();
     if(emp){
         EF.nome.value = emp.nome || '';
-        EF.empresa.value = emp.empresa || '';
         EF.status.value = emp.status || 'Funcionário Ativo';
         EF.admissao.value = emp.admissao ? fdate(emp.admissao) : '';
         EF.cargo.value = emp.cargo || '';
@@ -3488,13 +3568,15 @@ function openEmployeeForm(emp = null){
         EF.sapato.value = emp.sapato || '';
         EF.mae.value = emp.mae || '';
         EF.pai.value = emp.pai || '';
-        const feriasStore = JSON.parse(localStorage.getItem(FERIAS_HIST_KEY) || '{}');
-        const feriasRows = Array.isArray(feriasStore[emp.nome]) ? feriasStore[emp.nome] : [];
-        const feriasTop = feriasRows[0] || null;
-        EF.inicioFerias.value = toInputDate(feriasTop?.dataInicio || emp.inicioFerias);
-        EF.fimFerias.value = toInputDate(feriasTop?.dataFim || emp.fimFerias);
-        EF.obsFerias.value = emp.obsFerias || '';
-        EF.feriasHistorico.value = [...normalizeFeriasHistory(emp.feriasHistorico), ...feriasRows.map(r => `${fdate(r.dataInicio)} a ${fdate(r.dataFim)}${r.periodoAquisitivo ? ' - ' + r.periodoAquisitivo : ''}`)].join('\n');
+        if(EF.rg) EF.rg.value = emp.rg || '';
+        if(EF.escala) EF.escala.value = emp.escala || '';
+        if(EF.carga) EF.carga.value = emp.carga || '';
+        if(EF.jornada) EF.jornada.value = emp.jornada || '';
+        if(EF.cestas) EF.cestas.value = String(emp.cestas || '').toUpperCase() === 'SIM' ? 'SIM' : (String(emp.cestas || '').toUpperCase() === 'NÃO' || String(emp.cestas || '').toUpperCase() === 'NAO' ? 'NÃO' : '');
+        if(EF.vtIdaVolta) EF.vtIdaVolta.value = Number(emp.vtIdaVolta || 0) || (Number(emp.vtValor || 0) * 2);
+        if(EF.saudeDepValor) EF.saudeDepValor.value = Number(emp.saudeDepValor || 0);
+        if(EF.odontoTitularValor) EF.odontoTitularValor.value = Number(emp.odontoTitularValor || 0);
+        if(EF.odontoDepValor) EF.odontoDepValor.value = Number(emp.odontoDepValor || 0);
         EF.dependentesQtd.value = Number(emp.dependentesQtd || 0);
         EF.dependentesNomes.value = emp.dependentesNomes || '';
         employeePhotoDraft = emp.foto || '';
@@ -3505,6 +3587,12 @@ function openEmployeeForm(emp = null){
         clearEmployeeForm();
     }
     refreshFormDateBrHints();
+    fillEmpRegistroSelect(emp ? (emp.empresa || '') : '');
+    fillEmpEscalaSelect();
+    fillEmpVtTipoSelect();
+    fillEmpBeneficioSelects();
+    syncEmpVtFromTipo();
+    syncEmpBeneficioFromSelects();
     EF.panel.style.display = 'block';
     populateCadastroUnitOptions();
 }
@@ -3553,7 +3641,7 @@ function saveEmployeeForm(){
     const nome = EF.nome.value.trim();
     let hasError = false;
     if(!nome){ setFieldError(EF.nome, 'errEmpNome', 'Nome é obrigatório.'); hasError = true; }
-    if(!EF.empresa.value.trim()){ setFieldError(EF.empresa, 'errEmpEmpresa', 'Empresa é obrigatória.'); hasError = true; }
+    if(!EF.empresa || !EF.empresa.value.trim()){ setFieldError(EF.empresa, 'errEmpEmpresa', 'Selecione o registro (empresa).'); hasError = true; }
     const admStr = EF.admissao.value.trim();
     if(!admStr){ setFieldError(EF.admissao, 'errEmpAdmissao', 'Data de admissão é obrigatória.'); hasError = true; }
     else if(!dparse(admStr)){ setFieldError(EF.admissao, 'errEmpAdmissao', 'Data inválida. Use dd/mm/aaaa.'); hasError = true; }
@@ -3612,10 +3700,15 @@ function saveEmployeeForm(){
         sapato: EF.sapato.value.trim(),
         mae: EF.mae.value.trim(),
         pai: EF.pai.value.trim(),
-        inicioFerias: EF.inicioFerias.value || '',
-        fimFerias: EF.fimFerias.value || '',
-        obsFerias: EF.obsFerias.value.trim(),
-        feriasHistorico: normalizeFeriasHistory(EF.feriasHistorico.value),
+        rg: EF.rg?.value?.trim() || '',
+        escala: EF.escala?.value || '',
+        carga: EF.carga?.value?.trim() || '',
+        jornada: EF.jornada?.value?.trim() || '',
+        cestas: EF.cestas?.value || '',
+        vtIdaVolta: Number(EF.vtIdaVolta?.value || 0),
+        saudeDepValor: Number(EF.saudeDepValor?.value || 0),
+        odontoTitularValor: Number(EF.odontoTitularValor?.value || 0),
+        odontoDepValor: Number(EF.odontoDepValor?.value || 0),
         dependentesQtd: Number(EF.dependentesQtd.value || 0),
         dependentesNomes: EF.dependentesNomes.value.trim(),
         foto: employeePhotoDraft || '',
@@ -3663,7 +3756,7 @@ EF.cpf.addEventListener('input', () => { EF.cpf.value = maskCpf(EF.cpf.value); c
 EF.telefone.addEventListener('input', () => { EF.telefone.value = maskTelefone(EF.telefone.value); clearFieldError(EF.telefone, 'errEmpTelefone'); });
 EF.cep.addEventListener('input', () => { EF.cep.value = maskCep(EF.cep.value); clearFieldError(EF.cep, 'errEmpCep'); });
 EF.nome.addEventListener('input', () => clearFieldError(EF.nome, 'errEmpNome'));
-EF.empresa.addEventListener('input', () => clearFieldError(EF.empresa, 'errEmpEmpresa'));
+if(EF.empresa) EF.empresa.addEventListener('change', () => clearFieldError(EF.empresa, 'errEmpEmpresa'));
 EF.cargo.addEventListener('input', () => clearFieldError(EF.cargo, 'errEmpCargo'));
 if(EF.docs) EF.docs.addEventListener('change', handleEmployeeDocsSelected);
 if(EF.foto) EF.foto.addEventListener('change', handleEmployeePhotoSelected);
@@ -3743,7 +3836,370 @@ if(E.file){
     });
 }
 
+function fpLoadRefCacheFromStorage(msg){
+    if(msg && msg.refVtTipos) fpRefCache.vtTipos = msg.refVtTipos;
+    else {
+        try { fpRefCache.vtTipos = JSON.parse(localStorage.getItem(FP_REF_VT_TIPOS_KEY) || '[]'); } catch(e) { fpRefCache.vtTipos = []; }
+    }
+    if(!Array.isArray(fpRefCache.vtTipos)) fpRefCache.vtTipos = [];
+    const loadBen = (key, slot) => {
+        let raw = msg && msg[slot];
+        if(!raw){
+            try { raw = JSON.parse(localStorage.getItem(key) || 'null'); } catch(e) { raw = null; }
+        }
+        fpRefCache[slot] = raw && typeof raw === 'object' ? raw : { operadora: '', beneficiarios: [] };
+    };
+    loadBen(FP_REF_SAUDE_KEY, 'saude');
+    loadBen(FP_REF_ODONTO_KEY, 'odonto');
+    if(msg && Array.isArray(msg.refEmpresas)) fpRefCache.empresas = msg.refEmpresas;
+    else {
+        try { fpRefCache.empresas = JSON.parse(localStorage.getItem(FP_REF_EMPRESAS_KEY) || '[]'); } catch(e) { fpRefCache.empresas = []; }
+    }
+    if(!Array.isArray(fpRefCache.empresas)) fpRefCache.empresas = [];
+}
+function fpGetRegistroEmpresaNomes(){
+    const fromRef = (fpRefCache.empresas || []).map(e => String(e.razaoSocial || e.nome || '').trim()).filter(Boolean);
+    const fromEmp = (state.employees || []).map(e => String(e.empresa || '').trim()).filter(e => e && e !== 'Sem empresa');
+    return [...new Set([...fromRef, ...fromEmp])].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+}
+function fillEmpRegistroSelect(preferred){
+    if(!EF.empresa) return;
+    const cur = preferred !== undefined ? String(preferred || '').trim() : String(EF.empresa.value || '').trim();
+    const list = fpGetRegistroEmpresaNomes();
+    let html = '<option value="">Selecione a empresa</option>';
+    html += list.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+    if(cur && !list.includes(cur)) html += `<option value="${esc(cur)}">${esc(cur)}</option>`;
+    EF.empresa.innerHTML = html;
+    if(cur) EF.empresa.value = cur;
+}
+function fpBenCfgNorm(cfg){
+    if(!cfg || typeof cfg !== 'object') return { operadora: '', beneficiarios: [] };
+    return { operadora: String(cfg.operadora || ''), beneficiarios: Array.isArray(cfg.beneficiarios) ? cfg.beneficiarios : [] };
+}
+function fpBenFindForNome(cfg, nome){
+    const n = String(nome || '').trim();
+    const list = fpBenCfgNorm(cfg).beneficiarios;
+    return list.find(b => String(b.funcionario || '').trim() === n) || null;
+}
+function fpBenDepValorMedio(b){
+    const deps = Array.isArray(b?.dependentes) ? b.dependentes : [];
+    if(!deps.length) return 0;
+    const sum = deps.reduce((s, d) => s + (Number(d.valorDependente) || 0), 0);
+    return +(sum / deps.length).toFixed(2);
+}
+function fillEmpEscalaSelect(){
+    if(!EF.escala) return;
+    const cur = EF.escala.value || '';
+    EF.escala.innerHTML = '<option value="">Selecione</option>' + ESCALA_OPCOES.map(x => `<option value="${esc(x)}">${esc(x)}</option>`).join('');
+    if(cur && ESCALA_OPCOES.includes(cur)) EF.escala.value = cur;
+}
+function fillEmpVtTipoSelect(){
+    if(!EF.vtTipo) return;
+    const cur = EF.vtTipo.value || '';
+    const tipos = fpRefCache.vtTipos || [];
+    EF.vtTipo.innerHTML = '<option value="">Selecione o tipo</option>' + tipos.map(t => {
+        const label = String(t.tipo || '').trim();
+        return label ? `<option value="${esc(label)}">${esc(label)}</option>` : '';
+    }).join('');
+    if(cur) EF.vtTipo.value = cur;
+}
+function syncEmpVtFromTipo(){
+    const tipo = EF.vtTipo?.value || '';
+    const row = (fpRefCache.vtTipos || []).find(t => String(t.tipo || '').trim() === tipo);
+    const unit = row ? (Number(row.valorUnitario) || 0) : 0;
+    const iv = row ? (Number(row.valorIdaVolta) || unit * 2) : 0;
+    if(EF.vtValor) EF.vtValor.value = unit ? String(unit) : '';
+    if(EF.vtIdaVolta) EF.vtIdaVolta.value = iv ? String(iv) : '';
+}
+function fillEmpBeneficioSelects(){
+    const saude = fpBenCfgNorm(fpRefCache.saude);
+    const odonto = fpBenCfgNorm(fpRefCache.odonto);
+    const planoOpts = (cfg, selEl, cur) => {
+        if(!selEl) return;
+        const labels = new Set();
+        (cfg.beneficiarios || []).forEach(b => {
+            const op = String(cfg.operadora || '').trim();
+            const pl = String(b.plano || '').trim();
+            const lbl = op ? `${op}${pl ? ' — ' + pl : ''}` : (pl || 'Plano');
+            if(lbl) labels.add(lbl);
+        });
+        selEl.innerHTML = '<option value="">—</option>' + [...labels].map(l => `<option value="${esc(l)}">${esc(l)}</option>`).join('');
+        if(cur && [...selEl.options].some(o => o.value === cur)) selEl.value = cur;
+    };
+    planoOpts(saude, EF.plano, EF.plano?.value || '');
+    planoOpts(odonto, EF.odonto, EF.odonto?.value || '');
+}
+function syncEmpBeneficioFromSelects(){
+    const nome = EF.nome?.value?.trim() || state.selected?.nome || '';
+    const saudeBen = fpBenFindForNome(fpRefCache.saude, nome);
+    const odontoBen = fpBenFindForNome(fpRefCache.odonto, nome);
+    if(saudeBen){
+        const op = String(fpBenCfgNorm(fpRefCache.saude).operadora || '').trim();
+        const pl = String(saudeBen.plano || '').trim();
+        const lbl = op ? `${op}${pl ? ' — ' + pl : ''}` : pl;
+        if(EF.plano && lbl) EF.plano.value = lbl;
+        if(EF.valorPlano) EF.valorPlano.value = Number(saudeBen.valorPlano || 0);
+        if(EF.saudeDepValor) EF.saudeDepValor.value = fpBenDepValorMedio(saudeBen);
+        if(EF.depPlano) EF.depPlano.value = (saudeBen.dependentes || []).length;
+    }
+    if(odontoBen){
+        const op = String(fpBenCfgNorm(fpRefCache.odonto).operadora || '').trim();
+        const pl = String(odontoBen.plano || '').trim();
+        const lbl = op ? `${op}${pl ? ' — ' + pl : ''}` : pl;
+        if(EF.odonto && lbl) EF.odonto.value = lbl;
+        if(EF.odontoTitularValor) EF.odontoTitularValor.value = Number(odontoBen.valorPlano || 0);
+        if(EF.odontoDepValor) EF.odontoDepValor.value = fpBenDepValorMedio(odontoBen);
+    }
+}
+function getCadastroFuncionarioSelecionado(){ return state.selected || null; }
+function switchCadastroFichaTab(which){
+    if(!IS_CADASTRO_VIEW) return;
+    cadastroFichaTabAtivo = which || 'ficha';
+    const map = { ficha: 'cadTabPanelFicha', aso: 'cadTabPanelAso', salario: 'cadTabPanelSalario' };
+    Object.entries(map).forEach(([tab, panelId]) => {
+        const el = document.getElementById(panelId);
+        if(el) el.style.display = tab === cadastroFichaTabAtivo ? '' : 'none';
+    });
+    document.querySelectorAll('.btn-cad-ficha-tab').forEach(b => {
+        const on = b.getAttribute('data-cad-tab') === cadastroFichaTabAtivo;
+        b.classList.toggle('btn-tab-active', on);
+        b.classList.toggle('btn-tab', !on);
+    });
+    const mov = document.getElementById('movimentacoesSection');
+    const sin = document.getElementById('cadastroSinistrosHistoricoDashSection');
+    const showExtras = cadastroFichaTabAtivo === 'ficha';
+    if(mov) mov.style.display = showExtras ? '' : 'none';
+    if(sin) sin.style.display = showExtras ? '' : 'none';
+    refreshCadastroFichaTabs();
+}
+function refreshCadastroFichaTabs(){
+    if(!IS_CADASTRO_VIEW) return;
+    const emp = getCadastroFuncionarioSelecionado();
+    const nome = emp?.nome || '';
+    const temFunc = !!nome;
+    const asoSem = document.getElementById('cadTabAsoSemFunc');
+    const asoCont = document.getElementById('cadTabAsoConteudo');
+    const salSem = document.getElementById('cadTabSalSemFunc');
+    const salCont = document.getElementById('cadTabSalConteudo');
+    if(asoSem) asoSem.style.display = temFunc ? 'none' : '';
+    if(asoCont) asoCont.style.display = temFunc ? 'grid' : 'none';
+    if(salSem) salSem.style.display = temFunc ? 'none' : '';
+    if(salCont) salCont.style.display = temFunc ? 'grid' : 'none';
+    const asoNome = document.getElementById('asoRenFuncNome');
+    const salNome = document.getElementById('salAltFuncNome');
+    if(asoNome) asoNome.value = nome;
+    if(salNome) salNome.value = nome;
+    const vencAtual = document.getElementById('asoRenVencAtual');
+    if(vencAtual) vencAtual.value = emp?.aso ? toInputDate(emp.aso) : '';
+    const salAtual = document.getElementById('salAltAtual');
+    if(salAtual) salAtual.value = emp ? Number(emp.salario || 0) : '';
+    if(cadastroFichaTabAtivo === 'aso') renderAsoRenHist();
+    if(cadastroFichaTabAtivo === 'salario'){ salAltCalcPct(); renderSalAltHist(); }
+}
+function getAsoRenHist(){ try { return JSON.parse(localStorage.getItem(FP_ASO_RENOV_KEY) || '[]'); } catch(e) { return []; } }
+function setAsoRenHist(arr){ localStorage.setItem(FP_ASO_RENOV_KEY, JSON.stringify(Array.isArray(arr) ? arr : [])); }
+function salvarRenovacaoAso(){
+    const emp = getCadastroFuncionarioSelecionado();
+    const nome = emp?.nome || '';
+    const dataRen = document.getElementById('asoRenData')?.value || '';
+    const vencNovo = document.getElementById('asoRenVencNovo')?.value || '';
+    const obs = document.getElementById('asoRenObs')?.value?.trim() || '';
+    if(!nome){ alert('Selecione um funcionário no filtro acima.'); return; }
+    if(!dataRen || !vencNovo){ alert('Preencha data da renovação e novo vencimento.'); return; }
+    const idx = state.employees.findIndex(e => e.nome === nome);
+    if(idx < 0){ alert('Funcionário não encontrado.'); return; }
+    const vencAtual = state.employees[idx].aso || '';
+    state.employees[idx].aso = vencNovo;
+    if(state.selected && state.selected.nome === nome) state.selected = state.employees[idx];
+    const hist = getAsoRenHist();
+    hist.unshift({ id: 'aso_' + Date.now(), nome, vencimentoAnterior: vencAtual, dataRenovacao: dataRen, vencimentoNovo: vencNovo, obs, createdAt: new Date().toISOString() });
+    setAsoRenHist(hist);
+    addAudit(`ASO renovado: ${nome} → ${fdate(vencNovo)}`, 'action');
+    applyFilters();
+    renderAsoRenHist();
+    fpPostFullStateToParentIfEmbedded();
+    alert('ASO atualizado na ficha do funcionário.');
+}
+function renderAsoRenHist(){
+    const el = document.getElementById('asoRenHistList');
+    if(!el) return;
+    const nome = getCadastroFuncionarioSelecionado()?.nome || '';
+    if(!nome){ el.innerHTML = '<div class="empty">Selecione um funcionário no filtro.</div>'; return; }
+    const hist = getAsoRenHist().filter(h => String(h.nome || '').trim() === nome);
+    if(!hist.length){ el.innerHTML = '<div class="empty">Nenhuma renovação para este funcionário.</div>'; return; }
+    el.innerHTML = `<table><thead><tr><th>Venc. anterior</th><th>Renovação</th><th>Novo venc.</th><th>Obs.</th></tr></thead><tbody>${
+        hist.slice(0, 40).map(h => `<tr><td>${esc(fdate(h.vencimentoAnterior))}</td><td>${esc(fdate(h.dataRenovacao))}</td><td>${esc(fdate(h.vencimentoNovo))}</td><td>${esc(h.obs || '—')}</td></tr>`).join('')
+    }</tbody></table>`;
+}
+function getSalarioHist(){ try { return JSON.parse(localStorage.getItem(FP_SALARIO_HIST_KEY) || '[]'); } catch(e) { return []; } }
+function setSalarioHist(arr){ localStorage.setItem(FP_SALARIO_HIST_KEY, JSON.stringify(Array.isArray(arr) ? arr : [])); }
+function salAltCalcPct(){
+    const atual = Number(document.getElementById('salAltAtual')?.value || 0);
+    const novo = Number(document.getElementById('salAltNovo')?.value || 0);
+    const pctEl = document.getElementById('salAltPct');
+    if(!pctEl) return;
+    if(!atual || !novo){ pctEl.value = ''; return; }
+    const pct = ((novo - atual) / atual) * 100;
+    pctEl.value = pct.toFixed(2) + '%';
+}
+function salvarAlteracaoSalarial(){
+    const empSel = getCadastroFuncionarioSelecionado();
+    const nome = empSel?.nome || '';
+    const atual = Number(document.getElementById('salAltAtual')?.value || 0);
+    const novo = Number(document.getElementById('salAltNovo')?.value || 0);
+    const data = document.getElementById('salAltData')?.value || '';
+    const motivo = document.getElementById('salAltMotivo')?.value?.trim() || '';
+    if(!nome){ alert('Selecione um funcionário no filtro acima.'); return; }
+    if(!novo || !data){ alert('Preencha salário novo e data do reajuste.'); return; }
+    const idx = state.employees.findIndex(e => e.nome === nome);
+    if(idx < 0){ alert('Funcionário não encontrado.'); return; }
+    const pct = atual > 0 ? +(((novo - atual) / atual) * 100).toFixed(2) : 0;
+    state.employees[idx].salario = novo;
+    if(state.selected && state.selected.nome === nome) state.selected = state.employees[idx];
+    const hist = getSalarioHist();
+    hist.unshift({ id: 'sal_' + Date.now(), nome, salarioAnterior: atual, salarioNovo: novo, pctReajuste: pct, dataReajuste: data, motivo, createdAt: new Date().toISOString() });
+    setSalarioHist(hist);
+    addAudit(`Salário reajustado: ${nome} ${fmoney(atual)} → ${fmoney(novo)} (${pct}%)`, 'action');
+    applyFilters();
+    renderSalAltHist();
+    fpPostFullStateToParentIfEmbedded();
+    alert('Salário base atualizado na ficha.');
+}
+function renderSalAltHist(){
+    const el = document.getElementById('salAltHistList');
+    if(!el) return;
+    const nome = getCadastroFuncionarioSelecionado()?.nome || '';
+    if(!nome){ el.innerHTML = '<div class="empty">Selecione um funcionário no filtro.</div>'; return; }
+    const hist = getSalarioHist().filter(h => String(h.nome || '').trim() === nome);
+    if(!hist.length){ el.innerHTML = '<div class="empty">Nenhuma alteração para este funcionário.</div>'; return; }
+    el.innerHTML = `<table><thead><tr><th>Anterior</th><th>Novo</th><th>%</th><th>Data</th><th>Motivo</th></tr></thead><tbody>${
+        hist.slice(0, 40).map(h => `<tr><td>${esc(fmoney(h.salarioAnterior))}</td><td>${esc(fmoney(h.salarioNovo))}</td><td>${esc(String(h.pctReajuste))}%</td><td>${esc(fdate(h.dataReajuste))}</td><td>${esc(h.motivo || '—')}</td></tr>`).join('')
+    }</tbody></table>`;
+}
+function fpFichaRelValor(e, f){
+    try {
+        const v = f.get(e);
+        if(v === null || v === undefined || v === '') return '—';
+        return String(v);
+    } catch(err) { return '—'; }
+}
+const FICHA_REL_FIELDS = [
+    { id: 'nome', label: 'Nome', group: 'ident', get: e => e.nome, always: true },
+    { id: 'registro', label: 'Registro', group: 'contratual', get: e => e.empresa },
+    { id: 'status', label: 'Status', group: 'contratual', get: e => e.status },
+    { id: 'admissao', label: 'Admissão', group: 'contratual', get: e => fdate(e.admissao) },
+    { id: 'tempoCasa', label: 'Tempo de casa', group: 'contratual', get: e => tempoDeCasaLabels(e.admissao).linhaGrelha },
+    { id: 'demissao', label: 'Demissão', group: 'contratual', get: e => fdate(e.demissao) },
+    { id: 'cargo', label: 'Cargo', group: 'contratual', get: e => e.cargo },
+    { id: 'nivel', label: 'Nível', group: 'contratual', get: e => e.nivel },
+    { id: 'unidade', label: 'Unidade / Atuando', group: 'contratual', get: e => e.atuando },
+    { id: 'escala', label: 'Escala', group: 'contratual', get: e => e.escala },
+    { id: 'carga', label: 'Carga horária', group: 'contratual', get: e => e.carga },
+    { id: 'jornada', label: 'Jornada', group: 'contratual', get: e => e.jornada },
+    { id: 'trienios', label: 'Triênios', group: 'contratual', get: e => e.trienios },
+    { id: 'salario', label: 'Salário base', group: 'contratual', get: e => fmoney(e.salario) },
+    { id: 'ajuda', label: 'Ajuda de custos', group: 'contratual', get: e => fmoney(e.ajuda) },
+    { id: 'vr', label: 'Vale refeição', group: 'beneficios', get: e => fmoney(e.vr) },
+    { id: 'cesta', label: 'Cesta', group: 'beneficios', get: e => e.cestas },
+    { id: 'vt', label: 'Vale transporte', group: 'beneficios', get: e => e.vt },
+    { id: 'vtTipo', label: 'Tipo VT', group: 'beneficios', get: e => e.vtTipo },
+    { id: 'vtValor', label: 'VT unitário', group: 'beneficios', get: e => Number(e.vtValor) > 0 ? fmoney(e.vtValor) : '—' },
+    { id: 'vtIdaVolta', label: 'VT ida + volta', group: 'beneficios', get: e => { const iv = Number(e.vtIdaVolta) > 0 ? e.vtIdaVolta : (Number(e.vtValor) > 0 ? Number(e.vtValor) * 2 : 0); return iv > 0 ? fmoney(iv) : '—'; } },
+    { id: 'plano', label: 'Plano saúde (titular)', group: 'beneficios', get: e => e.plano },
+    { id: 'valorPlano', label: 'Saúde — valor titular', group: 'beneficios', get: e => fmoney(e.valorPlano) },
+    { id: 'saudeDepValor', label: 'Saúde — valor dependente', group: 'beneficios', get: e => fmoney(e.saudeDepValor || 0) },
+    { id: 'depPlano', label: 'Dependentes no plano', group: 'beneficios', get: e => e.depPlano },
+    { id: 'depBeneficios', label: 'Dependentes p/ benefícios', group: 'beneficios', get: e => e.depBeneficios },
+    { id: 'descontoPlano', label: 'Desconto plano', group: 'beneficios', get: e => fmoney(e.descontoPlano) },
+    { id: 'odonto', label: 'Odonto (titular)', group: 'beneficios', get: e => e.odonto },
+    { id: 'odontoTitularValor', label: 'Odonto — valor titular', group: 'beneficios', get: e => fmoney(e.odontoTitularValor || 0) },
+    { id: 'odontoDepValor', label: 'Odonto — valor dependente', group: 'beneficios', get: e => fmoney(e.odontoDepValor || 0) },
+    { id: 'cargoConfianca', label: 'Cargo de confiança', group: 'beneficios', get: e => fmoney(e.cargoConfianca || 0) },
+    { id: 'periculosidade', label: 'Periculosidade', group: 'beneficios', get: e => fmoney(e.periculosidade || 0) },
+    { id: 'folhaTotal', label: 'Total folha (remuneração)', group: 'beneficios', get: e => fmoney(folhaRemuneracao(e)) },
+    { id: 'dataLimiteFerias', label: 'Data limite férias', group: 'contratual', get: e => fdate(e.dataLimiteFerias) },
+    { id: 'cpf', label: 'CPF', group: 'pessoal', get: e => e.cpf },
+    { id: 'rg', label: 'RG', group: 'pessoal', get: e => e.rg },
+    { id: 'telefone', label: 'Telefone', group: 'pessoal', get: e => e.telefone },
+    { id: 'nascimento', label: 'Nascimento', group: 'pessoal', get: e => fdate(e.nascimento) },
+    { id: 'idade', label: 'Idade', group: 'pessoal', get: e => e.idade },
+    { id: 'estadoCivil', label: 'Estado civil', group: 'pessoal', get: e => e.estadoCivil },
+    { id: 'raca', label: 'Raça / Cor', group: 'pessoal', get: e => e.raca },
+    { id: 'instrucao', label: 'Grau de instrução', group: 'pessoal', get: e => e.instrucao },
+    { id: 'pcd', label: 'PCD', group: 'pessoal', get: e => e.deficiencia },
+    { id: 'cnhNum', label: 'Número CNH', group: 'pessoal', get: e => e.cnhNumero },
+    { id: 'cnhCat', label: 'Categoria CNH', group: 'pessoal', get: e => e.cnhCategoria },
+    { id: 'cnhVenc', label: 'Vencimento CNH', group: 'pessoal', get: e => fdate(e.cnh) },
+    { id: 'aso', label: 'Vencimento ASO', group: 'pessoal', get: e => fdate(e.aso) },
+    { id: 'banco', label: 'Banco', group: 'pessoal', get: e => e.banco },
+    { id: 'agencia', label: 'Agência', group: 'pessoal', get: e => e.agencia },
+    { id: 'conta', label: 'Conta', group: 'pessoal', get: e => e.conta },
+    { id: 'endereco', label: 'Endereço completo', group: 'pessoal', get: e => [e.endereco, e.bairro, e.cidade, e.uf, e.cep].filter(Boolean).join(' • ') },
+    { id: 'camisa', label: 'Camisa (uniforme)', group: 'pessoal', get: e => e.camisa },
+    { id: 'calca', label: 'Calça (uniforme)', group: 'pessoal', get: e => e.calca },
+    { id: 'sapato', label: 'Sapato (uniforme)', group: 'pessoal', get: e => e.sapato },
+    { id: 'mae', label: 'Nome da mãe', group: 'pessoal', get: e => e.mae },
+    { id: 'pai', label: 'Nome do pai', group: 'pessoal', get: e => e.pai },
+    { id: 'dependentesQtd', label: 'Dependentes (qtd)', group: 'pessoal', get: e => e.dependentesQtd },
+    { id: 'dependentesNomes', label: 'Dependentes (nomes)', group: 'pessoal', get: e => e.dependentesNomes },
+    { id: 'codigoRH', label: 'Cód. RH', group: 'outros', get: e => e.codigoRH },
+    { id: 'codigoESocial', label: 'Cód. eSocial', group: 'outros', get: e => e.codigoESocial }
+];
+const FICHA_REL_GROUP_LABELS = { ident: 'Identificação', contratual: 'Dados contratuais', beneficios: 'Benefícios', pessoal: 'Dados pessoais', outros: 'Outros' };
+function openRelatorioPersonalizadoModal(){
+    const list = listaCompletaPlanilha();
+    if(!list.length){ alert('Não há funcionários cadastrados para exportar.'); return; }
+    const box = document.getElementById('relPersonalizadoFields');
+    const modal = document.getElementById('relPersonalizadoModal');
+    if(!box || !modal) return;
+    const groups = ['ident', 'contratual', 'beneficios', 'pessoal', 'outros'];
+    box.innerHTML = groups.map(g => {
+        const fields = FICHA_REL_FIELDS.filter(f => f.group === g);
+        if(!fields.length) return '';
+        return `<div style="grid-column:1/-1;font-weight:800;font-size:11px;margin-top:8px;color:var(--fp-mid-gray);">${esc(FICHA_REL_GROUP_LABELS[g] || g)}</div>` +
+            fields.map(f => {
+                const locked = f.always ? ' disabled checked' : ' checked';
+                return `<label style="display:flex;gap:6px;align-items:center;"><input type="checkbox" class="rel-field-cb" data-rel-id="${esc(f.id)}"${locked}> ${esc(f.label)}</label>`;
+            }).join('');
+    }).join('');
+    modal.style.display = 'flex';
+}
+function closeRelatorioPersonalizadoModal(){
+    const modal = document.getElementById('relPersonalizadoModal');
+    if(modal) modal.style.display = 'none';
+}
+function relPersonalizadoToggleAll(on){
+    document.querySelectorAll('.rel-field-cb').forEach(cb => {
+        if(cb.disabled) return;
+        cb.checked = !!on;
+    });
+}
+function exportRelatorioPersonalizadoExcel(){
+    const list = listaCompletaPlanilha();
+    if(!list.length){ alert('Não há funcionários para exportar.'); return; }
+    const ids = new Set(['nome']);
+    document.querySelectorAll('.rel-field-cb').forEach(cb => {
+        if(cb.checked) ids.add(cb.getAttribute('data-rel-id'));
+    });
+    const cols = FICHA_REL_FIELDS.filter(f => ids.has(f.id));
+    if(!cols.length){ alert('Marque ao menos um campo.'); return; }
+    const rows = list.map(e => {
+        const row = {};
+        cols.forEach(f => { row[f.label] = fpFichaRelValor(e, f); });
+        return row;
+    });
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = cols.map((f, i) => ({ wch: f.id === 'nome' ? 36 : (f.id === 'endereco' ? 42 : 18) }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Relatório personalizado');
+    const date = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `Relatorio_Personalizado_${date}.xlsx`);
+    closeRelatorioPersonalizadoModal();
+    addAudit(`Relatório Excel personalizado: ${list.length} funcionário(s), ${cols.length} coluna(s)`, 'export');
+}
+
 function applyEmployeesSyncFromParent(msg) {
+    fpLoadRefCacheFromStorage(msg);
     __fpLastParentSyncAt = Date.now();
     if(msg.empAttachmentsBag && typeof msg.empAttachmentsBag === 'object'){
         if(window.parent){
@@ -3782,6 +4238,7 @@ function applyEmployeesSyncFromParent(msg) {
     fillCompanies();
     applyFilters();
     populateCadastroUnitOptions();
+    fillEmpRegistroSelect();
     addAudit('Cadastro sincronizado a partir da intranet (aba principal).', 'info');
 }
 
@@ -3817,6 +4274,10 @@ window.addEventListener('storage', (ev) => {
     if(ev.key === FP_SINISTROS_DASH_KEY && IS_INICIO_VIEW){
         try { renderDashInicioSinistrosUnidadesCard(); } catch(e) {}
     }
+    if(ev.key === FP_REF_EMPRESAS_KEY && IS_CADASTRO_VIEW){
+        fpLoadRefCacheFromStorage(null);
+        fillEmpRegistroSelect();
+    }
 });
 
 if(E.company) E.company.addEventListener('change', () => {
@@ -3844,11 +4305,20 @@ if(E.employee) E.employee.addEventListener('change', () => {
 
 // Render audit on load
 renderAudit();
+fpApplyLogoImages();
 configureDashboardViewMode();
+fpLoadRefCacheFromStorage(null);
+fillEmpRegistroSelect();
+fillEmpEscalaSelect();
+if(EF.vtTipo) EF.vtTipo.addEventListener('change', syncEmpVtFromTipo);
+if(EF.nome) EF.nome.addEventListener('blur', () => { fillEmpBeneficioSelects(); syncEmpBeneficioFromSelects(); });
+if(EF.plano) EF.plano.addEventListener('change', syncEmpBeneficioFromSelects);
+if(EF.odonto) EF.odonto.addEventListener('change', syncEmpBeneficioFromSelects);
 renderEmployeeDocsList();
 renderEmployeePhotoPreview();
 bindProfilePhotoInteractions();
 populateCadastroUnitOptions();
+if(IS_CADASTRO_VIEW) switchCadastroFichaTab('ficha');
 applyFilters();
 </script>
 </body>
