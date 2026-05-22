@@ -738,7 +738,11 @@
             g.state.employees = g.fpHydrateEmployeesMediaForSnapshot(g.state.employees, g.window.__FP_EMBEDDED_ATTACHMENTS__ || {});
         }
         var preview = g.fpCloudSavePreview();
-        if (!preview.employees && typeof g.fpIntranetHasDataForSnapshot === 'function' && !g.fpIntranetHasDataForSnapshot()) {
+        if (typeof g.fpIntranetHasDataForSnapshot === 'function') {
+            if (!g.fpIntranetHasDataForSnapshot()) {
+                throw new Error('Nenhum dado para gravar. Registe informações em qualquer aba (Unidades, Pagas, Sinistros, etc.) ou importe o Excel.');
+            }
+        } else if (!preview.employees) {
             throw new Error('Nenhum colaborador encontrado. Importe a planilha Excel ou abra a aba Cadastro/Início antes de salvar.');
         }
         if (!opts.autosave) {

@@ -6365,6 +6365,7 @@ function updateBdayCount() {
 const MOV_CAD_KEY = 'fp_mov_cad';
 const UNI_KEY = 'fp_unidades';
 const FP_UNIDADES_POSTOS_KEY = 'fp_unidades_postos';
+const POSTOS_EXTRAS_KEY = 'fp_postos_extras';
 const FALTAS_KEY = 'fp_faltas_atestados';
 const PAGAS_SIGNED_KEY = 'fp_pagas_signed_docs';
 const FERIAS_HIST_KEY = 'fp_ferias_hist';
@@ -6384,6 +6385,11 @@ const FP_EST_FORNECEDORES_KEY = 'fp_est_fornecedores';
 const FP_EST_ESTOQUE_KEY = 'fp_est_estoque';
 const FP_EST_SAIDAS_KEY = 'fp_est_saidas';
 const FP_PEDIDOS_KEY = 'fastparkPedidosCestas';
+const FP_IDB_NAME = 'fp-intranet-autosave-v1';
+const FP_IDB_STORE = 'kv';
+const FP_IDB_HANDLE_KEY = 'htmlFileHandle';
+const FP_IDB_XLSX_HANDLE_KEY = 'linkedXlsxFileHandle';
+const FP_IDB_ATT_DIR_HANDLE_KEY = 'attachmentsDirHandle';
 /** Registo de todas as áreas que devem ir para o Supabase (snapshot.localStrings). */
 const FP_SNAPSHOT_STORAGE_REGISTRY = [
     { key: FP_EMPLOYEES_STORE_KEY, area: 'DP — Cadastro / Início' },
@@ -7503,11 +7509,6 @@ function downloadHtmlWithEmbeddedDb(){
     })().catch(err => console.error('[FP] downloadHtmlWithEmbeddedDb', err));
 }
 
-const FP_IDB_NAME = 'fp-intranet-autosave-v1';
-const FP_IDB_STORE = 'kv';
-const FP_IDB_HANDLE_KEY = 'htmlFileHandle';
-const FP_IDB_XLSX_HANDLE_KEY = 'linkedXlsxFileHandle';
-const FP_IDB_ATT_DIR_HANDLE_KEY = 'attachmentsDirHandle';
 const FP_XLS_SYNC_DADOS = 'FastPark_DADOS';
 const FP_XLS_SYNC_QUADRO = 'FastPark_QUADRO_GERAL';
 const FP_XLS_SYNC_MOV = 'FastPark_MOVIMENTOS';
@@ -10239,7 +10240,6 @@ function renderPostosPanorama(){
     refreshPostoDiasPresetOptions();
 }
 
-const POSTOS_EXTRAS_KEY = 'fp_postos_extras';
 function getPostosExtras(){
     return JSON.parse(localStorage.getItem(POSTOS_EXTRAS_KEY) || '[]');
 }
