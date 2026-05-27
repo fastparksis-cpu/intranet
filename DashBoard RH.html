@@ -753,7 +753,7 @@ const FP_REF_SAUDE_KEY = 'fp_ref_saude';
 const FP_REF_ODONTO_KEY = 'fp_ref_odonto';
 const FP_REF_EMPRESAS_KEY = 'fp_ref_empresas';
 const FP_UNIDADES_POSTOS_KEY = 'fp_unidades_postos';
-const FP_QUADRO_GERAL_KEY = 'fp_quadro_geral';
+const FP_QUADRO_GERAL_KEY = 'fp_quadro_geral_json';
 const FP_POSTOS_EXTRAS_KEY = 'fp_postos_extras';
 const ESCALA_OPCOES = ['5x2', '6x1', '6x2', '12x36', '8h', '44h'];
 let fpRefCache = { vtTipos: [], saude: null, odonto: null, empresas: [] };
@@ -2474,19 +2474,21 @@ function fpGetCodigoPostoByEmployeeName(nome){
     const fontes = [
         ...fpReadLocalArray(FP_UNIDADES_POSTOS_KEY),
         ...fpReadLocalArray(FP_POSTOS_EXTRAS_KEY),
-        ...fpReadLocalArray(FP_QUADRO_GERAL_KEY)
+        ...fpReadLocalArray(FP_QUADRO_GERAL_KEY),
+        ...fpReadLocalArray('fp_quadro_geral')
     ];
     if(!fontes.length) return '';
     const pickCodigo = (row) => String(
         row?.codigo || row?.posto || row?.idRh || row?.id_rh || row?.codPosto || row?.cod_posto || ''
     ).trim();
-    const exact = fontes.find(p => fpNormTextBasic(p?.nome) === nm);
+    const rowNome = (p) => p?.nome || p?.funcionario || p?.colaborador || p?.nomeColaborador || '';
+    const exact = fontes.find(p => fpNormTextBasic(rowNome(p)) === nm);
     if(exact){
         const cod = pickCodigo(exact);
         if(cod) return cod;
     }
     const contains = fontes.find(p => {
-        const pn = fpNormTextBasic(p?.nome);
+        const pn = fpNormTextBasic(rowNome(p));
         return pn && (pn.includes(nm) || nm.includes(pn));
     });
     return contains ? pickCodigo(contains) : '';
