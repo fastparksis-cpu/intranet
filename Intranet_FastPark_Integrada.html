@@ -11840,6 +11840,49 @@ function fmtHorasMensais(v){
     if(v == null || !isFinite(v) || v <= 0) return '—';
     return `${String(v.toFixed(2)).replace('.', ',')}h/mês`;
 }
+function getCompetenciaAnoMesRef(){
+    const mInp = document.getElementById('competenciaInput')?.value || '';
+    if(/^\d{4}-\d{2}$/.test(mInp)){
+        const [y, m] = mInp.split('-').map(Number);
+        if(y >= 2000 && m >= 1 && m <= 12) return { ano: y, mes: m };
+    }
+    const c = String(competenciaAtual || '').trim();
+    const mmY = c.match(/^(\d{2})\/(\d{4})$/);
+    if(mmY){
+        const m = Number(mmY[1]), y = Number(mmY[2]);
+        if(y >= 2000 && m >= 1 && m <= 12) return { ano: y, mes: m };
+    }
+    const now = new Date();
+    return { ano: now.getFullYear(), mes: now.getMonth() + 1 };
+}
+function diasNoMes(ano, mes){
+    return new Date(ano, mes, 0).getDate();
+}
+function diasTrabalhoNoMesPorEscala(ano, mes, diasTxt, escalaTxt){
+    const d = normText(diasTxt || '');
+    const e = normText(escalaTxt || '');
+    const totalDias = diasNoMes(ano, mes);
+    if(e.includes('5X2') || d.includes('SEGUNDA A SEXTA')){
+        let c = 0;
+        for(let dia = 1; dia <= totalDias; dia++){
+            const wd = new Date(ano, mes - 1, dia).getDay();
+            if(wd >= 1 && wd <= 5) c++;
+        }
+        return c;
+    }
+    if(e.includes('6X1') || d.includes('SEGUNDA A SABADO') || d.includes('TERCA A DOMINGO')){
+        let c = 0;
+        for(let dia = 1; dia <= totalDias; dia++){
+            const wd = new Date(ano, mes - 1, dia).getDay();
+            if(wd !== 0) c++;
+        }
+        return c;
+    }
+    if(e.includes('12X36')) return Math.ceil(totalDias / 2);
+    if(e.includes('12X48')) return Math.ceil(totalDias / 3);
+    const diasSem = diasSemanaisDoPosto(diasTxt, escalaTxt);
+    return Math.round((diasSem * totalDias) / 7);
+}
 function onQuadroAtualUnidadeFiltroChange(){
     const sel = document.getElementById('quadroAtualUnidadeFiltro');
     window.__fpQuadroAtualUnidadeFiltro = sel ? String(sel.value || '').trim() : '';
@@ -11853,6 +11896,8 @@ function renderPostosPanorama(){
         el.innerHTML = '<div class="empty postos-panorama-empty">Nenhum posto cadastrado. Vá em <strong>Unidades → Unidade → Postos</strong> e cadastre os postos de cada unidade.</div>';
         return;
     }
+    const comp = getCompetenciaAnoMesRef();
+    const fatorMes = diasNoMes(comp.ano, comp.mes) / 7;
     const linhas = catalog.map((p, idx) => {
         const row = catalogPostoToQuadroRow(p, idx);
         const emp = findColaboradorParaPostoCatalog(p, row);
@@ -11862,7 +11907,10 @@ function renderPostosPanorama(){
         const diasSem = diasSemanaisDoPosto(p.diasSemana, p.escala || p.jornada);
         const cargaPosto = hDiaPosto > 0 ? +(hDiaPosto * diasSem).toFixed(2) : 0;
         const extra = (cargaColab > 0 && cargaPosto > 0) ? +(cargaPosto - cargaColab).toFixed(2) : 0;
-        const extraMes = extra > 0 ? +(extra * 4.33).toFixed(2) : 0;
+        const diasTrabMes = diasTrabalhoNoMesPorEscala(comp.ano, comp.mes, p.diasSemana, p.escala || p.jornada);
+        const cargaPostoMes = hDiaPosto > 0 ? +(hDiaPosto * diasTrabMes).toFixed(2) : 0;
+        const cargaColabMes = cargaColab > 0 ? +(cargaColab * fatorMes).toFixed(2) : 0;
+        const extraMes = (cargaPostoMes > 0 && cargaColabMes > 0) ? +(cargaPostoMes - cargaColabMes).toFixed(2) : 0;
         return {
             posto: p.codigo || '',
             unidade: p.unidadeNome || '',
@@ -11881,7 +11929,8 @@ function renderPostosPanorama(){
             cargaColab,
             cargaPosto,
             extra,
-            extraMes
+            extraMes,
+            compMesAno: `${String(comp.mes).padStart(2,'0')}/${comp.ano}`
         };
     }).sort((a, b) => {
         const u = String(a.unidade).localeCompare(String(b.unidade), 'pt-BR');
@@ -11939,7 +11988,7 @@ function renderPostosPanorama(){
                 </select>
             </div>
         </div>
-        <p style="margin:0 0 10px;font-size:12px;color:#6b7280;">${linhasFiltradas.length} posto(s) exibido(s) de ${linhas.length} total — somente leitura. Alterações em <strong>Unidades → Postos</strong>; vínculo do colaborador no <strong>Cadastro</strong> de funcionários.</p>
+        <p style="margin:0 0 10px;font-size:12px;color:#6b7280;">${linhasFiltradas.length} posto(s) exibido(s) de ${linhas.length} total — competência de cálculo mensal: <strong>${String(comp.mes).padStart(2,'0')}/${comp.ano}</strong>. Alterações em <strong>Unidades → Postos</strong>; vínculo do colaborador no <strong>Cadastro</strong> de funcionários.</p>
         ${gruposHtml}`;
 }
 
