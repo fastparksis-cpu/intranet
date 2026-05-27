@@ -11977,13 +11977,17 @@ function renderPostosPanorama(){
         const row = catalogPostoToQuadroRow(p, idx);
         const emp = findColaboradorParaPostoCatalog(p, row);
         const col = dadosColaboradorQuadroAtual(emp);
-        const cargaColab = parseCargaSemanalHoras(emp?.carga, p.diasSemana, p.escala || p.jornada);
+        const escalaTxt = p.escala || p.jornada || '';
+        const is12x36 = normText(escalaTxt).includes('12X36');
+        const cargaColab = parseCargaSemanalHoras(emp?.carga, p.diasSemana, escalaTxt);
         const hDiaPosto = horasPostoDia(p.entrada, p.saida, p.saidaIntervalo, p.retornoIntervalo);
-        const diasSem = diasSemanaisDoPosto(p.diasSemana, p.escala || p.jornada);
-        const cargaPosto = hDiaPosto > 0 ? +(hDiaPosto * diasSem).toFixed(2) : 0;
+        const diasSem = diasSemanaisDoPosto(p.diasSemana, escalaTxt);
+        // Regra operacional: em 12x36 a carga do posto é sempre 36:00 (semanal).
+        const cargaPosto = is12x36 ? 36 : (hDiaPosto > 0 ? +(hDiaPosto * diasSem).toFixed(2) : 0);
         const extra = (cargaColab > 0 && cargaPosto > 0) ? +(cargaPosto - cargaColab).toFixed(2) : 0;
-        const diasTrabMes = diasTrabalhoNoMesPorEscala(comp.ano, comp.mes, p.diasSemana, p.escala || p.jornada);
-        const cargaPostoMes = hDiaPosto > 0 ? +(hDiaPosto * diasTrabMes).toFixed(2) : 0;
+        const diasTrabMes = diasTrabalhoNoMesPorEscala(comp.ano, comp.mes, p.diasSemana, escalaTxt);
+        const cargaPostoDiaRef = (cargaPosto > 0 && diasSem > 0) ? (cargaPosto / diasSem) : 0;
+        const cargaPostoMes = cargaPostoDiaRef > 0 ? +(cargaPostoDiaRef * diasTrabMes).toFixed(2) : 0;
         // Contrato mensal pelo mesmo padrão de dias da escala do posto (competência real).
         const cargaContratoDia = (cargaColab > 0 && diasSem > 0) ? (cargaColab / diasSem) : 0;
         const cargaColabMes = cargaContratoDia > 0 ? +(cargaContratoDia * diasTrabMes).toFixed(2) : 0;
