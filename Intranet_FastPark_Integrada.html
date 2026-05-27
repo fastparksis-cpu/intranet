@@ -12870,7 +12870,8 @@ function renderVtReport(){
         return diasUteis;
     };
     const totalGeral = vts.reduce((s,e) => {
-        const t = getVtCfgForEmployee(e, cfg);
+        const vtBase = getVtDisplayDataForEmployee(e, cfg);
+        const t = jornadaStringToVtCfg(vtBase.escala || '');
         const diasBase = calcDias(t);
         const faltasPrev = vtCountFaltasPeriodoAnterior(e.nome, ini, fim);
         const diasLiquidos = Math.max(0, diasBase - faltasPrev);
@@ -12883,32 +12884,17 @@ function renderVtReport(){
     <div style="margin-bottom:8px;font-size:12px;color:#555;">${notaFaltas}</div>
     <div style="margin-bottom:10px;"><strong>Dias úteis:</strong> ${diasUteis} | <strong>Total previsto:</strong> ${fmoney(totalGeral)} 
     <button class="btn btn-success" onclick="exportVtExcel()" style="margin-left:8px;">Excel</button><button class="btn btn-danger" onclick="exportVtPDF()" style="margin-left:6px;">PDF</button></div>
-    <table style="width:100%;"><thead><tr><th>Funcionário</th><th>Registro</th><th>Unidade</th><th>Escala</th><th>VT unitário</th><th>Ida+Volta</th><th>Dias Base</th><th>Faltas Período Anterior</th><th>Dias Líquidos</th><th>Total</th><th>Conta</th></tr></thead><tbody>${
+    <table style="width:100%;"><thead><tr><th>Funcionário</th><th>Registro</th><th>Unidade</th><th>Escala (quadro)</th><th>VT unitário</th><th>Ida+Volta</th><th>Dias Base</th><th>Faltas Período Anterior</th><th>Dias Líquidos</th><th>Total</th><th>Conta</th></tr></thead><tbody>${
         vts.map(e=>{
-            const itemCfg = getVtCfgForEmployee(e, cfg);
-            const tipo = itemCfg.tipo || '6x1';
             const vtBase = getVtDisplayDataForEmployee(e, cfg);
+            const itemCfg = jornadaStringToVtCfg(vtBase.escala || '');
             const dias = calcDias(itemCfg);
             const faltasPrev = vtCountFaltasPeriodoAnterior(e.nome, ini, fim);
             const diasLiquidos = Math.max(0, dias - faltasPrev);
             const unit = Number(e.vtValor || 0);
             const total = (unit * 2) * diasLiquidos;
-            const srcLabel = itemCfg.manual
-                ? '<span style="font-size:10px;color:#7c3aed;" title="Alterado nesta aba VT">personalizado</span>'
-                : (itemCfg.quadroRef ? `<span style="font-size:10px;color:#0f6b4a;" title="Postos/Quadro: ${esc(itemCfg.quadroRef)}">Postos/Quadro</span>` : '');
-            const reporBtn = itemCfg.manual
-                ? `<button type="button" class="btn" style="padding:2px 6px;font-size:10px;" onclick="resetVtJornadaFromQuadro('${esc(e.nome)}')" title="Voltar a usar a jornada de Postos/Quadro">↺ Quadro</button>`
-                : '';
             return `<tr><td>${esc(vtBase.funcionario)}</td><td>${esc(vtBase.registro)}</td><td>${esc(vtBase.unidade)}</td>
-            <td>
-                <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
-                    <select onchange="setVtJornada('${esc(e.nome)}', this.value)">${vtJornadaSelectHtml(e.nome, tipo)}</select>
-                    ${String(tipo).toUpperCase().includes('6X1') ? `<select onchange="setVtFolga('${esc(e.nome)}', this.value)"><option value="0" ${Number(itemCfg.folgaSemana)===0?'selected':''}>Folga Dom</option><option value="1" ${Number(itemCfg.folgaSemana)===1?'selected':''}>Seg</option><option value="2" ${Number(itemCfg.folgaSemana)===2?'selected':''}>Ter</option><option value="3" ${Number(itemCfg.folgaSemana)===3?'selected':''}>Qua</option><option value="4" ${Number(itemCfg.folgaSemana)===4?'selected':''}>Qui</option><option value="5" ${Number(itemCfg.folgaSemana)===5?'selected':''}>Sex</option><option value="6" ${Number(itemCfg.folgaSemana)===6?'selected':''}>Sáb</option></select>` : ''}
-                    ${String(tipo).toUpperCase().includes('12X36') ? `<select onchange="setVtParidade('${esc(e.nome)}', this.value)"><option value="impares" ${String(itemCfg.paridade||'').toLowerCase()!=='pares'?'selected':''}>Dias ímpares</option><option value="pares" ${String(itemCfg.paridade||'').toLowerCase()==='pares'?'selected':''}>Dias pares</option></select>` : ''}
-                    ${srcLabel}${reporBtn}
-                </div>
-                <div style="font-size:11px;color:#475569;margin-top:4px;">${esc(vtBase.escala || '—')}</div>
-            </td>
+            <td>${esc(vtBase.escala || '—')}</td>
             <td style="text-align:right">${fmoney(unit)}</td><td style="text-align:right">${fmoney(unit*2)}</td><td style="text-align:right">${dias}</td><td style="text-align:right">${faltasPrev}</td><td style="text-align:right">${diasLiquidos}</td><td style="text-align:right">${fmoney(total)}</td>
             <td>${esc([e.banco,e.agencia,e.conta].filter(Boolean).join(' / ') || '—')}</td></tr>`;
         }).join('')
@@ -12977,8 +12963,8 @@ function getVtRowsExport(){
         return diasUteis;
     };
     return state.employees.filter(e => e.status !== 'Funcionário Desligado' && String(e.vt||'').toUpperCase() !== 'NÃO' && String(e.vt||'').toUpperCase().includes('SIM')).map(e => {
-        const jornadaCfg = getVtCfgForEmployee(e, cfg);
         const vtBase = getVtDisplayDataForEmployee(e, cfg);
+        const jornadaCfg = jornadaStringToVtCfg(vtBase.escala || '');
         const jornada = vtBase.escala || jornadaCfg.tipo || '6x1';
         const dias = calcDias(jornadaCfg);
         const faltasPrev = vtCountFaltasPeriodoAnterior(e.nome, ini, fim);
