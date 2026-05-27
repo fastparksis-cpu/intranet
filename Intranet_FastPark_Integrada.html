@@ -11752,6 +11752,16 @@ function dadosColaboradorQuadroAtual(emp){
 function parseCargaSemanalHoras(raw, diasRef, escalaRef){
     const s = String(raw || '').trim().toLowerCase();
     if(!s) return 0;
+    // Formatos HH:MM ou HH:MM:SS (ex.: 44:00:00) -> horas semanais.
+    const hm = s.match(/^(\d{1,3}):(\d{2})(?::(\d{2}))?$/);
+    if(hm){
+        const h = Number(hm[1] || 0);
+        const m = Number(hm[2] || 0);
+        const sec = Number(hm[3] || 0);
+        if(isFinite(h) && isFinite(m) && isFinite(sec)){
+            return +(h + (m / 60) + (sec / 3600)).toFixed(2);
+        }
+    }
     // Evita interpretar escalas (ex.: 12x36) como 1236 horas.
     if(/\d+\s*x\s*\d+/i.test(s)) return 0;
     const n = Number(String(s).replace(',', '.').replace(/[^\d.]/g, ''));
