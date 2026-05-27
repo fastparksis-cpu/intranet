@@ -11938,21 +11938,23 @@ function diasTrabalhoNoMesPorEscala(ano, mes, diasTxt, escalaTxt){
     const d = normText(diasTxt || '');
     const e = normText(escalaTxt || '');
     const totalDias = diasNoMes(ano, mes);
-    if(e.includes('5X2') || d.includes('SEGUNDA A SEXTA')){
+    const countByWeekdays = (allowedSet) => {
         let c = 0;
         for(let dia = 1; dia <= totalDias; dia++){
             const wd = new Date(ano, mes - 1, dia).getDay();
-            if(wd >= 1 && wd <= 5) c++;
+            if(allowedSet.has(wd)) c++;
         }
         return c;
+    };
+    if(e.includes('5X2') || d.includes('SEGUNDA A SEXTA')){
+        return countByWeekdays(new Set([1,2,3,4,5]));
     }
     if(e.includes('6X1') || d.includes('SEGUNDA A SABADO') || d.includes('TERCA A DOMINGO')){
-        let c = 0;
-        for(let dia = 1; dia <= totalDias; dia++){
-            const wd = new Date(ano, mes - 1, dia).getDay();
-            if(wd !== 0) c++;
-        }
-        return c;
+        // 6x1 com detalhamento de dias: respeita o intervalo informado.
+        if(d.includes('SEGUNDA A SABADO')) return countByWeekdays(new Set([1,2,3,4,5,6]));
+        if(d.includes('TERCA A DOMINGO')) return countByWeekdays(new Set([0,2,3,4,5,6]));
+        // Fallback genérico do 6x1: segunda a sábado.
+        return countByWeekdays(new Set([1,2,3,4,5,6]));
     }
     if(e.includes('12X36')) return Math.ceil(totalDias / 2);
     if(e.includes('12X48')) return Math.ceil(totalDias / 3);
