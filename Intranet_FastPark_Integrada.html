@@ -11840,6 +11840,11 @@ function fmtHorasMensais(v){
     if(v == null || !isFinite(v) || v <= 0) return '—';
     return `${String(v.toFixed(2)).replace('.', ',')}h/mês`;
 }
+function onQuadroAtualUnidadeFiltroChange(){
+    const sel = document.getElementById('quadroAtualUnidadeFiltro');
+    window.__fpQuadroAtualUnidadeFiltro = sel ? String(sel.value || '').trim() : '';
+    renderPostosPanorama();
+}
 function renderPostosPanorama(){
     const el = document.getElementById('postosPanorama');
     if(!el) return;
@@ -11882,9 +11887,12 @@ function renderPostosPanorama(){
         const u = String(a.unidade).localeCompare(String(b.unidade), 'pt-BR');
         return u !== 0 ? u : String(a.posto).localeCompare(String(b.posto), 'pt-BR');
     });
+    const allUnidades = [...new Set(linhas.map(r => String(r.unidade || 'Sem unidade')))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    const filtroUnidade = String(window.__fpQuadroAtualUnidadeFiltro || '').trim();
+    const linhasFiltradas = filtroUnidade ? linhas.filter(r => String(r.unidade || 'Sem unidade') === filtroUnidade) : linhas;
     const th = ['Posto','Unidade','Endereço','CNPJ','Dias','Escala','Entrada','Saída int.','Retorno int.','Saída','Supervisor','Colaborador','Função','Registro','Carga colaborador','Carga posto','Horas extras (semana)','Horas extras (mês)'];
     const byUnidade = new Map();
-    linhas.forEach(r => {
+    linhasFiltradas.forEach(r => {
         const k = String(r.unidade || 'Sem unidade');
         if(!byUnidade.has(k)) byUnidade.set(k, []);
         byUnidade.get(k).push(r);
@@ -11922,7 +11930,16 @@ function renderPostosPanorama(){
         </div>`;
     }).join('');
     el.innerHTML = `
-        <p style="margin:0 0 10px;font-size:12px;color:#6b7280;">${linhas.length} posto(s) — somente leitura. Alterações em <strong>Unidades → Postos</strong>; vínculo do colaborador no <strong>Cadastro</strong> de funcionários.</p>
+        <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin:0 0 10px;">
+            <div>
+                <label style="display:block;font-size:11px;font-weight:700;color:#374151;margin:0 0 4px;">Filtrar unidade</label>
+                <select id="quadroAtualUnidadeFiltro" onchange="onQuadroAtualUnidadeFiltroChange()">
+                    <option value="">Todas as unidades</option>
+                    ${allUnidades.map(u => `<option value="${esc(u)}" ${u === filtroUnidade ? 'selected' : ''}>${esc(u)}</option>`).join('')}
+                </select>
+            </div>
+        </div>
+        <p style="margin:0 0 10px;font-size:12px;color:#6b7280;">${linhasFiltradas.length} posto(s) exibido(s) de ${linhas.length} total — somente leitura. Alterações em <strong>Unidades → Postos</strong>; vínculo do colaborador no <strong>Cadastro</strong> de funcionários.</p>
         ${gruposHtml}`;
 }
 
