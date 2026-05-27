@@ -2555,6 +2555,11 @@ td { color: var(--t); font-weight: 500;}
                 <div id="uniViewPanelPostos" class="uni-view-panel">
                     <div id="uniViewPostosReadonly">
                         <p style="margin:0 0 8px;font-size:12px;color:#555;">Ficha de postos — o Quadro de Postos usa estes registos.</p>
+                        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 10px;">
+                            <input id="uniPostoBuscaCodigo" type="text" placeholder="Buscar posto por código (ex.: 1501)" style="max-width:280px;">
+                            <button type="button" class="btn btn-fp-gray" onclick="localizarPostoPorCodigo()">Localizar</button>
+                            <span id="uniPostoBuscaHint" style="font-size:12px;color:#6b7280;"></span>
+                        </div>
                         <div id="uniViewPostosListBody"><div class="empty">Selecione uma unidade.</div></div>
                     </div>
                     <div id="uniViewPostosEdit" class="uni-view-edit-block">
@@ -11332,6 +11337,27 @@ function getPostosCatalogForUnidade(unidade){
     return getUnidadesPostosCatalog()
         .filter(p => _normUniPostoUnidadeKey(p.unidadeCod, p.unidadeNome) === uKey)
         .sort((a, b) => String(a.codigo || '').localeCompare(String(b.codigo || ''), 'pt-BR'));
+}
+function findPostoCatalogByCodigoGlobal(codigo){
+    const cod = String(codigo || '').trim().toUpperCase();
+    if(!cod) return null;
+    const arr = getUnidadesPostosCatalog();
+    return arr.find(p => String(p.codigo || '').trim().toUpperCase() === cod) || null;
+}
+function localizarPostoPorCodigo(){
+    const cod = (document.getElementById('uniPostoBuscaCodigo')?.value || '').trim();
+    const hint = document.getElementById('uniPostoBuscaHint');
+    if(!cod){
+        if(hint) hint.textContent = 'Informe um código para buscar.';
+        return;
+    }
+    const row = findPostoCatalogByCodigoGlobal(cod);
+    if(!row){
+        if(hint) hint.textContent = `Posto ${cod} não encontrado.`;
+        return;
+    }
+    if(hint) hint.textContent = `Posto ${row.codigo} encontrado na unidade ${row.unidadeNome || row.unidadeCod || '—'}.`;
+    editarPostoUnidadeCatalog(encodeURIComponent(String(row.id || '')));
 }
 function catalogPostoToQuadroRow(p, catalogIdx){
     const d = lookupDadosUnidadeParaQuadro(p.unidadeNome || p.unidadeCod || '');
