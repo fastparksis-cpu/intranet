@@ -8938,13 +8938,36 @@ function movCadOnDestinoChange(){
     const codDest = getCodigoPostoByColaboradorNome(nome, destino) || '';
     const sel = document.getElementById('movCadCodPostoDestino');
     if(!sel) return;
-    const list = (getUnidadesPostosCatalog() || [])
-        .filter(p => normText(p.unidadeNome || p.unidadeCod || '') === normText(destino || ''))
+    const rowsUni = (getUnidadesPostosCatalog() || [])
+        .filter(p => normText(p.unidadeNome || p.unidadeCod || '') === normText(destino || ''));
+    const disponiveis = rowsUni
+        .filter(p => {
+            const n = normText(p.nome || '');
+            return !n || n === normText(nome || '');
+        })
         .map(p => String(p.codigo || '').trim())
         .filter(Boolean);
-    const uniq = [...new Set(list)].sort((a,b) => a.localeCompare(b, 'pt-BR'));
-    let html = '<option value="">Cód. posto destino</option>' + uniq.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
-    if(codDest && !uniq.includes(codDest)) html += `<option value="${esc(codDest)}">${esc(codDest)}</option>`;
+    const ocupados = rowsUni
+        .filter(p => {
+            const n = normText(p.nome || '');
+            return n && n !== normText(nome || '');
+        })
+        .map(p => ({ codigo: String(p.codigo || '').trim(), nome: String(p.nome || '').trim() }))
+        .filter(p => p.codigo);
+    const dispUniq = [...new Set(disponiveis)].sort((a,b) => a.localeCompare(b, 'pt-BR'));
+    let html = '<option value="">Cód. posto destino</option>';
+    html += dispUniq.map(c => `<option value="${esc(c)}">${esc(c)} — disponível</option>`).join('');
+    if(ocupados.length){
+        html += '<optgroup label="Ocupados">';
+        html += ocupados.sort((a,b)=>a.codigo.localeCompare(b.codigo,'pt-BR'))
+            .map(p => `<option value="${esc(p.codigo)}">${esc(p.codigo)} — ${esc(p.nome)}</option>`).join('');
+        html += '</optgroup>';
+    }
+    const allCods = new Set([
+        ...dispUniq,
+        ...ocupados.map(p => p.codigo)
+    ]);
+    if(codDest && !allCods.has(codDest)) html += `<option value="${esc(codDest)}">${esc(codDest)}</option>`;
     sel.innerHTML = html;
     if(codDest) sel.value = codDest;
 }
