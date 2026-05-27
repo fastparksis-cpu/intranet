@@ -2396,7 +2396,7 @@ td { color: var(--t); font-weight: 500;}
                 <input id="movCadCodPostoAtual" placeholder="Cód. posto atual" readonly>
                 <select id="movCadOrigem"><option value="">Origem</option></select>
                 <select id="movCadDestino" onchange="movCadOnDestinoChange()"><option value="">Destino</option></select>
-                <input id="movCadCodPostoDestino" placeholder="Cód. posto destino" readonly>
+                <select id="movCadCodPostoDestino"><option value="">Cód. posto destino</option></select>
                 <input id="movCadDataIni" type="date">
                 <input id="movCadDataFim" type="date">
                 <input id="movCadObs" placeholder="Observações">
@@ -8936,8 +8936,17 @@ function movCadOnDestinoChange(){
     const nome = document.getElementById('movCadFuncionario')?.value || '';
     const destino = document.getElementById('movCadDestino')?.value || '';
     const codDest = getCodigoPostoByColaboradorNome(nome, destino) || '';
-    const el = document.getElementById('movCadCodPostoDestino');
-    if(el) el.value = codDest;
+    const sel = document.getElementById('movCadCodPostoDestino');
+    if(!sel) return;
+    const list = (getUnidadesPostosCatalog() || [])
+        .filter(p => normText(p.unidadeNome || p.unidadeCod || '') === normText(destino || ''))
+        .map(p => String(p.codigo || '').trim())
+        .filter(Boolean);
+    const uniq = [...new Set(list)].sort((a,b) => a.localeCompare(b, 'pt-BR'));
+    let html = '<option value="">Cód. posto destino</option>' + uniq.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+    if(codDest && !uniq.includes(codDest)) html += `<option value="${esc(codDest)}">${esc(codDest)}</option>`;
+    sel.innerHTML = html;
+    if(codDest) sel.value = codDest;
 }
 function limparFormMovCad(){
     const hid = document.getElementById('movCadEditId');
@@ -8964,6 +8973,13 @@ function editarMovCad(id){
     document.getElementById('movCadObs').value = m.obs || '';
     movCadOnFuncionarioChange(true);
     movCadOnDestinoChange();
+    const codSel = document.getElementById('movCadCodPostoDestino');
+    if(codSel && m.codPostoDestino){
+        if(![...codSel.options].some(o => o.value === m.codPostoDestino)){
+            codSel.innerHTML += `<option value="${esc(m.codPostoDestino)}">${esc(m.codPostoDestino)}</option>`;
+        }
+        codSel.value = m.codPostoDestino;
+    }
     switchTab('movfunc');
     document.querySelector('#movfunc .panel .body')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -9020,6 +9036,7 @@ function salvarMovimentacaoCadastro(){
         funcionario,
         origem: document.getElementById('movCadOrigem')?.value || '',
         destino: document.getElementById('movCadDestino')?.value || '',
+        codPostoDestino: document.getElementById('movCadCodPostoDestino')?.value || '',
         dataIni: document.getElementById('movCadDataIni')?.value || '',
         dataFim: document.getElementById('movCadDataFim')?.value || '',
         obs: document.getElementById('movCadObs')?.value || '',
@@ -9064,7 +9081,7 @@ function renderMovCadList(){
     el.innerHTML = `<table><thead><tr><th>Funcionário</th><th>Cód. posto atual</th><th>Cód. posto destino</th><th>Origem</th><th>Destino</th><th>Início</th><th>Fim</th><th>Observações</th><th style="min-width:130px;">Ações</th></tr></thead><tbody>${
         arr.map(x=>{
             const idAttr = encodeURIComponent(x.id || '');
-            return `<tr><td>${esc(x.funcionario)}</td><td>${esc(getCodigoPostoByColaboradorNome(x.funcionario) || '—')}</td><td>${esc(getCodigoPostoByColaboradorNome(x.funcionario, x.destino) || '—')}</td><td>${esc(x.origem)}</td><td>${esc(x.destino)}</td><td>${esc(x.dataIni)}</td><td>${esc(x.dataFim)}</td><td>${esc(x.obs)}</td><td style="white-space:nowrap;"><button type="button" class="btn movcad-btn-edit" style="padding:4px 10px;font-size:11px;" data-movcad-id="${idAttr}">Editar</button> <button type="button" class="btn btn-danger movcad-btn-excluir" style="padding:4px 10px;font-size:11px;" data-movcad-id="${idAttr}">Excluir</button></td></tr>`;
+            return `<tr><td>${esc(x.funcionario)}</td><td>${esc(getCodigoPostoByColaboradorNome(x.funcionario) || '—')}</td><td>${esc(x.codPostoDestino || getCodigoPostoByColaboradorNome(x.funcionario, x.destino) || '—')}</td><td>${esc(x.origem)}</td><td>${esc(x.destino)}</td><td>${esc(x.dataIni)}</td><td>${esc(x.dataFim)}</td><td>${esc(x.obs)}</td><td style="white-space:nowrap;"><button type="button" class="btn movcad-btn-edit" style="padding:4px 10px;font-size:11px;" data-movcad-id="${idAttr}">Editar</button> <button type="button" class="btn btn-danger movcad-btn-excluir" style="padding:4px 10px;font-size:11px;" data-movcad-id="${idAttr}">Excluir</button></td></tr>`;
         }).join('')
     }</tbody></table>`;
 }
