@@ -752,6 +752,7 @@ const FP_REF_VT_TIPOS_KEY = 'fp_ref_vt_tipos';
 const FP_REF_SAUDE_KEY = 'fp_ref_saude';
 const FP_REF_ODONTO_KEY = 'fp_ref_odonto';
 const FP_REF_EMPRESAS_KEY = 'fp_ref_empresas';
+const FP_UNIDADES_POSTOS_KEY = 'fp_unidades_postos';
 const ESCALA_OPCOES = ['5x2', '6x1', '6x2', '12x36', '8h', '44h'];
 let fpRefCache = { vtTipos: [], saude: null, odonto: null, empresas: [] };
 let cadastroFichaTabAtivo = 'ficha';
@@ -2456,6 +2457,23 @@ function statusDoc(label, d) {
     if(d <= 90) return pill('w', `${label}: vence em ${d} dia(s)`);
     return pill('ok', label + ': no prazo');
 }
+function fpNormTextBasic(s){
+    return String(s || '').trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+}
+function fpGetCodigoPostoByEmployeeName(nome){
+    const nm = fpNormTextBasic(nome);
+    if(!nm) return '';
+    let arr = [];
+    try { arr = JSON.parse(localStorage.getItem(FP_UNIDADES_POSTOS_KEY) || '[]'); } catch(_) { arr = []; }
+    if(!Array.isArray(arr) || !arr.length) return '';
+    const exact = arr.find(p => fpNormTextBasic(p?.nome) === nm);
+    if(exact && String(exact.codigo || '').trim()) return String(exact.codigo).trim();
+    const contains = arr.find(p => {
+        const pn = fpNormTextBasic(p?.nome);
+        return pn && (pn.includes(nm) || nm.includes(pn));
+    });
+    return contains ? String(contains.codigo || '').trim() : '';
+}
 
 function renderProfile(e, qtd) {
     if(E.selectionInfo) E.selectionInfo.textContent = qtd ? `${qtd} registro(s) no filtro` : 'Sem registros';
@@ -2468,9 +2486,11 @@ function renderProfile(e, qtd) {
     const stRaw = String(e.status || '');
     const st = stRaw.includes('Deslig') ? 'd' : stRaw.includes('FÉR') ? 'w' : 'ok';
     const vtIv = Number(e.vtIdaVolta) > 0 ? e.vtIdaVolta : (Number(e.vtValor) > 0 ? Number(e.vtValor) * 2 : 0);
+    const codPosto = fpGetCodigoPostoByEmployeeName(e.nome);
     const part1 = [
         ['Registro', e.empresa], ['Status', e.status], ['Admissão', fdate(e.admissao)], ['Tempo de casa (automático)', tc.linhaGrelha],
         ['Cargo', e.cargo], ['Nível', e.nivel], ['Atuando (Unidade)', e.atuando], ['Escala', e.escala || '—'],
+        ['Cód. de posto', codPosto || '—'],
         ['Carga horária', e.carga || '—'], ['Jornada', e.jornada || '—'],
         ['Salário Base', fmoney(e.salario)], ['Ajuda de custos', fmoney(e.ajuda)], ['Vale Refeição', fmoney(e.vr)], ['Cesta', e.cestas || 'NÃO'],
         ['Vale transporte', e.vt || '—'], ['Tipo VT', e.vtTipo || '—'], ['VT unitário', Number(e.vtValor) > 0 ? fmoney(e.vtValor) : '—'],
@@ -4093,6 +4113,7 @@ const FICHA_REL_FIELDS = [
     { id: 'cargo', label: 'Cargo', group: 'contratual', get: e => e.cargo },
     { id: 'nivel', label: 'Nível', group: 'contratual', get: e => e.nivel },
     { id: 'unidade', label: 'Unidade / Atuando', group: 'contratual', get: e => e.atuando },
+    { id: 'codigoPosto', label: 'Cód. de posto', group: 'contratual', get: e => fpGetCodigoPostoByEmployeeName(e.nome) || '—' },
     { id: 'escala', label: 'Escala', group: 'contratual', get: e => e.escala },
     { id: 'carga', label: 'Carga horária', group: 'contratual', get: e => e.carga },
     { id: 'jornada', label: 'Jornada', group: 'contratual', get: e => e.jornada },
