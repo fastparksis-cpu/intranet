@@ -2570,6 +2570,7 @@ td { color: var(--t); font-weight: 500;}
                         <div><label for="uniPostoCodigo">Código do posto</label><input id="uniPostoCodigo" type="text" placeholder="Ex.: P-01" oninput="uniMarkFilledInputs(this.closest('.uni-postos-form'))"></div>
                         <div><label for="uniPostoDias">Dias da semana</label><select id="uniPostoDias" onchange="uniMarkFilledInputs(this.closest('.uni-postos-form'))"><option value="">Selecione</option></select></div>
                         <div><label for="uniPostoEscala">Escala</label><select id="uniPostoEscala" onchange="uniMarkFilledInputs(this.closest('.uni-postos-form'))"><option value="">Selecione</option></select></div>
+                        <div><label for="uniPostoParidade">12x36 (pares/ímpares)</label><select id="uniPostoParidade" onchange="uniMarkFilledInputs(this.closest('.uni-postos-form'))"><option value="">N/A</option><option value="PARES">PARES</option><option value="ÍMPARES">ÍMPARES</option></select></div>
                         <div><label for="uniPostoEntrada">Horário entrada</label><input id="uniPostoEntrada" type="time" oninput="uniMarkFilledInputs(this.closest('.uni-postos-form'))"></div>
                         <div><label for="uniPostoSaidaIntervalo">Saída intervalo</label><input id="uniPostoSaidaIntervalo" type="time" oninput="uniMarkFilledInputs(this.closest('.uni-postos-form'))"></div>
                         <div><label for="uniPostoRetornoIntervalo">Retorno intervalo</label><input id="uniPostoRetornoIntervalo" type="time" oninput="uniMarkFilledInputs(this.closest('.uni-postos-form'))"></div>
@@ -11440,6 +11441,7 @@ function catalogPostoToQuadroRow(p, catalogIdx){
         funcao: p.funcao || '',
         registro2: p.registro2 || '',
         diasSemana: p.diasSemana || '',
+        paridade12x36: p.paridade12x36 || '',
         diasSemana2: '',
         escala: p.escala || p.jornada || '',
         jornada: p.escala || p.jornada || p.diasSemana || '',
@@ -11484,6 +11486,8 @@ function limparFormPostoUnidade(){
     ids.forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
     fillUniPostoDiasSelect('');
     fillUniPostoEscalaSelect('');
+    const parEl = document.getElementById('uniPostoParidade');
+    if(parEl) parEl.value = '';
     const title = document.getElementById('uniViewPostosListTitle');
     const u = getUnidadeAtualParaPostosView();
     if(title) title.textContent = 'Postos cadastrados' + (u?.nome ? ' (' + u.nome + ')' : '');
@@ -11499,6 +11503,7 @@ function salvarPostoUnidadeCatalog(){
     if(!codigo){ alert('Informe o código do posto.'); return; }
     const diasSemana = (document.getElementById('uniPostoDias')?.value || '').trim();
     const escala = (document.getElementById('uniPostoEscala')?.value || '').trim();
+    const paridade12x36 = (document.getElementById('uniPostoParidade')?.value || '').trim();
     const entrada = (document.getElementById('uniPostoEntrada')?.value || '').trim();
     const saidaIntervalo = (document.getElementById('uniPostoSaidaIntervalo')?.value || '').trim();
     const retornoIntervalo = (document.getElementById('uniPostoRetornoIntervalo')?.value || '').trim();
@@ -11519,6 +11524,7 @@ function salvarPostoUnidadeCatalog(){
         unidadeNome: String(unidade.nome || '').trim(),
         codigo,
         diasSemana,
+        paridade12x36: escala === '12x36' ? paridade12x36 : '',
         escala,
         jornada: escala,
         entrada,
@@ -11557,6 +11563,8 @@ function editarPostoUnidadeCatalog(idEnc){
     document.getElementById('uniPostoCodigo').value = row.codigo || '';
     fillUniPostoDiasSelect(row.diasSemana || '');
     fillUniPostoEscalaSelect(row.escala || row.jornada || '');
+    const parEl = document.getElementById('uniPostoParidade');
+    if(parEl) parEl.value = row.paridade12x36 || '';
     document.getElementById('uniPostoEntrada').value = row.entrada || '';
     document.getElementById('uniPostoSaidaIntervalo').value = row.saidaIntervalo || '';
     document.getElementById('uniPostoRetornoIntervalo').value = row.retornoIntervalo || '';
@@ -11600,7 +11608,7 @@ function renderUnidadesPostosList(){
     const acoesTh = '<th class="uni-ficha-lbl" style="width:12%;">Ações</th>';
     el.innerHTML = uniFichaWrap('<section class="uni-ficha-block"><h4 class="uni-ficha-block-title">Postos cadastrados</h4>' +
         `<table class="uni-ficha-table"><thead><tr>
-        <th class="uni-ficha-lbl">Código</th><th class="uni-ficha-lbl">Dias</th><th class="uni-ficha-lbl">Escala</th><th class="uni-ficha-lbl">Entrada</th><th class="uni-ficha-lbl">Saída int.</th>
+        <th class="uni-ficha-lbl">Código</th><th class="uni-ficha-lbl">Dias</th><th class="uni-ficha-lbl">Escala</th><th class="uni-ficha-lbl">12x36</th><th class="uni-ficha-lbl">Entrada</th><th class="uni-ficha-lbl">Saída int.</th>
         <th class="uni-ficha-lbl">Retorno int.</th><th class="uni-ficha-lbl">Saída</th><th class="uni-ficha-lbl">Supervisor</th>${acoesTh}
         </tr></thead><tbody>${
         rows.map(r => {
@@ -11613,6 +11621,7 @@ function renderUnidadesPostosList(){
                 <td class="uni-ficha-val"><strong>${esc(r.codigo || '')}</strong></td>
                 <td class="uni-ficha-val">${esc(r.diasSemana || '') || '<span class="uni-ficha-empty">—</span>'}</td>
                 <td class="uni-ficha-val">${esc(r.escala || r.jornada || '') || '<span class="uni-ficha-empty">—</span>'}</td>
+                <td class="uni-ficha-val">${esc(r.paridade12x36 || '') || '<span class="uni-ficha-empty">—</span>'}</td>
                 <td class="uni-ficha-val">${fmtH(r.entrada)}</td>
                 <td class="uni-ficha-val">${fmtH(r.saidaIntervalo)}</td>
                 <td class="uni-ficha-val">${fmtH(r.retornoIntervalo)}</td>
@@ -11986,6 +11995,7 @@ function renderPostosPanorama(){
             cnpj: row.cnpjUnidade || '',
             dias: p.diasSemana || '',
             escala: p.escala || p.jornada || '',
+            paridade12x36: p.paridade12x36 || '',
             entrada: p.entrada || '',
             saidaInt: p.saidaIntervalo || '',
             retornoInt: p.retornoIntervalo || '',
@@ -12007,7 +12017,7 @@ function renderPostosPanorama(){
     const allUnidades = [...new Set(linhas.map(r => String(r.unidade || 'Sem unidade')))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
     const filtroUnidade = String(window.__fpQuadroAtualUnidadeFiltro || '').trim();
     const linhasFiltradas = filtroUnidade ? linhas.filter(r => String(r.unidade || 'Sem unidade') === filtroUnidade) : linhas;
-    const th = ['Posto','Unidade','Endereço','CNPJ','Dias','Escala','Entrada','Saída int.','Retorno int.','Saída','Supervisor','Colaborador','Função','Registro','Carga colaborador','Carga posto','Horas extras (semana)','Horas extras (mês)'];
+    const th = ['Posto','Unidade','Endereço','CNPJ','Dias','Escala','12x36','Entrada','Saída int.','Retorno int.','Saída','Supervisor','Colaborador','Função','Registro','Carga colaborador','Carga posto','Horas extras (semana)','Horas extras (mês)'];
     const byUnidade = new Map();
     linhasFiltradas.forEach(r => {
         const k = String(r.unidade || 'Sem unidade');
@@ -12022,6 +12032,7 @@ function renderPostosPanorama(){
             <td>${esc(r.cnpj || '—')}</td>
             <td>${esc(r.dias || '—')}</td>
             <td>${esc(r.escala || '—')}</td>
+            <td>${esc(r.paridade12x36 || '—')}</td>
             <td>${esc(fmtQuadroAtualHora(r.entrada))}</td>
             <td>${esc(fmtQuadroAtualHora(r.saidaInt))}</td>
             <td>${esc(fmtQuadroAtualHora(r.retornoInt))}</td>
