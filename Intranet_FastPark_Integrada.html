@@ -11836,6 +11836,10 @@ function fmtHorasSemanais(v){
     if(v == null || !isFinite(v) || v <= 0) return '—';
     return `${String(v.toFixed(2)).replace('.', ',')}h/sem`;
 }
+function fmtHorasMensais(v){
+    if(v == null || !isFinite(v) || v <= 0) return '—';
+    return `${String(v.toFixed(2)).replace('.', ',')}h/mês`;
+}
 function renderPostosPanorama(){
     const el = document.getElementById('postosPanorama');
     if(!el) return;
@@ -11853,6 +11857,7 @@ function renderPostosPanorama(){
         const diasSem = diasSemanaisDoPosto(p.diasSemana, p.escala || p.jornada);
         const cargaPosto = hDiaPosto > 0 ? +(hDiaPosto * diasSem).toFixed(2) : 0;
         const extra = (cargaColab > 0 && cargaPosto > 0) ? +(cargaPosto - cargaColab).toFixed(2) : 0;
+        const extraMes = extra > 0 ? +(extra * 4.33).toFixed(2) : 0;
         return {
             posto: p.codigo || '',
             unidade: p.unidadeNome || '',
@@ -11870,13 +11875,14 @@ function renderPostosPanorama(){
             registro: col.registro,
             cargaColab,
             cargaPosto,
-            extra
+            extra,
+            extraMes
         };
     }).sort((a, b) => {
         const u = String(a.unidade).localeCompare(String(b.unidade), 'pt-BR');
         return u !== 0 ? u : String(a.posto).localeCompare(String(b.posto), 'pt-BR');
     });
-    const th = ['Posto','Unidade','Endereço','CNPJ','Dias','Escala','Entrada','Saída int.','Retorno int.','Saída','Supervisor','Colaborador','Função','Registro','Carga colaborador','Carga posto','Horas extras'];
+    const th = ['Posto','Unidade','Endereço','CNPJ','Dias','Escala','Entrada','Saída int.','Retorno int.','Saída','Supervisor','Colaborador','Função','Registro','Carga colaborador','Carga posto','Horas extras (semana)','Horas extras (mês)'];
     const byUnidade = new Map();
     linhas.forEach(r => {
         const k = String(r.unidade || 'Sem unidade');
@@ -11902,6 +11908,7 @@ function renderPostosPanorama(){
             <td>${esc(fmtHorasSemanais(r.cargaColab))}</td>
             <td>${esc(fmtHorasSemanais(r.cargaPosto))}</td>
             <td>${esc(r.extra > 0 ? `+${fmtHorasSemanais(r.extra)}` : (r.extra < 0 ? `-${fmtHorasSemanais(Math.abs(r.extra))}` : '—'))}</td>
+            <td>${esc(r.extraMes > 0 ? `+${fmtHorasMensais(r.extraMes)}` : '—')}</td>
         </tr>`).join('');
         return `
         <div style="margin:0 0 14px;">
