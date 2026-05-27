@@ -24,7 +24,9 @@
 
     /** Auto-gravação na nuvem após alterações (debounce em ms) */
     g.FP_CLOUD_AUTOSAVE = true;
-    g.FP_CLOUD_AUTOSAVE_DEBOUNCE_MS = 500;
+    g.FP_CLOUD_AUTOSAVE_DEBOUNCE_MS = 180;
+    /** Tempo máximo para o DashBoard responder antes de gravar na nuvem */
+    g.FP_CLOUD_IFRAME_PULL_MS = 280;
 
     /**
      * Modo rápido: carrega JSON na hora; fotos/docs com URL assinada em segundo plano.
@@ -39,7 +41,7 @@
     g.FP_CLOUD_FLUSH_ALL_TABS = true;
     /** Envia cada foto/documento ao Storage assim que é anexado (antes do snapshot completo) */
     g.FP_CLOUD_IMMEDIATE_MEDIA_UPLOAD = true;
-    g.FP_CLOUD_MEDIA_SAVE_DEBOUNCE_MS = 400;
+    g.FP_CLOUD_MEDIA_SAVE_DEBOUNCE_MS = 150;
 
     /** Ao abrir a intranet com login, carrega snapshot + ficheiros do Supabase automaticamente */
     g.FP_CLOUD_AUTOLOAD = true;

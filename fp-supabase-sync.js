@@ -653,7 +653,11 @@
             try { await g.fpPersistEmployeeAttBagFromState(); } catch (bagPrep) { console.warn('[fp-cloud] bag prepare', bagPrep); }
         }
         var quick = opts.quick !== false && opts.autosave && g.FP_CLOUD_QUICK_SAVE !== false && g.FP_CLOUD_FAST_SYNC !== false;
-        await g.fpPullStateFromDashboardIframes(quick ? (opts.iframeMs || 1200) : (opts.iframeMs || 4000));
+        var pullMs = opts.iframeMs;
+        if (pullMs == null) {
+            pullMs = quick ? (g.FP_CLOUD_IFRAME_PULL_MS || 280) : 2500;
+        }
+        await g.fpPullStateFromDashboardIframes(pullMs);
         if (typeof g.syncBeneficiosFuncionariosFromEmployees === 'function') {
             g.syncBeneficiosFuncionariosFromEmployees();
         }
@@ -686,7 +690,7 @@
             var handler = function (ev) {
                 if (ev.data && ev.data.type === 'fastpark-employees-from-iframe') {
                     g.removeEventListener('message', handler);
-                    setTimeout(finish, 80);
+                    setTimeout(finish, 25);
                 }
             };
             g.addEventListener('message', handler);
@@ -914,8 +918,9 @@
             g.fpScheduleCloudSave();
             return;
         }
+        g.fpScheduleCloudSave();
         clearTimeout(mediaTimer);
-        var ms = g.FP_CLOUD_MEDIA_SAVE_DEBOUNCE_MS || 400;
+        var ms = g.FP_CLOUD_MEDIA_SAVE_DEBOUNCE_MS || 150;
         mediaTimer = setTimeout(function () {
             (async function () {
                 try {
