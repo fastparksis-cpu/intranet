@@ -2395,7 +2395,8 @@ td { color: var(--t); font-weight: 500;}
                 <input id="movCadUnidadeAtual" placeholder="Unidade atual" readonly>
                 <input id="movCadCodPostoAtual" placeholder="Cód. posto atual" readonly>
                 <select id="movCadOrigem"><option value="">Origem</option></select>
-                <select id="movCadDestino"><option value="">Destino</option></select>
+                <select id="movCadDestino" onchange="movCadOnDestinoChange()"><option value="">Destino</option></select>
+                <input id="movCadCodPostoDestino" placeholder="Cód. posto destino" readonly>
                 <input id="movCadDataIni" type="date">
                 <input id="movCadDataFim" type="date">
                 <input id="movCadObs" placeholder="Observações">
@@ -6871,17 +6872,34 @@ function movimentacaoRefersToEmployee(m, emp){
     if(fn === en) return true;
     return normText(fn) === normText(en);
 }
-function getCodigoPostoByColaboradorNome(nome){
+function getCodigoPostoByColaboradorNome(nome, unidadePreferida){
     const nk = normText(nome || '');
     if(!nk) return '';
+    const uk = normText(unidadePreferida || '');
     const pickCodigo = (row) => String(
         row?.codigo || row?.posto || row?.idRh || row?.id_rh || row?.codPosto || row?.cod_posto || ''
     ).trim();
+    const rowUnidade = (row) => normText(row?.unidade || row?.unidadeNome || row?.unidadeCod || row?.atuando || '');
     const fontes = [
         ...(getUnidadesPostosCatalog() || []),
         ...(getPostosExtras() || []),
         ...(state.quadroGeral || [])
     ];
+    if(uk){
+        const exactUni = fontes.find(r => normText(r?.nome || '') === nk && rowUnidade(r) === uk);
+        if(exactUni){
+            const c = pickCodigo(exactUni);
+            if(c) return c;
+        }
+        const approxUni = fontes.find(r => {
+            const rn = normText(r?.nome || '');
+            return rn && rowUnidade(r) === uk && (rn.includes(nk) || nk.includes(rn));
+        });
+        if(approxUni){
+            const c = pickCodigo(approxUni);
+            if(c) return c;
+        }
+    }
     const exact = fontes.find(r => normText(r?.nome || '') === nk);
     if(exact){
         const cod = pickCodigo(exact);
@@ -8906,6 +8924,7 @@ function movCadOnFuncionarioChange(keepOrigemDestino){
     const codEl = document.getElementById('movCadCodPostoAtual');
     if(unEl) unEl.value = unidadeAtual || '';
     if(codEl) codEl.value = codPosto || '';
+    movCadOnDestinoChange();
     if(keepOrigemDestino) return;
     const origemEl = document.getElementById('movCadOrigem');
     if(origemEl){
@@ -8913,12 +8932,19 @@ function movCadOnFuncionarioChange(keepOrigemDestino){
         if(unidadeAtual && [...origemEl.options].some(o => o.value === unidadeAtual)) origemEl.value = unidadeAtual;
     }
 }
+function movCadOnDestinoChange(){
+    const nome = document.getElementById('movCadFuncionario')?.value || '';
+    const destino = document.getElementById('movCadDestino')?.value || '';
+    const codDest = getCodigoPostoByColaboradorNome(nome, destino) || '';
+    const el = document.getElementById('movCadCodPostoDestino');
+    if(el) el.value = codDest;
+}
 function limparFormMovCad(){
     const hid = document.getElementById('movCadEditId');
     if(hid) hid.value = '';
     const h = document.getElementById('movCadEditHint');
     if(h) h.style.display = 'none';
-    ['movCadFuncionario','movCadOrigem','movCadDestino','movCadDataIni','movCadDataFim','movCadObs','movCadUnidadeAtual','movCadCodPostoAtual'].forEach(id => {
+    ['movCadFuncionario','movCadOrigem','movCadDestino','movCadDataIni','movCadDataFim','movCadObs','movCadUnidadeAtual','movCadCodPostoAtual','movCadCodPostoDestino'].forEach(id => {
         const el = document.getElementById(id);
         if(el) el.value = '';
     });
@@ -8937,6 +8963,7 @@ function editarMovCad(id){
     document.getElementById('movCadDataFim').value = m.dataFim || '';
     document.getElementById('movCadObs').value = m.obs || '';
     movCadOnFuncionarioChange(true);
+    movCadOnDestinoChange();
     switchTab('movfunc');
     document.querySelector('#movfunc .panel .body')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -9034,10 +9061,10 @@ function renderMovCadList(){
     if(!el) return;
     const arr = getMovCad();
     if(!arr.length){ el.innerHTML = '<div class="empty">Sem movimentações cadastradas.</div>'; return; }
-    el.innerHTML = `<table><thead><tr><th>Funcionário</th><th>Cód. posto</th><th>Origem</th><th>Destino</th><th>Início</th><th>Fim</th><th>Observações</th><th style="min-width:130px;">Ações</th></tr></thead><tbody>${
+    el.innerHTML = `<table><thead><tr><th>Funcionário</th><th>Cód. posto atual</th><th>Cód. posto destino</th><th>Origem</th><th>Destino</th><th>Início</th><th>Fim</th><th>Observações</th><th style="min-width:130px;">Ações</th></tr></thead><tbody>${
         arr.map(x=>{
             const idAttr = encodeURIComponent(x.id || '');
-            return `<tr><td>${esc(x.funcionario)}</td><td>${esc(getCodigoPostoByColaboradorNome(x.funcionario) || '—')}</td><td>${esc(x.origem)}</td><td>${esc(x.destino)}</td><td>${esc(x.dataIni)}</td><td>${esc(x.dataFim)}</td><td>${esc(x.obs)}</td><td style="white-space:nowrap;"><button type="button" class="btn movcad-btn-edit" style="padding:4px 10px;font-size:11px;" data-movcad-id="${idAttr}">Editar</button> <button type="button" class="btn btn-danger movcad-btn-excluir" style="padding:4px 10px;font-size:11px;" data-movcad-id="${idAttr}">Excluir</button></td></tr>`;
+            return `<tr><td>${esc(x.funcionario)}</td><td>${esc(getCodigoPostoByColaboradorNome(x.funcionario) || '—')}</td><td>${esc(getCodigoPostoByColaboradorNome(x.funcionario, x.destino) || '—')}</td><td>${esc(x.origem)}</td><td>${esc(x.destino)}</td><td>${esc(x.dataIni)}</td><td>${esc(x.dataFim)}</td><td>${esc(x.obs)}</td><td style="white-space:nowrap;"><button type="button" class="btn movcad-btn-edit" style="padding:4px 10px;font-size:11px;" data-movcad-id="${idAttr}">Editar</button> <button type="button" class="btn btn-danger movcad-btn-excluir" style="padding:4px 10px;font-size:11px;" data-movcad-id="${idAttr}">Excluir</button></td></tr>`;
         }).join('')
     }</tbody></table>`;
 }
