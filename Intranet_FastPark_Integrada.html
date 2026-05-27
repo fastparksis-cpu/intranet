@@ -12774,8 +12774,11 @@ function getQuadroJornadaForEmployee(emp){
 }
 function getVtDisplayDataForEmployee(emp, cfg){
     const row = findPostoQuadroRowForEmployee(emp);
-    const cfgItem = getVtCfgForEmployee(emp, cfg || {});
-    const escalaQuadro = row ? String(row.escala || row.jornada || '').trim() : '';
+    const escalaBase = row ? vtEscalaCanonicalFromQuadro(String(row.escala || row.jornada || '').trim()) : '';
+    const parRaw = String((row && (row.paridade12x36 || row.paridade)) || '').trim();
+    const parNorm = normText(parRaw);
+    const parLabel = parNorm.includes('PARES') ? 'pares' : ((parNorm.includes('IMPARES') || parNorm.includes('ÍMPARES')) ? 'ímpares' : '');
+    const escalaQuadro = (normText(escalaBase) === '12X36' && parLabel) ? `12x36 (${parLabel})` : escalaBase;
     return {
         funcionario: (row && String(row.nome || '').trim()) || String(emp.nome || '').trim(),
         registro: (row && String(row.registro2 || row.registro || row.empresa || '').trim()) || String(emp.empresa || '').trim(),
@@ -12789,11 +12792,20 @@ function jornadaStringToVtCfg(jornadaStr){
     const u = vtTipoNorm(raw);
     const cfg = { tipo: raw || '6x1', folgaSemana: 0, paridade: 'impares' };
     if(u.includes('12X36')) cfg.tipo = '12x36';
-    else if(u.includes('6X2')) cfg.tipo = '6x2';
+    if(u.includes('PARES')) cfg.paridade = 'pares';
+    else if(u.includes('IMPARES') || u.includes('ÍMPARES')) cfg.paridade = 'impares';
+    else if(u.includes('5X2') || u.includes('6X2') || u.includes('SEGUNDAASEXTA') || u.includes('SEGASEX')) cfg.tipo = '5x2';
     else if(u.includes('6X1')) cfg.tipo = '6x1';
     else if(raw) cfg.tipo = raw;
     else cfg.tipo = '6x1';
     return cfg;
+}
+function vtEscalaCanonicalFromQuadro(escalaTxt){
+    const cfg = jornadaStringToVtCfg(escalaTxt || '');
+    const t = String(cfg.tipo || '').toUpperCase();
+    if(t.includes('12X36')) return '12x36';
+    if(t.includes('6X1')) return '6x1';
+    return '5x2';
 }
 /** VT: Postos/Quadro por defeito; fp_vt_cfg com manual=true mantém alteração feita nesta aba. */
 function getVtCfgForEmployee(emp, cfg){
