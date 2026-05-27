@@ -11749,6 +11749,52 @@ function dadosColaboradorQuadroAtual(emp){
         registro: fmtEmpresaRegistroColaborador(emp)
     };
 }
+function parseCargaSemanalHoras(raw){
+    const s = String(raw || '').trim().toLowerCase();
+    if(!s) return 0;
+    const n = Number(String(s).replace(',', '.').replace(/[^\d.]/g, ''));
+    if(!n || !isFinite(n)) return 0;
+    // Se vier mensal (ex.: 220), converte para semanal aproximada.
+    return n > 80 ? +(n / 5).toFixed(2) : n;
+}
+function parseHoraMinToMin(hhmm){
+    const s = String(hhmm || '').trim();
+    const m = s.match(/^(\d{1,2}):(\d{2})$/);
+    if(!m) return null;
+    const h = Number(m[1]);
+    const mi = Number(m[2]);
+    if(h > 23 || mi > 59) return null;
+    return (h * 60) + mi;
+}
+function minutosDiffHorario(inicio, fim){
+    const a = parseHoraMinToMin(inicio);
+    const b = parseHoraMinToMin(fim);
+    if(a == null || b == null) return 0;
+    return b >= a ? (b - a) : ((24 * 60) - a + b);
+}
+function horasPostoDia(entrada, saida, saidaInt, retornoInt){
+    const base = minutosDiffHorario(entrada, saida);
+    if(base <= 0) return 0;
+    const pausa = minutosDiffHorario(saidaInt, retornoInt);
+    return +Math.max(0, (base - pausa) / 60).toFixed(2);
+}
+function diasSemanaisDoPosto(dias, escala){
+    const d = normText(dias || '');
+    const e = normText(escala || '');
+    if(e.includes('5X2')) return 5;
+    if(e.includes('6X1')) return 6;
+    if(e.includes('6X2')) return 5.25;
+    if(e.includes('12X36')) return 3.5;
+    if(e.includes('12X48')) return 2.33;
+    if(d.includes('SEGUNDA A SEXTA')) return 5;
+    if(d.includes('SEGUNDA A SABADO')) return 6;
+    if(d.includes('TERCA A DOMINGO')) return 6;
+    return 6;
+}
+function fmtHorasSemanais(v){
+    if(v == null || !isFinite(v) || v <= 0) return '—';
+    return `${String(v.toFixed(2)).replace('.', ',')}h/sem`;
+}
 function renderPostosPanorama(){
     const el = document.getElementById('postosPanorama');
     if(!el) return;
@@ -11761,6 +11807,11 @@ function renderPostosPanorama(){
         const row = catalogPostoToQuadroRow(p, idx);
         const emp = findColaboradorParaPostoCatalog(p, row);
         const col = dadosColaboradorQuadroAtual(emp);
+        const cargaColab = parseCargaSemanalHoras(emp?.carga);
+        const hDiaPosto = horasPostoDia(p.entrada, p.saida, p.saidaIntervalo, p.retornoIntervalo);
+        const diasSem = diasSemanaisDoPosto(p.diasSemana, p.escala || p.jornada);
+        const cargaPosto = hDiaPosto > 0 ? +(hDiaPosto * diasSem).toFixed(2) : 0;
+        const extra = (cargaColab > 0 && cargaPosto > 0) ? +(cargaPosto - cargaColab).toFixed(2) : 0;
         return {
             posto: p.codigo || '',
             unidade: p.unidadeNome || '',
@@ -11775,13 +11826,16 @@ function renderPostosPanorama(){
             supervisor: p.supervisor || '',
             colaborador: col.colaborador,
             funcao: col.funcao,
-            registro: col.registro
+            registro: col.registro,
+            cargaColab,
+            cargaPosto,
+            extra
         };
     }).sort((a, b) => {
         const u = String(a.unidade).localeCompare(String(b.unidade), 'pt-BR');
         return u !== 0 ? u : String(a.posto).localeCompare(String(b.posto), 'pt-BR');
     });
-    const th = ['Posto','Unidade','Endereço','CNPJ','Dias','Escala','Entrada','Saída int.','Retorno int.','Saída','Supervisor','Colaborador','Função','Registro'];
+    const th = ['Posto','Unidade','Endereço','CNPJ','Dias','Escala','Entrada','Saída int.','Retorno int.','Saída','Supervisor','Colaborador','Função','Registro','Carga colaborador','Carga posto','Horas extras'];
     const body = linhas.map(r => `<tr>
         <td><strong>${esc(r.posto)}</strong></td>
         <td>${esc(r.unidade || '—')}</td>
@@ -11797,6 +11851,9 @@ function renderPostosPanorama(){
         <td>${esc(r.colaborador)}</td>
         <td>${esc(r.funcao)}</td>
         <td class="ref-readonly-val">${esc(r.registro)}</td>
+        <td>${esc(fmtHorasSemanais(r.cargaColab))}</td>
+        <td>${esc(fmtHorasSemanais(r.cargaPosto))}</td>
+        <td>${esc(r.extra > 0 ? `+${fmtHorasSemanais(r.extra)}` : (r.extra < 0 ? `-${fmtHorasSemanais(Math.abs(r.extra))}` : '—'))}</td>
     </tr>`).join('');
     el.innerHTML = `
         <p style="margin:0 0 10px;font-size:12px;color:#6b7280;">${linhas.length} posto(s) — somente leitura. Alterações em <strong>Unidades → Postos</strong>; vínculo do colaborador no <strong>Cadastro</strong> de funcionários.</p>
