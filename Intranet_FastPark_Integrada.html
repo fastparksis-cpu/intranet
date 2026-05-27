@@ -12743,7 +12743,7 @@ function getVtFaltasPeriodoAnterior(nome, ini){
 const VT_CFG_KEY = 'fp_vt_cfg';
 
 function normVtNomeKey(n){
-    return String(n || '').trim().toUpperCase();
+    return normText(String(n || ''));
 }
 function vtTipoNorm(t){
     return String(t || '').trim().toUpperCase().replace(/\s+/g, '');
@@ -12755,15 +12755,21 @@ function vtTipoMatches(a, b){
 function findPostoQuadroRowForEmployee(emp){
     if(!emp) return null;
     const nomeK = normVtNomeKey(emp.nome);
-    const uniK = String(emp.atuando || '').trim().toUpperCase();
+    const uniK = normText(String(emp.atuando || ''));
     const rows = [
         ...(state.quadroGeral || []).map((r, idx) => ({ ...r, __source: 'base', __idx: idx })),
         ...getPostosExtras().map((r, idx) => ({ ...r, __source: 'extra', __idx: idx }))
     ];
-    const matches = rows.filter(r => normVtNomeKey(r.nome) === nomeK);
+    const matches = rows.filter(r => {
+        const nomes = [
+            r?.nome, r?.funcionario, r?.colaborador, r?.nomeColaborador,
+            r?.nome_colaborador, r?.nomeFuncionario
+        ].map(normVtNomeKey).filter(Boolean);
+        return nomes.includes(nomeK);
+    });
     if(!matches.length) return null;
     if(uniK){
-        const byUni = matches.find(r => String(r.unidade || '').trim().toUpperCase() === uniK);
+        const byUni = matches.find(r => normText(String(r.unidade || '')) === uniK);
         if(byUni) return byUni;
     }
     return matches[0];
