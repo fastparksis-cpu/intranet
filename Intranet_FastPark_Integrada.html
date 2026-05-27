@@ -12760,19 +12760,22 @@ function findPostoQuadroRowForEmployee(emp){
         ...(state.quadroGeral || []).map((r, idx) => ({ ...r, __source: 'base', __idx: idx })),
         ...getPostosExtras().map((r, idx) => ({ ...r, __source: 'extra', __idx: idx }))
     ];
-    const matches = rows.filter(r => {
+    const scored = rows.map(r => {
         const nomes = [
             r?.nome, r?.funcionario, r?.colaborador, r?.nomeColaborador,
             r?.nome_colaborador, r?.nomeFuncionario
         ].map(normVtNomeKey).filter(Boolean);
-        return nomes.includes(nomeK);
+        let score = 0;
+        for(const n of nomes){
+            if(n === nomeK) score = Math.max(score, 100);
+            else if(n && nomeK && (n.includes(nomeK) || nomeK.includes(n))) score = Math.max(score, 70);
+        }
+        if(score > 0 && uniK && normText(String(r.unidade || '')) === uniK) score += 25;
+        return { r, score };
     });
-    if(!matches.length) return null;
-    if(uniK){
-        const byUni = matches.find(r => normText(String(r.unidade || '')) === uniK);
-        if(byUni) return byUni;
-    }
-    return matches[0];
+    scored.sort((a, b) => b.score - a.score);
+    if(!scored.length || scored[0].score <= 0) return null;
+    return scored[0].r;
 }
 function getQuadroJornadaForEmployee(emp){
     const row = findPostoQuadroRowForEmployee(emp);
@@ -12780,7 +12783,8 @@ function getQuadroJornadaForEmployee(emp){
 }
 function getVtDisplayDataForEmployee(emp, cfg){
     const row = findPostoQuadroRowForEmployee(emp);
-    const escalaBase = row ? vtEscalaCanonicalFromQuadro(String(row.escala || row.jornada || '').trim()) : '';
+    const escalaFonte = row ? String(row.escala || row.jornada || row.diasSemana || '').trim() : '';
+    const escalaBase = row ? vtEscalaCanonicalFromQuadro(escalaFonte) : '';
     const parRaw = String((row && (row.paridade12x36 || row.paridade)) || '').trim();
     const parNorm = normText(parRaw);
     const parLabel = parNorm.includes('PARES') ? 'pares' : ((parNorm.includes('IMPARES') || parNorm.includes('ÍMPARES')) ? 'ímpares' : '');
@@ -12790,7 +12794,7 @@ function getVtDisplayDataForEmployee(emp, cfg){
         registro: (row && String(row.registro2 || row.registro || row.empresa || '').trim()) || String(emp.empresa || '').trim(),
         unidade: (row && String(row.unidade || '').trim()) || String(emp.atuando || '').trim(),
         // Regra solicitada: escala deve vir do Quadro de Postos pelo nome/unidade em atuação.
-        escala: escalaQuadro || String(emp.jornada || '').trim()
+        escala: escalaQuadro || ''
     };
 }
 function jornadaStringToVtCfg(jornadaStr){
@@ -12807,10 +12811,11 @@ function jornadaStringToVtCfg(jornadaStr){
     return cfg;
 }
 function vtEscalaCanonicalFromQuadro(escalaTxt){
-    const cfg = jornadaStringToVtCfg(escalaTxt || '');
-    const t = String(cfg.tipo || '').toUpperCase();
+    const t = vtTipoNorm(String(escalaTxt || ''));
+    if(!t) return '';
     if(t.includes('12X36')) return '12x36';
     if(t.includes('6X1')) return '6x1';
+    if(t.includes('5X2') || t.includes('6X2') || t.includes('SEGUNDAASEXTA') || t.includes('SEGASEX')) return '5x2';
     return '5x2';
 }
 /** VT: Postos/Quadro por defeito; fp_vt_cfg com manual=true mantém alteração feita nesta aba. */
