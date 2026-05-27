@@ -11503,8 +11503,8 @@ function renderUnidadesPostosList(){
         return;
     }
     const fmtH = (v) => esc(String(v || '').trim()) || '<span class="uni-ficha-empty">—</span>';
-    const editMode = !!uniViewEditing.postos;
-    const acoesTh = editMode ? '<th class="uni-ficha-lbl" style="width:12%;">Ações</th>' : '';
+    // Ações sempre visíveis: permite editar/excluir posto direto na aba Unidades.
+    const acoesTh = '<th class="uni-ficha-lbl" style="width:12%;">Ações</th>';
     el.innerHTML = uniFichaWrap('<section class="uni-ficha-block"><h4 class="uni-ficha-block-title">Postos cadastrados</h4>' +
         `<table class="uni-ficha-table"><thead><tr>
         <th class="uni-ficha-lbl">Código</th><th class="uni-ficha-lbl">Dias</th><th class="uni-ficha-lbl">Escala</th><th class="uni-ficha-lbl">Entrada</th><th class="uni-ficha-lbl">Saída int.</th>
@@ -11512,10 +11512,10 @@ function renderUnidadesPostosList(){
         </tr></thead><tbody>${
         rows.map(r => {
             const idEnc = encodeURIComponent(String(r.id || ''));
-            const acoes = editMode ? `<td class="uni-ficha-val" style="white-space:nowrap;">
+            const acoes = `<td class="uni-ficha-val" style="white-space:nowrap;">
                     <button type="button" class="btn btn-fp-gray" onclick="editarPostoUnidadeCatalog('${idEnc}')">Editar</button>
                     <button type="button" class="btn btn-fp-dark" onclick="excluirPostoUnidadeCatalog('${idEnc}')" style="margin-left:4px;">Excluir</button>
-                </td>` : '';
+                </td>`;
             return `<tr>
                 <td class="uni-ficha-val"><strong>${esc(r.codigo || '')}</strong></td>
                 <td class="uni-ficha-val">${esc(r.diasSemana || '') || '<span class="uni-ficha-empty">—</span>'}</td>
