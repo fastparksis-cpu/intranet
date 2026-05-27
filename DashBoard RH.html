@@ -753,6 +753,8 @@ const FP_REF_SAUDE_KEY = 'fp_ref_saude';
 const FP_REF_ODONTO_KEY = 'fp_ref_odonto';
 const FP_REF_EMPRESAS_KEY = 'fp_ref_empresas';
 const FP_UNIDADES_POSTOS_KEY = 'fp_unidades_postos';
+const FP_QUADRO_GERAL_KEY = 'fp_quadro_geral';
+const FP_POSTOS_EXTRAS_KEY = 'fp_postos_extras';
 const ESCALA_OPCOES = ['5x2', '6x1', '6x2', '12x36', '8h', '44h'];
 let fpRefCache = { vtTipos: [], saude: null, odonto: null, empresas: [] };
 let cadastroFichaTabAtivo = 'ficha';
@@ -2460,19 +2462,34 @@ function statusDoc(label, d) {
 function fpNormTextBasic(s){
     return String(s || '').trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
 }
+function fpReadLocalArray(key){
+    try {
+        const arr = JSON.parse(localStorage.getItem(key) || '[]');
+        return Array.isArray(arr) ? arr : [];
+    } catch(_) { return []; }
+}
 function fpGetCodigoPostoByEmployeeName(nome){
     const nm = fpNormTextBasic(nome);
     if(!nm) return '';
-    let arr = [];
-    try { arr = JSON.parse(localStorage.getItem(FP_UNIDADES_POSTOS_KEY) || '[]'); } catch(_) { arr = []; }
-    if(!Array.isArray(arr) || !arr.length) return '';
-    const exact = arr.find(p => fpNormTextBasic(p?.nome) === nm);
-    if(exact && String(exact.codigo || '').trim()) return String(exact.codigo).trim();
-    const contains = arr.find(p => {
+    const fontes = [
+        ...fpReadLocalArray(FP_UNIDADES_POSTOS_KEY),
+        ...fpReadLocalArray(FP_POSTOS_EXTRAS_KEY),
+        ...fpReadLocalArray(FP_QUADRO_GERAL_KEY)
+    ];
+    if(!fontes.length) return '';
+    const pickCodigo = (row) => String(
+        row?.codigo || row?.posto || row?.idRh || row?.id_rh || row?.codPosto || row?.cod_posto || ''
+    ).trim();
+    const exact = fontes.find(p => fpNormTextBasic(p?.nome) === nm);
+    if(exact){
+        const cod = pickCodigo(exact);
+        if(cod) return cod;
+    }
+    const contains = fontes.find(p => {
         const pn = fpNormTextBasic(p?.nome);
         return pn && (pn.includes(nm) || nm.includes(pn));
     });
-    return contains ? String(contains.codigo || '').trim() : '';
+    return contains ? pickCodigo(contains) : '';
 }
 
 function renderProfile(e, qtd) {
@@ -2772,11 +2789,12 @@ function renderMovimentacoes() {
     panel.innerHTML = `
         <table>
             <thead><tr>
-                <th>Data</th><th>Origem</th><th>Destino</th><th>Observação</th>
+                <th>Data</th><th>Cód. posto</th><th>Origem</th><th>Destino</th><th>Observação</th>
             </tr></thead>
             <tbody>
                 ${movs.map(m => `<tr>
                     <td>${esc(m.data ? fdate(m.data) : '—')}</td>
+                    <td>${esc(fpGetCodigoPostoByEmployeeName(m.funcionario) || '—')}</td>
                     <td>${esc(m.origem || '—')}</td>
                     <td>${esc(m.destino || '—')}</td>
                     <td>${esc(m.observacao || '—')}</td>
