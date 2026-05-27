@@ -11897,7 +11897,6 @@ function renderPostosPanorama(){
         return;
     }
     const comp = getCompetenciaAnoMesRef();
-    const fatorMes = diasNoMes(comp.ano, comp.mes) / 7;
     const linhas = catalog.map((p, idx) => {
         const row = catalogPostoToQuadroRow(p, idx);
         const emp = findColaboradorParaPostoCatalog(p, row);
@@ -11909,7 +11908,9 @@ function renderPostosPanorama(){
         const extra = (cargaColab > 0 && cargaPosto > 0) ? +(cargaPosto - cargaColab).toFixed(2) : 0;
         const diasTrabMes = diasTrabalhoNoMesPorEscala(comp.ano, comp.mes, p.diasSemana, p.escala || p.jornada);
         const cargaPostoMes = hDiaPosto > 0 ? +(hDiaPosto * diasTrabMes).toFixed(2) : 0;
-        const cargaColabMes = cargaColab > 0 ? +(cargaColab * fatorMes).toFixed(2) : 0;
+        // Contrato mensal pelo mesmo padrão de dias da escala do posto (competência real).
+        const cargaContratoDia = (cargaColab > 0 && diasSem > 0) ? (cargaColab / diasSem) : 0;
+        const cargaColabMes = cargaContratoDia > 0 ? +(cargaContratoDia * diasTrabMes).toFixed(2) : 0;
         const extraMes = (cargaPostoMes > 0 && cargaColabMes > 0) ? +(cargaPostoMes - cargaColabMes).toFixed(2) : 0;
         return {
             posto: p.codigo || '',
