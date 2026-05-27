@@ -11979,15 +11979,21 @@ function renderPostosPanorama(){
         const row = catalogPostoToQuadroRow(p, idx);
         const emp = findColaboradorParaPostoCatalog(p, row);
         const col = dadosColaboradorQuadroAtual(emp);
-        const escalaTxt = p.escala || p.jornada || '';
+        // Compatibilidade com dados antigos/importados (campos legado).
+        const escalaTxt = p.escala || p.jornada || row.escala || row.jornada || '';
+        const diasRef = p.diasSemana || row.diasSemana || '';
+        const entradaRef = p.entrada || row.entrada || '';
+        const saidaIntervaloRef = p.saidaIntervalo || p.intervalo || row.saidaInt || row.intervalo || '';
+        const retornoIntervaloRef = p.retornoIntervalo || p.intervalo2 || row.retornoInt || row.intervalo2 || '';
+        const saidaRef = p.saida || row.saida || '';
         const is12x36 = normText(escalaTxt).includes('12X36');
-        const cargaColab = parseCargaSemanalHoras(emp?.carga, p.diasSemana, escalaTxt);
-        const hDiaPosto = horasPostoDia(p.entrada, p.saida, p.saidaIntervalo, p.retornoIntervalo);
-        const diasSem = diasSemanaisDoPosto(p.diasSemana, escalaTxt);
+        const cargaColab = parseCargaSemanalHoras(emp?.carga, diasRef, escalaTxt);
+        const hDiaPosto = horasPostoDia(entradaRef, saidaRef, saidaIntervaloRef, retornoIntervaloRef);
+        const diasSem = diasSemanaisDoPosto(diasRef, escalaTxt);
         // Regra operacional: em 12x36 a carga do posto é sempre 36:00 (semanal).
         const cargaPosto = is12x36 ? 36 : (hDiaPosto > 0 ? +(hDiaPosto * diasSem).toFixed(2) : 0);
         const extra = (cargaColab > 0 && cargaPosto > 0) ? +(cargaPosto - cargaColab).toFixed(2) : 0;
-        const diasTrabMes = diasTrabalhoNoMesPorEscala(comp.ano, comp.mes, p.diasSemana, escalaTxt);
+        const diasTrabMes = diasTrabalhoNoMesPorEscala(comp.ano, comp.mes, diasRef, escalaTxt);
         const cargaPostoDiaRef = (cargaPosto > 0 && diasSem > 0) ? (cargaPosto / diasSem) : 0;
         const cargaPostoMes = cargaPostoDiaRef > 0 ? +(cargaPostoDiaRef * diasTrabMes).toFixed(2) : 0;
         // Contrato mensal pelo mesmo padrão de dias da escala do posto (competência real).
@@ -11999,13 +12005,13 @@ function renderPostosPanorama(){
             unidade: p.unidadeNome || '',
             endereco: row.enderecoUnidade || '',
             cnpj: row.cnpjUnidade || '',
-            dias: p.diasSemana || '',
+            dias: diasRef || '',
             escala: p.escala || p.jornada || '',
             paridade12x36: p.paridade12x36 || '',
-            entrada: p.entrada || '',
-            saidaInt: p.saidaIntervalo || '',
-            retornoInt: p.retornoIntervalo || '',
-            saida: p.saida || '',
+            entrada: entradaRef || '',
+            saidaInt: saidaIntervaloRef || '',
+            retornoInt: retornoIntervaloRef || '',
+            saida: saidaRef || '',
             supervisor: p.supervisor || '',
             colaborador: col.colaborador,
             funcao: col.funcao,
