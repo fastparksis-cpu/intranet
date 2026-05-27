@@ -11877,30 +11877,46 @@ function renderPostosPanorama(){
         return u !== 0 ? u : String(a.posto).localeCompare(String(b.posto), 'pt-BR');
     });
     const th = ['Posto','Unidade','Endereço','CNPJ','Dias','Escala','Entrada','Saída int.','Retorno int.','Saída','Supervisor','Colaborador','Função','Registro','Carga colaborador','Carga posto','Horas extras'];
-    const body = linhas.map(r => `<tr>
-        <td><strong>${esc(r.posto)}</strong></td>
-        <td>${esc(r.unidade || '—')}</td>
-        <td>${esc(r.endereco || '—')}</td>
-        <td>${esc(r.cnpj || '—')}</td>
-        <td>${esc(r.dias || '—')}</td>
-        <td>${esc(r.escala || '—')}</td>
-        <td>${esc(fmtQuadroAtualHora(r.entrada))}</td>
-        <td>${esc(fmtQuadroAtualHora(r.saidaInt))}</td>
-        <td>${esc(fmtQuadroAtualHora(r.retornoInt))}</td>
-        <td>${esc(fmtQuadroAtualHora(r.saida))}</td>
-        <td>${esc(r.supervisor || '—')}</td>
-        <td>${esc(r.colaborador)}</td>
-        <td>${esc(r.funcao)}</td>
-        <td class="ref-readonly-val">${esc(r.registro)}</td>
-        <td>${esc(fmtHorasSemanais(r.cargaColab))}</td>
-        <td>${esc(fmtHorasSemanais(r.cargaPosto))}</td>
-        <td>${esc(r.extra > 0 ? `+${fmtHorasSemanais(r.extra)}` : (r.extra < 0 ? `-${fmtHorasSemanais(Math.abs(r.extra))}` : '—'))}</td>
-    </tr>`).join('');
+    const byUnidade = new Map();
+    linhas.forEach(r => {
+        const k = String(r.unidade || 'Sem unidade');
+        if(!byUnidade.has(k)) byUnidade.set(k, []);
+        byUnidade.get(k).push(r);
+    });
+    const gruposHtml = [...byUnidade.entries()].map(([unidade, rows]) => {
+        const body = rows.map(r => `<tr>
+            <td><strong>${esc(r.posto)}</strong></td>
+            <td>${esc(r.unidade || '—')}</td>
+            <td>${esc(r.endereco || '—')}</td>
+            <td>${esc(r.cnpj || '—')}</td>
+            <td>${esc(r.dias || '—')}</td>
+            <td>${esc(r.escala || '—')}</td>
+            <td>${esc(fmtQuadroAtualHora(r.entrada))}</td>
+            <td>${esc(fmtQuadroAtualHora(r.saidaInt))}</td>
+            <td>${esc(fmtQuadroAtualHora(r.retornoInt))}</td>
+            <td>${esc(fmtQuadroAtualHora(r.saida))}</td>
+            <td>${esc(r.supervisor || '—')}</td>
+            <td>${esc(r.colaborador)}</td>
+            <td>${esc(r.funcao)}</td>
+            <td class="ref-readonly-val">${esc(r.registro)}</td>
+            <td>${esc(fmtHorasSemanais(r.cargaColab))}</td>
+            <td>${esc(fmtHorasSemanais(r.cargaPosto))}</td>
+            <td>${esc(r.extra > 0 ? `+${fmtHorasSemanais(r.extra)}` : (r.extra < 0 ? `-${fmtHorasSemanais(Math.abs(r.extra))}` : '—'))}</td>
+        </tr>`).join('');
+        return `
+        <div style="margin:0 0 14px;">
+            <div style="font-weight:800;color:#374151;font-size:12px;margin:0 0 6px;">Unidade: ${esc(unidade)} (${rows.length} posto(s))</div>
+            <div class="quadro-atual-table-wrap">
+                <table class="ref-report-table quadro-atual-table">
+                    <thead><tr>${th.map(h => '<th>' + h + '</th>').join('')}</tr></thead>
+                    <tbody>${body}</tbody>
+                </table>
+            </div>
+        </div>`;
+    }).join('');
     el.innerHTML = `
         <p style="margin:0 0 10px;font-size:12px;color:#6b7280;">${linhas.length} posto(s) — somente leitura. Alterações em <strong>Unidades → Postos</strong>; vínculo do colaborador no <strong>Cadastro</strong> de funcionários.</p>
-        <div class="quadro-atual-table-wrap">
-        <table class="ref-report-table quadro-atual-table"><thead><tr>${th.map(h => '<th>' + h + '</th>').join('')}</tr></thead><tbody>${body}</tbody></table>
-        </div>`;
+        ${gruposHtml}`;
 }
 
 function getPostosExtras(){
