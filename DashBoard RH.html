@@ -2315,6 +2315,57 @@ let __fpApplyingFilters = false;
 let __fpSuppressFilterEvents = false;
 let __fpLastParentSyncAt = 0;
 let __fpLastPostedToParentSig = '';
+let __fpPostToParentTimer = null;
+let __fpSaveBadgeTimer = null;
+
+function fpSetLocalSaveBadge(msg, kind){
+    if(typeof document === 'undefined') return;
+    let el = document.getElementById('fpLocalSaveBadge');
+    if(!el){
+        el = document.createElement('div');
+        el.id = 'fpLocalSaveBadge';
+        el.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:99999;padding:8px 12px;border-radius:999px;font:600 12px/1.2 Arial,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.18);opacity:.96;pointer-events:none;transition:all .2s ease;';
+        document.body.appendChild(el);
+    }
+    const tone = String(kind || 'sync').toLowerCase();
+    if(tone === 'ok'){
+        el.style.background = '#dcfce7';
+        el.style.color = '#166534';
+        el.style.border = '1px solid #86efac';
+    } else if(tone === 'error'){
+        el.style.background = '#fee2e2';
+        el.style.color = '#991b1b';
+        el.style.border = '1px solid #fca5a5';
+    } else {
+        el.style.background = '#e0f2fe';
+        el.style.color = '#0c4a6e';
+        el.style.border = '1px solid #7dd3fc';
+    }
+    el.textContent = msg || 'Sincronizando...';
+    clearTimeout(__fpSaveBadgeTimer);
+    __fpSaveBadgeTimer = setTimeout(() => { if(el) el.style.opacity = '0.65'; }, tone === 'sync' ? 2500 : 5000);
+    try {
+        if(window.parent && typeof window.parent.fpSetSaveIndicator === 'function'){
+            window.parent.fpSetSaveIndicator(msg || 'Sincronizando alterações…', tone);
+        }
+    } catch(_){}
+}
+
+/** Assinatura do payload completo (cadastro + férias + movimentações). */
+function fpStatePayloadSig(employees, ferias, movimentacoes){
+    const emps = Array.isArray(employees) ? employees : [];
+    const fer = Array.isArray(ferias) ? ferias : [];
+    const mov = Array.isArray(movimentacoes) ? movimentacoes : [];
+    try {
+        const s = JSON.stringify({ emps, fer, mov });
+        let h = 5381;
+        const step = Math.max(1, Math.floor(s.length / 12000));
+        for(let i = 0; i < s.length; i += step) h = ((h << 5) + h) ^ s.charCodeAt(i);
+        return emps.length + ':' + fer.length + ':' + mov.length + ':' + s.length + ':' + (h >>> 0).toString(36);
+    } catch(_){
+        return emps.length + ':' + fer.length + ':' + mov.length;
+    }
+}
 
 function applyFilters() {
     if(__fpApplyingFilters) return;
@@ -3660,9 +3711,19 @@ function closeEmployeeForm(){
     EF.panel.style.display = 'none';
 }
 /** Envia o cadastro completo (incl. documentos e foto em base64) para a intranet integrada gravar no JSON/localStorage. */
-function fpPostFullStateToParentIfEmbedded(){
+function fpPostFullStateToParentIfEmbedded(immediate){
     if(!window.parent || window.parent === window) return;
-    if(Date.now() - __fpLastParentSyncAt < 1200) return;
+    fpSetLocalSaveBadge('Sincronizando alterações…', 'sync');
+    if(immediate) {
+        clearTimeout(__fpPostToParentTimer);
+        fpPostFullStateToParentNow();
+        return;
+    }
+    clearTimeout(__fpPostToParentTimer);
+    __fpPostToParentTimer = setTimeout(fpPostFullStateToParentNow, 80);
+}
+function fpPostFullStateToParentNow(){
+    if(!window.parent || window.parent === window) return;
     try{
         const cnhMapObj = {};
         if(state.cnhMap && typeof state.cnhMap.forEach === 'function') state.cnhMap.forEach((v, k) => { cnhMapObj[String(k)] = v; });
@@ -3677,10 +3738,7 @@ function fpPostFullStateToParentIfEmbedded(){
                 empAttachmentsBag = packed.bag;
             }
         } catch(slimErr) { console.warn('[DashBoard] slim antes de enviar à intranet', slimErr); }
-        let postSig;
-        try {
-            postSig = JSON.stringify({ n: (employees || []).length, names: (employees || []).slice(0, 8).map(e => e.nome) });
-        } catch(_){ postSig = String((employees || []).length); }
+        const postSig = fpStatePayloadSig(employees, state.ferias, state.movimentacoes);
         if(postSig === __fpLastPostedToParentSig) return;
         __fpLastPostedToParentSig = postSig;
         window.parent.postMessage({
@@ -3693,7 +3751,8 @@ function fpPostFullStateToParentIfEmbedded(){
             cnhColBDByNomeObj
         }, '*');
     }catch(err){
-        console.error('fpPostFullStateToParentIfEmbedded', err);
+        fpSetLocalSaveBadge('Erro ao salvar alterações', 'error');
+        console.error('fpPostFullStateToParentNow', err);
     }
 }
 function saveEmployeeForm(){
@@ -3793,7 +3852,7 @@ function saveEmployeeForm(){
     applyFilters();
     populateCadastroUnitOptions();
     closeEmployeeForm();
-    fpPostFullStateToParentIfEmbedded();
+    fpPostFullStateToParentIfEmbedded(true);
 }
 
 EF.admissao.addEventListener('change', () => {
@@ -3846,7 +3905,7 @@ function deleteSelectedEmployee(){
     addAudit(`Cadastro excluído: ${nome}`, 'action');
     fillCompanies();
     applyFilters();
-    fpPostFullStateToParentIfEmbedded();
+    fpPostFullStateToParentIfEmbedded(true);
 }
 
 async function terminateSelectedEmployee(){
@@ -3871,7 +3930,7 @@ async function terminateSelectedEmployee(){
     addAudit(`Funcionário desligado: ${state.selected.nome}`, 'action');
     fillCompanies();
     applyFilters();
-    fpPostFullStateToParentIfEmbedded();
+    fpPostFullStateToParentIfEmbedded(true);
 }
 
 // EVENTOS
@@ -4077,7 +4136,7 @@ function salvarRenovacaoAso(){
     addAudit(`ASO renovado: ${nome} → ${fdate(vencNovo)}`, 'action');
     applyFilters();
     renderAsoRenHist();
-    fpPostFullStateToParentIfEmbedded();
+    fpPostFullStateToParentIfEmbedded(true);
     alert('ASO atualizado na ficha do funcionário.');
 }
 function renderAsoRenHist(){
@@ -4122,7 +4181,7 @@ function salvarAlteracaoSalarial(){
     addAudit(`Salário reajustado: ${nome} ${fmoney(atual)} → ${fmoney(novo)} (${pct}%)`, 'action');
     applyFilters();
     renderSalAltHist();
-    fpPostFullStateToParentIfEmbedded();
+    fpPostFullStateToParentIfEmbedded(true);
     alert('Salário base atualizado na ficha.');
 }
 function renderSalAltHist(){
@@ -4300,6 +4359,7 @@ function applyEmployeesSyncFromParent(msg) {
     applyFilters();
     populateCadastroUnitOptions();
     fillEmpRegistroSelect();
+    fpSetLocalSaveBadge('Salvo agora', 'ok');
     addAudit('Cadastro sincronizado a partir da intranet (aba principal).', 'info');
 }
 
@@ -4327,7 +4387,7 @@ window.addEventListener('message', (ev) => {
         return;
     }
     if(msg.type === 'fastpark-request-full-state') {
-        if(Date.now() - __fpLastParentSyncAt >= 1200) fpPostFullStateToParentIfEmbedded();
+        fpPostFullStateToParentIfEmbedded(true);
     }
 });
 

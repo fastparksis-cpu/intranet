@@ -779,6 +779,7 @@
             msg += ' Aviso: ' + prep.diskSkipped + ' anexo(s) no disco — ligue a pasta de anexos e grave de novo.';
         }
         fpCloudSetStatus(msg, false);
+        if (typeof g.fpSetSaveIndicator === 'function') g.fpSetSaveIndicator('Salvo na nuvem agora', 'ok');
         g.__fpCloudLastSaveAt = Date.now();
         if (typeof g.addAudit === 'function') {
             g.addAudit(opts.autosave ? 'Auto-gravação Supabase.' : 'Banco gravado no Supabase.', 'action');
@@ -816,6 +817,7 @@
         } catch (err) {
             console.warn('[fp-cloud] autosave', err);
             fpCloudSetStatus('Erro ao guardar na nuvem: ' + (err && err.message ? err.message : err), true);
+            if (typeof g.fpSetSaveIndicator === 'function') g.fpSetSaveIndicator('Erro ao sincronizar na nuvem', 'error');
         } finally {
             cloudRunning = false;
             if (cloudPending) {
@@ -936,6 +938,7 @@
     g.fpScheduleCloudSave = function () {
         if (g.FP_CLOUD_AUTOSAVE === false) return;
         g.__fpCloudUserEditedAt = Date.now();
+        if (typeof g.fpSetSaveIndicator === 'function') g.fpSetSaveIndicator('Sincronizando alterações…', 'sync');
         if (fpCloudAutosavePaused()) {
             fpQueueCloudSaveRetry();
             return;
