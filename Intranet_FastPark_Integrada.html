@@ -11895,6 +11895,12 @@ function horasPostoDia(entrada, saida, saidaInt, retornoInt){
     const pausa = minutosDiffHorario(saidaInt, retornoInt);
     return +Math.max(0, (base - pausa) / 60).toFixed(2);
 }
+function minutosPostoDia(entrada, saida, saidaInt, retornoInt){
+    const base = minutosDiffHorario(entrada, saida);
+    if(base <= 0) return 0;
+    const pausa = minutosDiffHorario(saidaInt, retornoInt);
+    return Math.max(0, (base - pausa));
+}
 function diasSemanaisDoPosto(dias, escala){
     const d = normText(dias || '');
     const e = normText(escala || '');
@@ -11988,14 +11994,14 @@ function renderPostosPanorama(){
         const saidaRef = p.saida || row.saida || '';
         const is12x36 = normText(escalaTxt).includes('12X36');
         const cargaColab = parseCargaSemanalHoras(emp?.carga, diasRef, escalaTxt);
-        const hDiaPosto = horasPostoDia(entradaRef, saidaRef, saidaIntervaloRef, retornoIntervaloRef);
+        const minDiaPosto = minutosPostoDia(entradaRef, saidaRef, saidaIntervaloRef, retornoIntervaloRef);
+        const hDiaPosto = minDiaPosto > 0 ? +(minDiaPosto / 60).toFixed(2) : 0;
         const diasSem = diasSemanaisDoPosto(diasRef, escalaTxt);
         // Regra operacional: em 12x36 a carga do posto é sempre 36:00 (semanal).
-        const cargaPosto = is12x36 ? 36 : (hDiaPosto > 0 ? +(hDiaPosto * diasSem).toFixed(2) : 0);
+        const cargaPosto = is12x36 ? 36 : (minDiaPosto > 0 ? +((minDiaPosto * diasSem) / 60).toFixed(2) : 0);
         const extra = (cargaColab > 0 && cargaPosto > 0) ? +(cargaPosto - cargaColab).toFixed(2) : 0;
         const diasTrabMes = diasTrabalhoNoMesPorEscala(comp.ano, comp.mes, diasRef, escalaTxt);
-        const cargaPostoDiaRef = (cargaPosto > 0 && diasSem > 0) ? (cargaPosto / diasSem) : 0;
-        const cargaPostoMes = cargaPostoDiaRef > 0 ? +(cargaPostoDiaRef * diasTrabMes).toFixed(2) : 0;
+        const cargaPostoMes = minDiaPosto > 0 ? +((minDiaPosto * diasTrabMes) / 60).toFixed(2) : 0;
         // Contrato mensal pelo mesmo padrão de dias da escala do posto (competência real).
         const cargaContratoDia = (cargaColab > 0 && diasSem > 0) ? (cargaColab / diasSem) : 0;
         const cargaColabMes = cargaContratoDia > 0 ? +(cargaContratoDia * diasTrabMes).toFixed(2) : 0;
