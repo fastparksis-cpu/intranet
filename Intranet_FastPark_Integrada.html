@@ -11917,11 +11917,17 @@ function diasSemanaisDoPosto(dias, escala){
 }
 function fmtHorasSemanais(v){
     if(v == null || !isFinite(v) || v <= 0) return '—';
-    return `${String(v.toFixed(2)).replace('.', ',')}h/sem`;
+    const totalMin = Math.round(Number(v) * 60);
+    const hh = Math.floor(totalMin / 60);
+    const mm = totalMin % 60;
+    return `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}h/sem`;
 }
 function fmtHorasMensais(v){
     if(v == null || !isFinite(v) || v <= 0) return '—';
-    return `${String(v.toFixed(2)).replace('.', ',')}h/mês`;
+    const totalMin = Math.round(Number(v) * 60);
+    const hh = Math.floor(totalMin / 60);
+    const mm = totalMin % 60;
+    return `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}h/mês`;
 }
 function getCompetenciaAnoMesRef(){
     const mInp = document.getElementById('competenciaInput')?.value || '';
