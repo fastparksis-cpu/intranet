@@ -2468,20 +2468,40 @@ function fpReadLocalArray(key){
         return Array.isArray(arr) ? arr : [];
     } catch(_) { return []; }
 }
-function fpGetCodigoPostoByEmployeeName(nome){
+function fpGetCodigoPostoByEmployeeName(nome, empCtx){
     const nm = fpNormTextBasic(nome);
     if(!nm) return '';
+    const empUnidade = fpNormTextBasic(empCtx?.atuando || empCtx?.unidade || '');
     const fontes = [
         ...fpReadLocalArray(FP_UNIDADES_POSTOS_KEY),
         ...fpReadLocalArray(FP_POSTOS_EXTRAS_KEY),
         ...fpReadLocalArray(FP_QUADRO_GERAL_KEY),
         ...fpReadLocalArray('fp_quadro_geral')
     ];
+    try {
+        if(window.parent && window.parent !== window){
+            if(typeof window.parent.getUnidadesPostosCatalog === 'function'){
+                fontes.push(...(window.parent.getUnidadesPostosCatalog() || []));
+            }
+            if(typeof window.parent.getPostosExtras === 'function'){
+                fontes.push(...(window.parent.getPostosExtras() || []));
+            }
+            if(window.parent.state && Array.isArray(window.parent.state.quadroGeral)){
+                fontes.push(...window.parent.state.quadroGeral);
+            }
+        }
+    } catch(_) {}
     if(!fontes.length) return '';
     const pickCodigo = (row) => String(
         row?.codigo || row?.posto || row?.idRh || row?.id_rh || row?.codPosto || row?.cod_posto || ''
     ).trim();
     const rowNome = (p) => p?.nome || p?.funcionario || p?.colaborador || p?.nomeColaborador || '';
+    const rowUnidade = (p) => fpNormTextBasic(p?.unidade || p?.atuando || p?.unidadeNome || p?.unidadeCod || '');
+    const exactByUnidade = fontes.find(p => fpNormTextBasic(rowNome(p)) === nm && (!empUnidade || rowUnidade(p) === empUnidade));
+    if(exactByUnidade){
+        const cod = pickCodigo(exactByUnidade);
+        if(cod) return cod;
+    }
     const exact = fontes.find(p => fpNormTextBasic(rowNome(p)) === nm);
     if(exact){
         const cod = pickCodigo(exact);
@@ -2505,7 +2525,7 @@ function renderProfile(e, qtd) {
     const stRaw = String(e.status || '');
     const st = stRaw.includes('Deslig') ? 'd' : stRaw.includes('FÉR') ? 'w' : 'ok';
     const vtIv = Number(e.vtIdaVolta) > 0 ? e.vtIdaVolta : (Number(e.vtValor) > 0 ? Number(e.vtValor) * 2 : 0);
-    const codPosto = fpGetCodigoPostoByEmployeeName(e.nome);
+    const codPosto = fpGetCodigoPostoByEmployeeName(e.nome, e);
     const part1 = [
         ['Registro', e.empresa], ['Status', e.status], ['Admissão', fdate(e.admissao)], ['Tempo de casa (automático)', tc.linhaGrelha],
         ['Cargo', e.cargo], ['Nível', e.nivel], ['Atuando (Unidade)', e.atuando], ['Escala', e.escala || '—'],
@@ -2796,7 +2816,7 @@ function renderMovimentacoes() {
             <tbody>
                 ${movs.map(m => `<tr>
                     <td>${esc(m.data ? fdate(m.data) : '—')}</td>
-                    <td>${esc(fpGetCodigoPostoByEmployeeName(m.funcionario) || '—')}</td>
+                    <td>${esc(fpGetCodigoPostoByEmployeeName(m.funcionario, state.selected) || '—')}</td>
                     <td>${esc(m.origem || '—')}</td>
                     <td>${esc(m.destino || '—')}</td>
                     <td>${esc(m.observacao || '—')}</td>
@@ -4133,7 +4153,7 @@ const FICHA_REL_FIELDS = [
     { id: 'cargo', label: 'Cargo', group: 'contratual', get: e => e.cargo },
     { id: 'nivel', label: 'Nível', group: 'contratual', get: e => e.nivel },
     { id: 'unidade', label: 'Unidade / Atuando', group: 'contratual', get: e => e.atuando },
-    { id: 'codigoPosto', label: 'Cód. de posto', group: 'contratual', get: e => fpGetCodigoPostoByEmployeeName(e.nome) || '—' },
+    { id: 'codigoPosto', label: 'Cód. de posto', group: 'contratual', get: e => fpGetCodigoPostoByEmployeeName(e.nome, e) || '—' },
     { id: 'escala', label: 'Escala', group: 'contratual', get: e => e.escala },
     { id: 'carga', label: 'Carga horária', group: 'contratual', get: e => e.carga },
     { id: 'jornada', label: 'Jornada', group: 'contratual', get: e => e.jornada },
