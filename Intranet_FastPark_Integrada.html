@@ -11749,13 +11749,18 @@ function dadosColaboradorQuadroAtual(emp){
         registro: fmtEmpresaRegistroColaborador(emp)
     };
 }
-function parseCargaSemanalHoras(raw){
+function parseCargaSemanalHoras(raw, diasRef, escalaRef){
     const s = String(raw || '').trim().toLowerCase();
     if(!s) return 0;
+    // Evita interpretar escalas (ex.: 12x36) como 1236 horas.
+    if(/\d+\s*x\s*\d+/i.test(s)) return 0;
     const n = Number(String(s).replace(',', '.').replace(/[^\d.]/g, ''));
     if(!n || !isFinite(n)) return 0;
-    // Se vier mensal (ex.: 220), converte para semanal aproximada.
-    return n > 80 ? +(n / 5).toFixed(2) : n;
+    const diasSemana = diasSemanaisDoPosto(diasRef, escalaRef);
+    if(/(\/\s*dia|ao dia|por dia|h\/dia)/i.test(s)) return +(n * diasSemana).toFixed(2);
+    if(/(mensal|m[eê]s|mes)/i.test(s)) return +(n / 5).toFixed(2);
+    // Valor da ficha costuma estar semanal (ex.: 44h).
+    return n;
 }
 function parseHoraMinToMin(hhmm){
     const s = String(hhmm || '').trim();
@@ -11807,7 +11812,7 @@ function renderPostosPanorama(){
         const row = catalogPostoToQuadroRow(p, idx);
         const emp = findColaboradorParaPostoCatalog(p, row);
         const col = dadosColaboradorQuadroAtual(emp);
-        const cargaColab = parseCargaSemanalHoras(emp?.carga);
+        const cargaColab = parseCargaSemanalHoras(emp?.carga, p.diasSemana, p.escala || p.jornada);
         const hDiaPosto = horasPostoDia(p.entrada, p.saida, p.saidaIntervalo, p.retornoIntervalo);
         const diasSem = diasSemanaisDoPosto(p.diasSemana, p.escala || p.jornada);
         const cargaPosto = hDiaPosto > 0 ? +(hDiaPosto * diasSem).toFixed(2) : 0;
