@@ -12775,13 +12775,13 @@ function getQuadroJornadaForEmployee(emp){
 function getVtDisplayDataForEmployee(emp, cfg){
     const row = findPostoQuadroRowForEmployee(emp);
     const cfgItem = getVtCfgForEmployee(emp, cfg || {});
-    const escalaCfg = String(cfgItem?.tipo || '').trim();
     const escalaQuadro = row ? String(row.escala || row.jornada || '').trim() : '';
     return {
         funcionario: (row && String(row.nome || '').trim()) || String(emp.nome || '').trim(),
         registro: (row && String(row.registro2 || row.registro || row.empresa || '').trim()) || String(emp.empresa || '').trim(),
         unidade: (row && String(row.unidade || '').trim()) || String(emp.atuando || '').trim(),
-        escala: escalaCfg || escalaQuadro || String(emp.jornada || '').trim()
+        // Regra solicitada: escala deve vir do Quadro de Postos pelo nome/unidade em atuação.
+        escala: escalaQuadro || String(emp.jornada || '').trim()
     };
 }
 function jornadaStringToVtCfg(jornadaStr){
