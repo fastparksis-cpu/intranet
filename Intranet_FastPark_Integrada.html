@@ -6973,6 +6973,7 @@ function parseMovimentosPdfLines(lines){
     let competencia = '';
     let empresa = '';
     let cnpj = '';
+    let tipoFolhaDetectado = '';
 
     for (const lineRaw of lines){
         const line = String(lineRaw || '').trim();
@@ -6980,6 +6981,12 @@ function parseMovimentosPdfLines(lines){
         if(!competencia){
             const mComp = line.match(/\b(\d{2}\/\d{4})\b/);
             if(mComp) competencia = mComp[1];
+        }
+        if(!tipoFolhaDetectado){
+            const mTipo = line.match(/^C[ÁA]LCULO:\s*(.+)$/i);
+            if(mTipo){
+                tipoFolhaDetectado = /ADIANT/i.test(mTipo[1] || '') ? 'adiantamento' : 'mensal';
+            }
         }
         if(!empresa){
             const mEmp = line.match(/^Empresa:\s*(.+)$/i);
@@ -6989,8 +6996,8 @@ function parseMovimentosPdfLines(lines){
             const mCnpj = line.match(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/);
             if(mCnpj) cnpj = mCnpj[0];
         }
-        if(/TOTAL DO EMPREGADO|TOTAL DA EMPRESA|SISTEMA LICENCIADO|PAGINA:/i.test(line)) continue;
-        if(/^EMPREGADOS$/i.test(line) || /^MOVIMENTOS$/i.test(line) || /^TIPO$/i.test(line) || /^COMPETENCIA:?$/i.test(line)) continue;
+        if(/TOTAL DO EMPREGADO|TOTAL DA EMPRESA|SISTEMA LICENCIADO|PAGINA:|ESTAGIARIOS:|CONTRIBUINTES:|RESPONSAVEL:/i.test(line)) continue;
+        if(/^EMPREGADOS$/i.test(line) || /^MOVIMENTOS$/i.test(line) || /^TIPO$/i.test(line) || /^COMPETENCIA:?$/i.test(line) || /^RELACAO\s+GERAL\s+DOS\s+LIQUIDOS$/i.test(line)) continue;
 
         const empMatch = line.match(/^(\d+)\s*-\s*(.+)$/);
         if(empMatch){
@@ -7010,6 +7017,37 @@ function parseMovimentosPdfLines(lines){
         if(/^\s*CPF\b/i.test(line)){
             continue;
         }
+
+        // Layout "Relação Geral dos Líquidos":
+        // 89  ALESSANDRO DA SILVA  277.756.028-56  1.317,60
+        const mLiquido = line.match(/^(\d{1,6})\s+(.+?)\s+(\d{3}\.?\d{3}\.?\d{3}-?\d{2})\s+(\d{1,3}(?:\.\d{3})*,\d{2})$/i);
+        if(mLiquido){
+            const cod = String(mLiquido[1] || '').trim();
+            const nomeEmp = String(mLiquido[2] || '').trim();
+            const cpf = String(mLiquido[3] || '').replace(/\D+/g, '');
+            const valorLiq = parsePtMoney(mLiquido[4]);
+            const tipoFolhaLinha = tipoFolhaDetectado || 'mensal';
+            rows.push({
+                empregado: nomeEmp || currentEmp || '—',
+                empregadoKey: (nomeEmp || '').trim().toUpperCase(),
+                cpfImport: cpf,
+                tipo: 'L',
+                qtdStr: '',
+                unidadeMedida: '',
+                codigo: cod,
+                nome: 'LIQUIDO RELATORIO',
+                referencia: competencia || '',
+                valorCalculado: valorLiq,
+                valorInformado: 0,
+                valorLiquido: valorLiq,
+                unidade: '',
+                localTrabalho: '',
+                empresaFonte: empresa || '',
+                folhaTipo: tipoFolhaLinha
+            });
+            continue;
+        }
+
         const m = line.match(/^(.+?)\s+([PDI])\s+([A-Za-zÀ-ú]+)\s+(\d{1,6})\s+(\d{2}\/\d{4})\s+([\d\.\,]+)\s+(.+)$/i);
         if(!m) continue;
 
@@ -7027,10 +7065,11 @@ function parseMovimentosPdfLines(lines){
             valorInformado: 0,
             unidade: '',
             localTrabalho: '',
-            empresaFonte: empresa || ''
+            empresaFonte: empresa || '',
+            folhaTipo: tipoFolhaDetectado || undefined
         });
     }
-    return { rows, meta: { competencia, empresa, cnpj } };
+    return { rows, meta: { competencia, empresa, cnpj, tipoFolha: tipoFolhaDetectado || '' } };
 }
 
 document.getElementById('movimentosFile')?.addEventListener('change', e => {
