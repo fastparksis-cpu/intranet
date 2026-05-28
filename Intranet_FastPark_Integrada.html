@@ -3170,11 +3170,23 @@ td { color: var(--t); font-weight: 500;}
 const FP_ACESSOS_KEY = 'fp_acessos_usuarios';
 const FP_ACESSOS_ACTIVE_KEY = 'fp_acessos_usuario_ativo';
 const FP_ACESSOS_AUTH_SESSION_KEY = 'fp_acessos_auth_ok';
+const FP_ACESSOS_BOOTSTRAP_ID = 'acc_admin_bootstrap';
 
 function getAcessosUsers(){
     try{
         const arr = JSON.parse(localStorage.getItem(FP_ACESSOS_KEY) || '[]');
-        return Array.isArray(arr) ? arr : [];
+        const users = Array.isArray(arr) ? arr : [];
+        const hasAdmin = users.some(u => String(u.id || '') === FP_ACESSOS_BOOTSTRAP_ID || String(u.login || '').trim().toLowerCase() === 'admin');
+        if(hasAdmin) return users;
+        users.unshift({
+            id: FP_ACESSOS_BOOTSTRAP_ID,
+            nome: 'Administrador',
+            login: 'admin',
+            senha: 'Mudar@123',
+            allowedTabs: []
+        });
+        localStorage.setItem(FP_ACESSOS_KEY, JSON.stringify(users));
+        return users;
     } catch(_){ return []; }
 }
 function setAcessosUsers(arr){

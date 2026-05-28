@@ -117,6 +117,7 @@ button:disabled {
     var ACESSOS_KEY = 'fp_acessos_usuarios';
     var ACESSOS_ACTIVE_KEY = 'fp_acessos_usuario_ativo';
     var ACESSOS_AUTH_SESSION_KEY = 'fp_acessos_auth_ok';
+    var ACESSOS_BOOTSTRAP_ID = 'acc_admin_bootstrap';
     var form = document.getElementById('loginForm');
     var msg = document.getElementById('msg');
     var btn = document.getElementById('btnEntrar');
@@ -130,8 +131,24 @@ button:disabled {
             return Array.isArray(arr) ? arr : [];
         }catch(_e){ return []; }
     }
-    function loginAcessos(login, senha){
+    function ensureBootstrapAdmin(){
         var users = getAcessosUsers();
+        var hasAdmin = users.some(function(u){
+            return String(u.id || '') === ACESSOS_BOOTSTRAP_ID || String(u.login || '').trim().toLowerCase() === 'admin';
+        });
+        if(hasAdmin) return getAcessosUsers();
+        users.unshift({
+            id: ACESSOS_BOOTSTRAP_ID,
+            nome: 'Administrador',
+            login: 'admin',
+            senha: 'Mudar@123',
+            allowedTabs: []
+        });
+        localStorage.setItem(ACESSOS_KEY, JSON.stringify(users));
+        return users;
+    }
+    function loginAcessos(login, senha){
+        var users = ensureBootstrapAdmin();
         if(!users.length){
             return { ok: false, message: 'Nenhum usuário cadastrado em Acessos.' };
         }
@@ -151,6 +168,7 @@ button:disabled {
         window.location.replace(APP);
         return;
     }
+    ensureBootstrapAdmin();
 
     form.addEventListener('submit', function (e) {
         e.preventDefault();
