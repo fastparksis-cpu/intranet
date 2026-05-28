@@ -48,25 +48,8 @@
 
     g.FP_BRIDGE_WRITE_HTML = false;
 
-    /** Na Vercel exige login para carregar/gravar Supabase; em rede local pode abrir sem login. */
-
-    try {
-
-        var host = (g.location && g.location.hostname) ? String(g.location.hostname).toLowerCase() : '';
-
-        var proto = g.location && g.location.protocol;
-
-        var isVercel = host.indexOf('vercel.app') >= 0;
-
-        var isLocalNet = proto === 'file:' || host === 'localhost' || host === '127.0.0.1' || /^192\.168\./.test(host);
-
-        g.FP_AUTH_REQUIRED = isVercel || !isLocalNet;
-
-    } catch (e) {
-
-        g.FP_AUTH_REQUIRED = true;
-
-    }
+    /** Login Supabase sempre obrigatório. */
+    g.FP_AUTH_REQUIRED = true;
 
 })(typeof window !== 'undefined' ? window : globalThis);
 

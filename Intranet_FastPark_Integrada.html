@@ -16909,21 +16909,6 @@ function refInitTab(){ refInitEmpresasTab(); }
     });
 })().catch(e => console.error('[FP] Boot intranet', e));
 
-setTimeout(function(){
-    try{
-        if(window.__fpLogoutWrapped) return;
-        window.__fpLogoutWrapped = true;
-        const origLogout = typeof window.fpLogout === 'function' ? window.fpLogout : null;
-        window.fpLogout = function(){
-            try {
-                sessionStorage.removeItem(FP_ACESSOS_AUTH_SESSION_KEY);
-                setAcessosActiveUserId('');
-            } catch(_){}
-            if(origLogout) return origLogout.apply(this, arguments);
-            fpOpenAcessosLoginModal();
-        };
-    } catch(_wrap){}
-}, 0);
 </script>
 
 </body>
