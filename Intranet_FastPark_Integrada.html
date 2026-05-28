@@ -3145,6 +3145,23 @@ td { color: var(--t); font-weight: 500;}
   </div>
 </div>
 
+<div id="acessosLoginModal" class="modal-overlay" style="display:none;z-index:3000;">
+  <div class="modal-card" style="max-width:420px;">
+    <div class="modal-header">
+      <h3>Entrar na Intranet</h3>
+    </div>
+    <div class="modal-body">
+      <p style="margin-top:0;">Informe usuário e senha cadastrados na aba <strong>Acessos</strong>.</p>
+      <div class="ref-field"><label for="acessosLoginUser">Usuário</label><input id="acessosLoginUser" type="text" autocomplete="username"></div>
+      <div class="ref-field"><label for="acessosLoginPass">Senha</label><input id="acessosLoginPass" type="password" autocomplete="current-password"></div>
+      <p id="acessosLoginMsg" style="min-height:18px;margin:8px 0 0;color:#b91c1c;font-size:12px;"></p>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn-primary" onclick="confirmarLoginAcessos()">Entrar</button>
+    </div>
+  </div>
+</div>
+
 <!-- DARK MODE TOGGLE -->
 <button class="dark-toggle" id="darkToggle" onclick="toggleDarkMode()" title="Alternar modo escuro">🌙</button>
 
@@ -3152,6 +3169,7 @@ td { color: var(--t); font-weight: 500;}
 <script>
 const FP_ACESSOS_KEY = 'fp_acessos_usuarios';
 const FP_ACESSOS_ACTIVE_KEY = 'fp_acessos_usuario_ativo';
+const FP_ACESSOS_AUTH_SESSION_KEY = 'fp_acessos_auth_ok';
 
 function getAcessosUsers(){
     try{
@@ -3210,6 +3228,54 @@ function fpApplyAccessRestrictions(){
     const activePanel = document.querySelector('.tab-content.active');
     const activeTab = activePanel ? activePanel.id : 'fp-home';
     if(!fpUserCanAccessTab(activeTab)) switchTab('fp-home');
+}
+function fpOpenAcessosLoginModal(msg){
+    const users = getAcessosUsers();
+    if(!users.length) return;
+    const modal = document.getElementById('acessosLoginModal');
+    if(!modal) return;
+    const u = document.getElementById('acessosLoginUser');
+    const p = document.getElementById('acessosLoginPass');
+    const m = document.getElementById('acessosLoginMsg');
+    if(u) u.value = '';
+    if(p) p.value = '';
+    if(m) m.textContent = msg || '';
+    modal.style.display = 'flex';
+    try { if(u) u.focus(); } catch(_){}
+}
+function fpCloseAcessosLoginModal(){
+    const modal = document.getElementById('acessosLoginModal');
+    if(modal) modal.style.display = 'none';
+}
+function confirmarLoginAcessos(){
+    const login = String(document.getElementById('acessosLoginUser')?.value || '').trim();
+    const senha = String(document.getElementById('acessosLoginPass')?.value || '');
+    const msgEl = document.getElementById('acessosLoginMsg');
+    const users = getAcessosUsers();
+    const user = users.find(u => String(u.login || '').trim().toLowerCase() === login.toLowerCase() && String(u.senha || '') === senha);
+    if(!user){
+        if(msgEl) msgEl.textContent = 'Usuário ou senha inválidos.';
+        return;
+    }
+    setAcessosActiveUserId(String(user.id));
+    sessionStorage.setItem(FP_ACESSOS_AUTH_SESSION_KEY, '1');
+    fpCloseAcessosLoginModal();
+    fpApplyAccessRestrictions();
+}
+function fpEnsureAcessosLoginGuard(){
+    const users = getAcessosUsers();
+    if(!users.length){
+        sessionStorage.removeItem(FP_ACESSOS_AUTH_SESSION_KEY);
+        setAcessosActiveUserId('');
+        return;
+    }
+    if(sessionStorage.getItem(FP_ACESSOS_AUTH_SESSION_KEY) === '1'){
+        if(!getAcessosActiveUser()) setAcessosActiveUserId(String(users[0].id || ''));
+        fpApplyAccessRestrictions();
+        return;
+    }
+    setAcessosActiveUserId('');
+    fpOpenAcessosLoginModal();
 }
 
 function fpToggleMenuGroup(groupId) {
@@ -3449,6 +3515,14 @@ function setAcessosUsuarioAtivo(){
     fpApplyAccessRestrictions();
     alert(val ? 'Usuário ativo aplicado.' : 'Modo sem restrição aplicado.');
 }
+window.addEventListener('keydown', function(ev){
+    const modal = document.getElementById('acessosLoginModal');
+    if(!modal || modal.style.display === 'none') return;
+    if(ev.key === 'Enter'){
+        ev.preventDefault();
+        confirmarLoginAcessos();
+    }
+});
 
 // Início e Cadastro: painéis DashBoard RH em iframe (layout original).
 </script>
@@ -16832,6 +16906,7 @@ function refInitTab(){ refInitEmpresasTab(); }
     }
     if (typeof switchTab === 'function') switchTab('fp-home');
     try { fpApplyAccessRestrictions(); } catch(_acc) {}
+    try { fpEnsureAcessosLoginGuard(); } catch(_acc2) {}
     window.__fpIntranetBootComplete = true;
     if(window.FP_AUTH_REQUIRED !== false && (!(state.employees && state.employees.length)) && typeof fpCloudLoadSnapshot === 'function'){
         setTimeout(async function(){
@@ -16863,6 +16938,22 @@ function refInitTab(){ refInitEmpresasTab(); }
         fpRestoreAttachmentsDirHandleFromIdb().then(() => fpRefreshAttDirBanner()).catch(e => console.warn(e));
     });
 })().catch(e => console.error('[FP] Boot intranet', e));
+
+setTimeout(function(){
+    try{
+        if(window.__fpLogoutWrapped) return;
+        window.__fpLogoutWrapped = true;
+        const origLogout = typeof window.fpLogout === 'function' ? window.fpLogout : null;
+        window.fpLogout = function(){
+            try {
+                sessionStorage.removeItem(FP_ACESSOS_AUTH_SESSION_KEY);
+                setAcessosActiveUserId('');
+            } catch(_){}
+            if(origLogout) return origLogout.apply(this, arguments);
+            fpOpenAcessosLoginModal();
+        };
+    } catch(_wrap){}
+}, 0);
 </script>
 
 </body>
