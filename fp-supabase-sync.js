@@ -1009,7 +1009,10 @@
                     fpCloudSetStatus('Sem dados na nuvem — importe o Excel e use ☁️ Salvar.', false);
                     return { loaded: false, reason: 'no-snapshot' };
                 }
-                await g.fpCloudLoadSnapshot({ autoload: true, skipIframeSync: true });
+                var loadRes = await g.fpCloudLoadSnapshot({ autoload: true, skipIframeSync: true });
+                if (loadRes && loadRes.skipped) {
+                    return { loaded: false, reason: loadRes.reason || 'skipped' };
+                }
                 var result = { loaded: true, updatedAt: peek.data.updated_at || null };
                 g.__fpCloudAutoloadDone = true;
                 g.__fpCloudAutoloadResult = result;
@@ -1051,6 +1054,24 @@
                 throw new Error('Ainda não há dados gravados na nuvem.');
             }
             var db = res.data.snapshot;
+            var cloudEmpCount = (db && db.state && Array.isArray(db.state.employees)) ? db.state.employees.length : 0;
+            var localEmpCount = (g.state && Array.isArray(g.state.employees)) ? g.state.employees.length : 0;
+            if (!localEmpCount) {
+                try {
+                    var rawLocal = g.localStorage.getItem('fp_employees_json');
+                    if (rawLocal) {
+                        var arrLocal = JSON.parse(rawLocal);
+                        if (Array.isArray(arrLocal)) localEmpCount = arrLocal.length;
+                    }
+                } catch (_eLocal) { /* ignore */ }
+            }
+            if (opts.autoload && cloudEmpCount === 0 && localEmpCount > 0) {
+                fpCloudSetStatus(
+                    'Snapshot da nuvem está vazio; mantidos os dados locais (' + localEmpCount + ' colaborador(es)).',
+                    false
+                );
+                return { skipped: true, reason: 'empty-cloud-vs-local', localEmployees: localEmpCount };
+            }
             var attStats = { ok: 0, fail: 0, total: 0 };
             var useFast = g.FP_CLOUD_FAST_SYNC !== false;
             if (useFast) {
