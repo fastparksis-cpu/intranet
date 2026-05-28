@@ -60,11 +60,11 @@
 
         var isLocalNet = proto === 'file:' || host === 'localhost' || host === '127.0.0.1' || /^192\.168\./.test(host);
 
-        g.FP_AUTH_REQUIRED = isVercel || !isLocalNet;
+        g.FP_AUTH_REQUIRED = false;
 
     } catch (e) {
 
-        g.FP_AUTH_REQUIRED = true;
+        g.FP_AUTH_REQUIRED = false;
 
     }
 

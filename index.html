@@ -101,15 +101,12 @@ button:disabled {
 <body>
 <div class="card">
     <h1>Intranet FastPark</h1>
-    <p class="sub">Acesse com seu e-mail corporativo</p>
-    <div id="configWarn" class="config-warn">
-        Configure <strong>fp-supabase-config.js</strong> com a URL e a chave anon do Supabase.
-    </div>
+    <p class="sub">Acesse com usuário e senha cadastrados na aba Acessos</p>
     <form id="loginForm" autocomplete="on">
-        <label for="email">E-mail</label>
-        <input type="email" id="email" name="email" required autocomplete="username">
-        <label for="senha">Senha</label>
-        <input type="password" id="senha" name="password" required autocomplete="current-password">
+        <label for="acessoLogin">Usuário</label>
+        <input type="text" id="acessoLogin" name="acesso_login" required autocomplete="username">
+        <label for="acessoSenha">Senha</label>
+        <input type="password" id="acessoSenha" name="acesso_senha" required autocomplete="current-password">
         <button type="submit" id="btnEntrar">Entrar</button>
     </form>
     <p id="msg" class="msg" role="alert"></p>
@@ -117,50 +114,57 @@ button:disabled {
 <script>
 (function () {
     var APP = (typeof window.fpAppUrl === 'function' ? window.fpAppUrl() : (window.FP_APP_URL || '/intranet-fastpark'));
+    var ACESSOS_KEY = 'fp_acessos_usuarios';
+    var ACESSOS_ACTIVE_KEY = 'fp_acessos_usuario_ativo';
+    var ACESSOS_AUTH_SESSION_KEY = 'fp_acessos_auth_ok';
     var form = document.getElementById('loginForm');
     var msg = document.getElementById('msg');
     var btn = document.getElementById('btnEntrar');
-    var configWarn = document.getElementById('configWarn');
-
-    if (typeof window.fpSupabaseConfigIsReady === 'function' ? !window.fpSupabaseConfigIsReady() : (!window.FP_SUPABASE_URL || !window.FP_SUPABASE_ANON_KEY)) {
-        configWarn.style.display = 'block';
-        btn.disabled = true;
-        return;
-    }
-    configWarn.style.display = 'none';
 
     var linkApp = document.getElementById('linkIntranet');
     if (linkApp) linkApp.setAttribute('href', APP);
 
-    window.fpRedirectIfSession(APP).catch(function () {});
+    function getAcessosUsers(){
+        try{
+            var arr = JSON.parse(localStorage.getItem(ACESSOS_KEY) || '[]');
+            return Array.isArray(arr) ? arr : [];
+        }catch(_e){ return []; }
+    }
+    function loginAcessos(login, senha){
+        var users = getAcessosUsers();
+        if(!users.length){
+            return { ok: false, message: 'Nenhum usuário cadastrado em Acessos.' };
+        }
+        var l = String(login || '').trim().toLowerCase();
+        var s = String(senha || '');
+        var user = users.find(function(u){
+            return String(u.login || '').trim().toLowerCase() === l && String(u.senha || '') === s;
+        });
+        if(!user){
+            return { ok: false, message: 'Usuário ou senha inválidos.' };
+        }
+        localStorage.setItem(ACESSOS_ACTIVE_KEY, String(user.id || ''));
+        sessionStorage.setItem(ACESSOS_AUTH_SESSION_KEY, '1');
+        return { ok: true };
+    }
+    if(sessionStorage.getItem(ACESSOS_AUTH_SESSION_KEY) === '1'){
+        window.location.replace(APP);
+        return;
+    }
 
     form.addEventListener('submit', function (e) {
         e.preventDefault();
         msg.textContent = '';
         btn.disabled = true;
-        var email = document.getElementById('email').value.trim();
-        var password = document.getElementById('senha').value;
-
-        window.fpSignIn(email, password).then(function (res) {
-            if (res.error) {
-                msg.textContent = res.error.message || 'Erro ao entrar.';
-                btn.disabled = false;
-                return;
-            }
-            if (typeof window.fpGoToApp === 'function') {
-                window.fpGoToApp(APP).then(function (ok) {
-                    if (!ok) {
-                        msg.textContent = 'Login OK, mas a sessão não ficou no navegador. Verifique Supabase → URL Configuration (domínio Vercel).';
-                        btn.disabled = false;
-                    }
-                });
-            } else {
-                window.location.replace(APP);
-            }
-        }).catch(function (err) {
-            msg.textContent = err && err.message ? err.message : 'Erro ao entrar.';
+        var acessoLogin = document.getElementById('acessoLogin').value.trim();
+        var acessoSenha = document.getElementById('acessoSenha').value;
+        var ok = loginAcessos(acessoLogin, acessoSenha);
+        if(!ok.ok){
+            msg.textContent = ok.message || 'Erro ao entrar.';
             btn.disabled = false;
-        });
+            return;
+        }
+        window.location.replace(APP);
     });
 })();
 </script>

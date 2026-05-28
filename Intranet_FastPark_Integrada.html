@@ -3193,7 +3193,7 @@ function getAcessosTabOptions(){
     const out = [];
     document.querySelectorAll('.fp-menu-item[data-tab]').forEach(function(btn){
         const tab = String(btn.getAttribute('data-tab') || '');
-        if(!tab || tab === 'acessos') return;
+        if(!tab) return;
         if(seen.has(tab)) return;
         seen.add(tab);
         out.push({ tab, label: String(btn.textContent || tab).trim() || tab });
@@ -3206,7 +3206,7 @@ function getAcessosActiveUser(){
     return getAcessosUsers().find(u => String(u.id) === id) || null;
 }
 function fpUserCanAccessTab(tab){
-    if(tab === 'fp-home' || tab === 'acessos') return true;
+    if(tab === 'fp-home') return true;
     const active = getAcessosActiveUser();
     if(!active) return true;
     const allowed = Array.isArray(active.allowedTabs) ? active.allowedTabs : [];
@@ -3216,7 +3216,7 @@ function fpApplyAccessRestrictions(){
     const active = getAcessosActiveUser();
     document.querySelectorAll('.fp-menu-item[data-tab]').forEach(function(btn){
         const tab = String(btn.getAttribute('data-tab') || '');
-        if(!tab || tab === 'acessos') return;
+        if(!tab) return;
         if(tab === 'sinistros'){
             const can = fpUserCanAccessTab('sinistros');
             btn.style.display = can ? '' : 'none';
