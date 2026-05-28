@@ -2027,6 +2027,14 @@ td { color: var(--t); font-weight: 500;}
                 <button type="button" class="fp-menu-item" data-tab="referencias" onclick="fpMenuSwitchTab('referencias', 'emp')">Empresas</button>
             </div>
         </div>
+        <div class="fp-menu-group" data-fp-group="adm">
+            <button type="button" class="fp-menu-group-btn" onclick="fpToggleMenuGroup('adm')" aria-expanded="false">
+                <span>Administração</span><span class="fp-menu-chevron">▶</span>
+            </button>
+            <div class="fp-menu-sub">
+                <button type="button" class="fp-menu-item" data-tab="acessos" onclick="fpMenuSwitchTab('acessos', 'adm')">Acessos</button>
+            </div>
+        </div>
     </nav>
 </aside>
 <div class="fp-main-wrap">
@@ -2812,6 +2820,41 @@ td { color: var(--t); font-weight: 500;}
         </div>
         </div>
     </div>
+    <div id="acessos" class="tab-content fp-page-full">
+        <section class="hero">
+            <div class="hero-brand">
+                <div>
+                    <h1>Acessos</h1>
+                    <p class="hero-subtitle">Cadastre usuários e limite as abas permitidas para cada perfil.</p>
+                </div>
+            </div>
+        </section>
+        <section class="filters" style="margin-bottom:10px;">
+            <div><label><strong>Usuário ativo</strong></label><br><select id="acessosUsuarioAtivo" style="min-width:260px;"></select></div>
+            <button type="button" class="btn btn-success" onclick="setAcessosUsuarioAtivo()">Aplicar usuário ativo</button>
+        </section>
+        <article class="panel list">
+            <h3>Cadastro de usuário</h3>
+            <div class="inner">
+                <input type="hidden" id="acessosEditId">
+                <div class="filters">
+                    <div><label><strong>Nome</strong></label><br><input id="acessosNome" placeholder="Nome completo"></div>
+                    <div><label><strong>Usuário</strong></label><br><input id="acessosLogin" placeholder="login"></div>
+                    <div><label><strong>Senha</strong></label><br><input id="acessosSenha" type="password" placeholder="senha"></div>
+                </div>
+                <div style="margin-top:8px;"><strong>Abas permitidas</strong></div>
+                <div id="acessosPermissoesWrap" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;margin-top:6px;"></div>
+                <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+                    <button type="button" class="btn btn-fp-orange" onclick="salvarUsuarioAcesso()">Salvar usuário</button>
+                    <button type="button" class="btn" onclick="limparFormUsuarioAcesso()">Limpar</button>
+                </div>
+            </div>
+        </article>
+        <article class="panel list" style="margin-top:12px;">
+            <h3>Usuários cadastrados</h3>
+            <div class="inner" id="acessosListaUsuarios"></div>
+        </article>
+    </div>
     <div id="vt" class="tab-content fp-page-full">
         <section class="filters" style="margin-bottom:10px;">
             <button class="btn btn-info" id="btnVtAtual" onclick="switchVtSubtab('atual')">Relatório Atual</button>
@@ -3107,6 +3150,68 @@ td { color: var(--t); font-weight: 500;}
 
 <!-- Scripts for tabs -->
 <script>
+const FP_ACESSOS_KEY = 'fp_acessos_usuarios';
+const FP_ACESSOS_ACTIVE_KEY = 'fp_acessos_usuario_ativo';
+
+function getAcessosUsers(){
+    try{
+        const arr = JSON.parse(localStorage.getItem(FP_ACESSOS_KEY) || '[]');
+        return Array.isArray(arr) ? arr : [];
+    } catch(_){ return []; }
+}
+function setAcessosUsers(arr){
+    localStorage.setItem(FP_ACESSOS_KEY, JSON.stringify(Array.isArray(arr) ? arr : []));
+    if(typeof fpAfterPersistentStorageWrite === 'function') fpAfterPersistentStorageWrite();
+}
+function getAcessosActiveUserId(){
+    return String(localStorage.getItem(FP_ACESSOS_ACTIVE_KEY) || '');
+}
+function setAcessosActiveUserId(id){
+    localStorage.setItem(FP_ACESSOS_ACTIVE_KEY, String(id || ''));
+    if(typeof fpAfterPersistentStorageWrite === 'function') fpAfterPersistentStorageWrite();
+}
+function getAcessosTabOptions(){
+    const seen = new Set();
+    const out = [];
+    document.querySelectorAll('.fp-menu-item[data-tab]').forEach(function(btn){
+        const tab = String(btn.getAttribute('data-tab') || '');
+        if(!tab || tab === 'acessos') return;
+        if(seen.has(tab)) return;
+        seen.add(tab);
+        out.push({ tab, label: String(btn.textContent || tab).trim() || tab });
+    });
+    return out.sort((a,b) => a.label.localeCompare(b.label, 'pt-BR'));
+}
+function getAcessosActiveUser(){
+    const id = getAcessosActiveUserId();
+    if(!id) return null;
+    return getAcessosUsers().find(u => String(u.id) === id) || null;
+}
+function fpUserCanAccessTab(tab){
+    if(tab === 'fp-home' || tab === 'acessos') return true;
+    const active = getAcessosActiveUser();
+    if(!active) return true;
+    const allowed = Array.isArray(active.allowedTabs) ? active.allowedTabs : [];
+    return allowed.includes(tab);
+}
+function fpApplyAccessRestrictions(){
+    const active = getAcessosActiveUser();
+    document.querySelectorAll('.fp-menu-item[data-tab]').forEach(function(btn){
+        const tab = String(btn.getAttribute('data-tab') || '');
+        if(!tab || tab === 'acessos') return;
+        if(tab === 'sinistros'){
+            const can = fpUserCanAccessTab('sinistros');
+            btn.style.display = can ? '' : 'none';
+            return;
+        }
+        const can = !active || fpUserCanAccessTab(tab);
+        btn.style.display = can ? '' : 'none';
+    });
+    const activePanel = document.querySelector('.tab-content.active');
+    const activeTab = activePanel ? activePanel.id : 'fp-home';
+    if(!fpUserCanAccessTab(activeTab)) switchTab('fp-home');
+}
+
 function fpToggleMenuGroup(groupId) {
     const group = document.querySelector('.fp-menu-group[data-fp-group="' + groupId + '"]');
     if (!group) return;
@@ -3163,6 +3268,10 @@ function fpMenuSwitchSinistros(sub) {
 }
 
 function fpMenuSwitchTab(tab, groupId) {
+    if(!fpUserCanAccessTab(tab)){
+        alert('Este usuário não possui permissão para acessar esta aba.');
+        tab = 'fp-home';
+    }
     if (tab === 'fp-home') {
         document.querySelectorAll('.fp-menu-group.open').forEach(function (group) {
             group.classList.remove('open');
@@ -3184,6 +3293,10 @@ function fpGoHomePage() {
 }
 
 function switchTab(tab) {
+    if(!fpUserCanAccessTab(tab)){
+        alert('Este usuário não possui permissão para acessar esta aba.');
+        tab = 'fp-home';
+    }
     const panel = document.getElementById(tab);
     if (!panel) return;
     if (typeof fpConsolidateFullPageTab === 'function') fpConsolidateFullPageTab(panel);
@@ -3244,6 +3357,97 @@ function switchTab(tab) {
     if(tab === 'dprefbeneficios' && typeof refInitBeneficiosTab === 'function') refInitBeneficiosTab();
     if(tab === 'dprefvt' && typeof refInitVtRefTab === 'function') refInitVtRefTab();
     if(tab === 'referencias' && typeof refInitEmpresasTab === 'function') refInitEmpresasTab();
+    if(tab === 'acessos' && typeof renderAcessosTab === 'function') renderAcessosTab();
+}
+
+function limparFormUsuarioAcesso(){
+    const ids = ['acessosEditId','acessosNome','acessosLogin','acessosSenha'];
+    ids.forEach(function(id){ const el = document.getElementById(id); if(el) el.value = ''; });
+    document.querySelectorAll('.acessos-tab-check').forEach(function(chk){ chk.checked = false; });
+}
+function renderAcessosPermissoes(selectedTabs){
+    const wrap = document.getElementById('acessosPermissoesWrap');
+    if(!wrap) return;
+    const selected = new Set(Array.isArray(selectedTabs) ? selectedTabs : []);
+    const opts = getAcessosTabOptions();
+    wrap.innerHTML = opts.map(function(o){
+        return `<label style="display:flex;align-items:center;gap:8px;border:1px solid #e5e7eb;padding:8px;border-radius:8px;"><input class="acessos-tab-check" type="checkbox" value="${esc(o.tab)}" ${selected.has(o.tab)?'checked':''}>${esc(o.label)}</label>`;
+    }).join('');
+}
+function renderAcessosLista(){
+    const el = document.getElementById('acessosListaUsuarios');
+    if(!el) return;
+    const activeId = getAcessosActiveUserId();
+    const users = getAcessosUsers();
+    if(!users.length){ el.innerHTML = '<div class="empty">Nenhum usuário cadastrado.</div>'; return; }
+    el.innerHTML = `<table><thead><tr><th>Nome</th><th>Usuário</th><th>Abas permitidas</th><th>Ativo</th><th>Ações</th></tr></thead><tbody>${
+        users.map(function(u){
+            const tabs = Array.isArray(u.allowedTabs) ? u.allowedTabs.join(', ') : '';
+            return `<tr><td>${esc(u.nome || '')}</td><td>${esc(u.login || '')}</td><td>${esc(tabs || '—')}</td><td>${String(u.id)===activeId?'Sim':'Não'}</td><td><button class="btn" type="button" onclick="editarUsuarioAcesso('${esc(String(u.id))}')">Editar</button> <button class="btn" type="button" onclick="ativarUsuarioAcesso('${esc(String(u.id))}')">Ativar</button> <button class="btn btn-danger" type="button" onclick="excluirUsuarioAcesso('${esc(String(u.id))}')">Excluir</button></td></tr>`;
+        }).join('')
+    }</tbody></table>`;
+}
+function renderAcessosUsuarioAtivoSelect(){
+    const sel = document.getElementById('acessosUsuarioAtivo');
+    if(!sel) return;
+    const activeId = getAcessosActiveUserId();
+    const users = getAcessosUsers();
+    sel.innerHTML = '<option value="">Sem restrição (admin)</option>' + users.map(function(u){
+        return `<option value="${esc(String(u.id))}" ${String(u.id)===activeId?'selected':''}>${esc((u.nome || u.login || 'Usuário'))}</option>`;
+    }).join('');
+}
+function renderAcessosTab(){
+    renderAcessosUsuarioAtivoSelect();
+    renderAcessosPermissoes([]);
+    renderAcessosLista();
+}
+function salvarUsuarioAcesso(){
+    const id = String(document.getElementById('acessosEditId')?.value || '').trim();
+    const nome = String(document.getElementById('acessosNome')?.value || '').trim();
+    const login = String(document.getElementById('acessosLogin')?.value || '').trim();
+    const senha = String(document.getElementById('acessosSenha')?.value || '').trim();
+    if(!nome || !login){ alert('Preencha nome e usuário.'); return; }
+    const allowedTabs = Array.from(document.querySelectorAll('.acessos-tab-check:checked')).map(function(chk){ return chk.value; });
+    const users = getAcessosUsers();
+    const idx = users.findIndex(function(u){ return String(u.id) === id; });
+    if(idx >= 0){
+        users[idx] = { ...users[idx], nome, login, senha: senha || users[idx].senha || '', allowedTabs };
+    } else {
+        users.unshift({ id: 'acc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), nome, login, senha, allowedTabs });
+    }
+    setAcessosUsers(users);
+    limparFormUsuarioAcesso();
+    renderAcessosTab();
+    fpApplyAccessRestrictions();
+}
+function editarUsuarioAcesso(id){
+    const user = getAcessosUsers().find(function(u){ return String(u.id) === String(id); });
+    if(!user) return;
+    const setVal = function(elId, val){ const el = document.getElementById(elId); if(el) el.value = val || ''; };
+    setVal('acessosEditId', String(user.id));
+    setVal('acessosNome', user.nome);
+    setVal('acessosLogin', user.login);
+    setVal('acessosSenha', user.senha);
+    renderAcessosPermissoes(user.allowedTabs || []);
+}
+function excluirUsuarioAcesso(id){
+    if(!confirm('Excluir usuário de acesso?')) return;
+    const users = getAcessosUsers().filter(function(u){ return String(u.id) !== String(id); });
+    setAcessosUsers(users);
+    if(getAcessosActiveUserId() === String(id)) setAcessosActiveUserId('');
+    renderAcessosTab();
+    fpApplyAccessRestrictions();
+}
+function ativarUsuarioAcesso(id){
+    setAcessosActiveUserId(String(id || ''));
+    renderAcessosTab();
+    fpApplyAccessRestrictions();
+}
+function setAcessosUsuarioAtivo(){
+    const val = String(document.getElementById('acessosUsuarioAtivo')?.value || '');
+    setAcessosActiveUserId(val);
+    fpApplyAccessRestrictions();
+    alert(val ? 'Usuário ativo aplicado.' : 'Modo sem restrição aplicado.');
 }
 
 // Início e Cadastro: painéis DashBoard RH em iframe (layout original).
@@ -16627,6 +16831,7 @@ function refInitTab(){ refInitEmpresasTab(); }
         fpPushDashboardWithRetry();
     }
     if (typeof switchTab === 'function') switchTab('fp-home');
+    try { fpApplyAccessRestrictions(); } catch(_acc) {}
     window.__fpIntranetBootComplete = true;
     if(window.FP_AUTH_REQUIRED !== false && (!(state.employees && state.employees.length)) && typeof fpCloudLoadSnapshot === 'function'){
         setTimeout(async function(){
