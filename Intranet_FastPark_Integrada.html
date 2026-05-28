@@ -12940,7 +12940,7 @@ function renderVtReport(){
     el.innerHTML = `<div style="margin-bottom:10px;"><strong>Período:</strong> ${ini.toLocaleDateString('pt-BR')} a ${fim.toLocaleDateString('pt-BR')}</div>
     <div style="margin-bottom:8px;font-size:12px;color:#555;">${notaFaltas}</div>
     <div style="margin-bottom:10px;"><strong>Dias úteis:</strong> ${diasUteis} | <strong>Total previsto:</strong> ${fmoney(totalGeral)} 
-    <button class="btn btn-success" onclick="exportVtExcel()" style="margin-left:8px;">Excel</button><button class="btn btn-danger" onclick="exportVtPDF()" style="margin-left:6px;">PDF</button></div>
+    <button class="btn btn-success" onclick="exportVtExcel()" style="margin-left:8px;">Excel</button><button class="btn btn-danger" onclick="exportVtPDF()" style="margin-left:6px;">PDF</button><button class="btn btn-info" onclick="exportVtBancoExcel()" style="margin-left:6px;">Exportar arquivo banco</button></div>
     <table style="width:100%;"><thead><tr><th>Funcionário</th><th>Registro</th><th>Unidade</th><th>Escala (quadro)</th><th>VT unitário</th><th>Ida+Volta</th><th>Dias Base</th><th>Faltas Período Anterior</th><th>Dias Líquidos</th><th>Total</th><th>Conta</th></tr></thead><tbody>${
         vts.map(e=>{
             const vtBase = getVtDisplayDataForEmployee(e, cfg);
@@ -13059,9 +13059,41 @@ function getVtRowsExport(){
             nome: vtBase.funcionario, registro: vtBase.registro, unidade: vtBase.unidade, escala: jornada, vtUnit, idaVolta: vtUnit*2, dias,
             faltasPrev,
             diasLiquidos,
-            total: (vtUnit*2)*diasLiquidos, banco: e.banco||'', agencia: e.agencia||'', conta: e.conta||''
+            total: (vtUnit*2)*diasLiquidos, banco: e.banco||'', agencia: e.agencia||'', conta: e.conta||'', cpf: e.cpf || ''
         };
     });
+}
+function vtSplitContaDigito(contaRaw){
+    const txt = String(contaRaw || '').trim();
+    if(!txt) return { contaCorrente: '', digitoConta: '' };
+    const m = txt.match(/^([\d.\s]+)[-\/\s]?([\dkKxX])$/);
+    if(m){
+        const contaCorrente = String(m[1] || '').replace(/\D/g, '');
+        const digitoConta = String(m[2] || '').toUpperCase();
+        return { contaCorrente, digitoConta };
+    }
+    return { contaCorrente: txt.replace(/\D/g, ''), digitoConta: '' };
+}
+function exportVtBancoExcel(){
+    const rows = getVtRowsExport();
+    if(!rows.length){ alert('Sem dados de VT para gerar arquivo banco.'); return; }
+    const bankRows = rows.map(r => {
+        const conta = vtSplitContaDigito(r.conta);
+        return {
+            'Agência': String(r.agencia || '').trim(),
+            'Conta corrente': conta.contaCorrente,
+            'Dígito conta': conta.digitoConta,
+            'Nome do funcionário': r.nome || '',
+            'CPF': String(r.cpf || '').replace(/\D/g, ''),
+            'Cód': 1,
+            'Valor': Number(r.total || 0)
+        };
+    });
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(bankRows);
+    ws['!cols'] = [{ wch: 14 }, { wch: 16 }, { wch: 10 }, { wch: 34 }, { wch: 16 }, { wch: 8 }, { wch: 14 }];
+    XLSX.utils.book_append_sheet(wb, ws, 'Arquivo Banco');
+    XLSX.writeFile(wb, `Arquivo_Banco_VT_${new Date().toISOString().slice(0,10)}.xlsx`);
 }
 function saveVtMonthlyHistory(total, ini, fim){
     const key = 'fp_vt_monthly';
