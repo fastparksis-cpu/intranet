@@ -2381,6 +2381,27 @@ td { color: var(--t); font-weight: 500;}
                         <tbody id="movGestTbody"></tbody>
                     </table>
                 </div>
+                <div style="margin-top:12px;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+                        <strong>Histórico de importações</strong>
+                        <button type="button" class="btn btn-danger" onclick="movGestLimparHistoricoImportacao()">Limpar histórico</button>
+                    </div>
+                    <div style="overflow-x:auto;border:1px solid var(--l);border-radius:8px;margin-top:6px;">
+                        <table style="width:100%;min-width:980px;border-collapse:collapse;font-size:12px;">
+                            <thead><tr style="background:var(--fp-dark,#5A5A5A);color:#fff;">
+                                <th style="padding:8px;text-align:left;">Data/Hora</th>
+                                <th style="padding:8px;text-align:left;">Tipo cálculo</th>
+                                <th style="padding:8px;text-align:left;">Colaborador</th>
+                                <th style="padding:8px;text-align:left;">CPF</th>
+                                <th style="padding:8px;text-align:left;">Registro</th>
+                                <th style="padding:8px;text-align:left;">Conta</th>
+                                <th style="padding:8px;text-align:right;">Valor (R$)</th>
+                                <th style="padding:8px;text-align:left;">Fonte</th>
+                            </tr></thead>
+                            <tbody id="movGestHistImportTbody"></tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </article>
     </div>
@@ -6632,6 +6653,105 @@ function tagMovRowsFolhaTipo(rows, tipo){
     const t = tipo === 'adiantamento' ? 'adiantamento' : 'mensal';
     return (rows || []).map(r => ({ ...r, folhaTipo: r.folhaTipo || t }));
 }
+function movGestFindEmployeeByImportedName(nomeRaw){
+    const key = movGestNormEmp(nomeRaw || '');
+    if(!key) return null;
+    const list = state.employees || [];
+    let emp = list.find(e => movGestNormEmp(e?.nome || '') === key);
+    if(emp) return emp;
+    emp = list.find(e => {
+        const n = movGestNormEmp(e?.nome || '');
+        return n && (n.includes(key) || key.includes(n));
+    });
+    return emp || null;
+}
+function movGestGetHistImport(){
+    try{
+        const arr = JSON.parse(localStorage.getItem(FP_GESTAO_PAGAMENTOS_HIST_IMPORT_KEY) || '[]');
+        return Array.isArray(arr) ? arr : [];
+    } catch {
+        return [];
+    }
+}
+function movGestSetHistImport(rows){
+    try{
+        localStorage.setItem(FP_GESTAO_PAGAMENTOS_HIST_IMPORT_KEY, JSON.stringify(Array.isArray(rows) ? rows : []));
+        fpAfterPersistentStorageWrite();
+    } catch(e){
+        console.warn('[movGest] histórico importação', e);
+    }
+}
+function movGestBuildHistoryRows(rows, tipoFolha, meta, sourceName){
+    const grouped = new Map();
+    (rows || []).forEach(r => {
+        const key = movGestNormEmp((r.empregadoKey || r.empregado || '').replace(/^\d+\s*-\s*/, '').trim());
+        if(!key) return;
+        if(!grouped.has(key)) grouped.set(key, []);
+        grouped.get(key).push(r);
+    });
+    const importedAt = new Date().toISOString();
+    const tipoCalc = tipoFolha === 'adiantamento' ? 'adiantamento' : 'mensal';
+    const out = [];
+    grouped.forEach((list, key) => {
+        const nomeImport = String((list[0]?.empregado || list[0]?.empregadoKey || '')).replace(/^\d+\s*-\s*/, '').trim();
+        const emp = movGestFindEmployeeByImportedName(nomeImport || key);
+        const nome = String(emp?.nome || nomeImport || '').trim() || '—';
+        const cpfImport = String(list.find(x => x.cpfImport)?.cpfImport || '').replace(/\D+/g, '');
+        const cpf = String(emp?.cpf || cpfImport || '').replace(/\D+/g, '');
+        const registro = String(emp?.registro2 || emp?.registro || emp?.empresa || '').trim();
+        const conta = [emp?.banco, emp?.agencia, emp?.conta].filter(Boolean).join(' / ');
+        const liq = list.find(x => /^LIQUIDO\b/i.test(String(x.nome || '').trim()) || String(x.tipo || '').toUpperCase() === 'L');
+        let valor = Number(liq?.valorCalculado || liq?.valorInformado || 0);
+        if(!(valor > 0)){
+            const bruto = list.filter(x => ['P','I'].includes(String(x.tipo || '').toUpperCase())).reduce((a, x) => a + Number(x.valorCalculado || x.valorInformado || 0), 0);
+            const descontos = list.filter(x => String(x.tipo || '').toUpperCase() === 'D').reduce((a, x) => a + Number(x.valorCalculado || x.valorInformado || 0), 0);
+            valor = movGestRound2(bruto - descontos);
+        }
+        out.push({
+            id: 'mgh-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+            importedAt,
+            tipoFolha: tipoCalc,
+            colaborador: nome,
+            cpf,
+            registro,
+            conta,
+            valor: movGestRound2(valor),
+            referencia: String(meta?.competencia || list.find(x => x.referencia)?.referencia || '').trim(),
+            fonte: String(sourceName || '').trim()
+        });
+    });
+    return out;
+}
+function movGestAppendHistoryRows(rows){
+    if(!rows || !rows.length) return;
+    const merged = [...rows, ...movGestGetHistImport()].slice(0, 500);
+    movGestSetHistImport(merged);
+    movGestRenderHistImport();
+}
+function movGestRenderHistImport(){
+    const tb = document.getElementById('movGestHistImportTbody');
+    if(!tb) return;
+    const rows = movGestGetHistImport();
+    if(!rows.length){
+        tb.innerHTML = '<tr><td colspan="8" class="empty" style="padding:12px;">Sem histórico de importações.</td></tr>';
+        return;
+    }
+    tb.innerHTML = rows.map(r => `<tr>
+        <td style="padding:6px;">${esc(new Date(r.importedAt || Date.now()).toLocaleString('pt-BR'))}</td>
+        <td style="padding:6px;">${esc(r.tipoFolha === 'adiantamento' ? 'Adiantamento' : 'Mensal')}</td>
+        <td style="padding:6px;">${esc(r.colaborador || '')}</td>
+        <td style="padding:6px;">${esc(r.cpf || '')}</td>
+        <td style="padding:6px;">${esc(r.registro || '')}</td>
+        <td style="padding:6px;">${esc(r.conta || '')}</td>
+        <td style="padding:6px;text-align:right;">${fmoney(Number(r.valor || 0))}</td>
+        <td style="padding:6px;">${esc(r.fonte || '')}</td>
+    </tr>`).join('');
+}
+function movGestLimparHistoricoImportacao(){
+    if(!confirm('Limpar histórico de importações da Folha de Pagamento?')) return;
+    movGestSetHistImport([]);
+    movGestRenderHistImport();
+}
 function finalizeMovRows(rows){
     movState.rows = rows.filter(r => r.codigo || r.nome);
     if(typeof movGestUpdateImportStatus === 'function') movGestUpdateImportStatus();
@@ -6675,12 +6795,14 @@ function loadMovimentosWorkbook(data){
             const localTrabalho = pickByHeader(r, ['LOCAL DE TRABALHO','LOCAL_TRABALHO']);
             const tipo = String(pickByHeader(r, ['TIPO']) || '').trim().toUpperCase();
             const empregado = pickByHeader(r, ['EMPREGADOS','EMPREGADO','COLABORADOR','FUNCIONARIO','FUNCIONÁRIO']);
+            const cpf = pickByHeader(r, ['CPF']);
             const qtd = pickByHeader(r, ['QTD','QUANTIDADE']);
             const unidadeMedida = pickByHeader(r, ['UNID','UNIDADE MEDIDA']);
             if(!codigo && !nome) return;
             rows.push({
                 empregado: String(empregado || '').trim() || '—',
                 empregadoKey: String(empregado || '').trim() || '',
+                cpfImport: String(cpf || '').replace(/\D+/g, ''),
                 tipo: tipo || '—',
                 qtdStr: String(qtd || '').trim(),
                 unidadeMedida: String(unidadeMedida || '').trim(),
@@ -6747,7 +6869,9 @@ function loadMovimentosWorkbook(data){
     let tipoFolha = 'mensal';
     if(/ADIANT/i.test(String(sheetName || ''))) tipoFolha = 'adiantamento';
     movState.meta = { competencia: rows[0]?.referencia || '', empresa: '', cnpj: '' };
-    finalizeMovRows(tagMovRowsFolhaTipo(rows, tipoFolha));
+    const taggedRows = tagMovRowsFolhaTipo(rows, tipoFolha);
+    finalizeMovRows(taggedRows);
+    movGestAppendHistoryRows(movGestBuildHistoryRows(taggedRows, tipoFolha, movState.meta, sheetName || 'Excel'));
 }
 
 async function extractPdfLines(file){
@@ -6845,6 +6969,7 @@ function parseMovimentosPdfLines(lines){
     const rows = [];
     let currentEmp = '';
     let currentEmpKey = '';
+    let currentEmpCpf = '';
     let competencia = '';
     let empresa = '';
     let cnpj = '';
@@ -6871,6 +6996,18 @@ function parseMovimentosPdfLines(lines){
         if(empMatch){
             currentEmp = `${empMatch[1]} - ${empMatch[2]}`.trim();
             currentEmpKey = empMatch[2].trim().toUpperCase();
+            const mCpf = line.match(/\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/);
+            currentEmpCpf = mCpf ? mCpf[0].replace(/\D+/g, '') : '';
+            continue;
+        }
+        if(currentEmp && !currentEmpCpf){
+            const mCpf = line.match(/\bCPF\b[:\s\-]*([\d\.\-]{11,14})/i) || line.match(/\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/);
+            if(mCpf){
+                currentEmpCpf = String(mCpf[1] || mCpf[0] || '').replace(/\D+/g, '');
+                continue;
+            }
+        }
+        if(/^\s*CPF\b/i.test(line)){
             continue;
         }
         const m = line.match(/^(.+?)\s+([PDI])\s+([A-Za-zÀ-ú]+)\s+(\d{1,6})\s+(\d{2}\/\d{4})\s+([\d\.\,]+)\s+(.+)$/i);
@@ -6879,6 +7016,7 @@ function parseMovimentosPdfLines(lines){
         rows.push({
             empregado: currentEmp || '—',
             empregadoKey: currentEmpKey || '',
+            cpfImport: currentEmpCpf || '',
             tipo: m[2].toUpperCase(),
             qtdStr: m[1].trim(),
             unidadeMedida: m[3].trim(),
@@ -6913,6 +7051,13 @@ document.getElementById('movimentosFile')?.addEventListener('change', e => {
                 const cnpj = [...new Set(results.map(r => r.meta?.cnpj).filter(Boolean))].join(' | ');
                 movState.meta = { competencia, empresa: empresas, cnpj };
                 finalizeMovRows(allRows);
+                const historyRows = results.flatMap((r, i) => movGestBuildHistoryRows(
+                    r.rows || [],
+                    (r.rows || [])[0]?.folhaTipo || detectFolhaTipoFromLines([], pdfs[i]?.name || ''),
+                    r.meta || {},
+                    pdfs[i]?.name || 'PDF'
+                ));
+                movGestAppendHistoryRows(historyRows);
             })
             .catch(err => {
                 console.error(err);
@@ -7417,6 +7562,7 @@ const FP_QUADRO_GERAL_KEY = 'fp_quadro_geral_json';
 const FP_SINISTROS_KEY = 'fp_sinistros';
 const FP_LAUDOS_KEY = 'fp_laudos';
 const FP_GESTAO_PAGAMENTOS_KEY = 'fp_gestao_pagamentos_rubricas_v1';
+const FP_GESTAO_PAGAMENTOS_HIST_IMPORT_KEY = 'fp_gestao_pagamentos_hist_import_v1';
 const FP_DB_VERSION = 3;
 /** Chaves reservadas para módulos ainda em placeholder (Financeiro / Estoque). */
 const FP_FIN_CONTAS_PAGAR_KEY = 'fp_fin_contas_pagar';
@@ -14297,6 +14443,7 @@ function refreshMovGestaoPagamentosUi(){
         if(sbEl) sbEl.value = '';
         movGestUpdateResumo();
     }
+    movGestRenderHistImport();
 }
 
 function getFeriasHist(){
