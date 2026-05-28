@@ -12812,7 +12812,7 @@ function getVtDisplayDataForEmployee(emp, cfg){
     const parRaw = String((row && (row.paridade12x36 || row.paridade)) || '').trim();
     const parNorm = normText(parRaw);
     const parLabel = parNorm.includes('PARES') ? 'pares' : ((parNorm.includes('IMPARES') || parNorm.includes('ÍMPARES')) ? 'ímpares' : '');
-    const escalaQuadro = ((normText(escalaBase) === '12X36' || normText(escalaBase) === '6X1') && parLabel) ? `${escalaBase} (${parLabel})` : escalaBase;
+    const escalaQuadro = (normText(escalaBase) === '12X36' && parLabel) ? `${escalaBase} (${parLabel})` : escalaBase;
     return {
         funcionario: (row && String(row.nome || '').trim()) || String(emp.nome || '').trim(),
         registro: (row && String(row.registro2 || row.registro || row.empresa || '').trim()) || String(emp.empresa || '').trim(),
@@ -12909,14 +12909,6 @@ function renderVtReport(){
             return Math.max(1, c);
         }
         if(t.includes('6X1')){
-            if(hasParidade){
-                let c = 0;
-                for(let d = new Date(ini); d <= fim; d.setDate(d.getDate() + 1)){
-                    const day = d.getDate();
-                    if((par === 'pares' && day % 2 === 0) || (par === 'impares' && day % 2 !== 0)) c++;
-                }
-                return Math.max(1, c);
-            }
             const folga = Number(cfgItem?.folgaSemana ?? 0); // 0=domingo
             let c = 0;
             for(let d = new Date(ini); d <= fim; d.setDate(d.getDate() + 1)){
@@ -12931,7 +12923,10 @@ function renderVtReport(){
         const vtBase = getVtDisplayDataForEmployee(e, cfg);
         const t = jornadaStringToVtCfg(vtBase.escala || '');
         const manual = normalizeVtCfgItem(cfg[e.nome] || {});
-        if(String(t.tipo || '').toUpperCase().includes('6X1') && (manual.paridade === 'pares' || manual.paridade === 'impares')){
+        if(String(t.tipo || '').toUpperCase().includes('6X1') && Number.isFinite(Number(manual.folgaSemana))){
+            t.folgaSemana = Number(manual.folgaSemana);
+        }
+        if(String(t.tipo || '').toUpperCase().includes('12X36') && (manual.paridade === 'pares' || manual.paridade === 'impares')){
             t.paridade = manual.paridade;
         }
         const diasBase = calcDias(t);
@@ -12951,7 +12946,10 @@ function renderVtReport(){
             const vtBase = getVtDisplayDataForEmployee(e, cfg);
             const itemCfg = jornadaStringToVtCfg(vtBase.escala || '');
             const manual = normalizeVtCfgItem(cfg[e.nome] || {});
-            if(String(itemCfg.tipo || '').toUpperCase().includes('6X1') && (manual.paridade === 'pares' || manual.paridade === 'impares')){
+            if(String(itemCfg.tipo || '').toUpperCase().includes('6X1') && Number.isFinite(Number(manual.folgaSemana))){
+                itemCfg.folgaSemana = Number(manual.folgaSemana);
+            }
+            if(String(itemCfg.tipo || '').toUpperCase().includes('12X36') && (manual.paridade === 'pares' || manual.paridade === 'impares')){
                 itemCfg.paridade = manual.paridade;
             }
             const dias = calcDias(itemCfg);
@@ -12960,7 +12958,9 @@ function renderVtReport(){
             const unit = Number(e.vtValor || 0);
             const total = (unit * 2) * diasLiquidos;
             return `<tr><td>${esc(vtBase.funcionario)}</td><td>${esc(vtBase.registro)}</td><td>${esc(vtBase.unidade)}</td>
-            <td>${esc(vtBase.escala || '—')}${String(itemCfg.tipo || '').toUpperCase().includes('6X1') ? ` <select onchange="setVtParidade('${esc(e.nome)}', this.value)" style="margin-left:6px;"><option value="impares" ${String(itemCfg.paridade||'impares').toLowerCase()==='impares'?'selected':''}>Ímpares</option><option value="pares" ${String(itemCfg.paridade||'').toLowerCase()==='pares'?'selected':''}>Pares</option></select>` : ''}</td>
+            <td>${esc(vtBase.escala || '—')}
+            ${String(itemCfg.tipo || '').toUpperCase().includes('6X1') ? ` <select onchange="setVtFolga('${esc(e.nome)}', this.value)" style="margin-left:6px;"><option value="0" ${Number(itemCfg.folgaSemana)===0?'selected':''}>Folga Dom</option><option value="1" ${Number(itemCfg.folgaSemana)===1?'selected':''}>Seg</option><option value="2" ${Number(itemCfg.folgaSemana)===2?'selected':''}>Ter</option><option value="3" ${Number(itemCfg.folgaSemana)===3?'selected':''}>Qua</option><option value="4" ${Number(itemCfg.folgaSemana)===4?'selected':''}>Qui</option><option value="5" ${Number(itemCfg.folgaSemana)===5?'selected':''}>Sex</option><option value="6" ${Number(itemCfg.folgaSemana)===6?'selected':''}>Sáb</option></select>` : ''}
+            ${String(itemCfg.tipo || '').toUpperCase().includes('12X36') ? ` <select onchange="setVtParidade('${esc(e.nome)}', this.value)" style="margin-left:6px;"><option value="impares" ${String(itemCfg.paridade||'impares').toLowerCase()==='impares'?'selected':''}>Ímpares</option><option value="pares" ${String(itemCfg.paridade||'').toLowerCase()==='pares'?'selected':''}>Pares</option></select>` : ''}</td>
             <td style="text-align:right">${fmoney(unit)}</td><td style="text-align:right">${fmoney(unit*2)}</td><td style="text-align:right">${dias}</td><td style="text-align:right">${faltasPrev}</td><td style="text-align:right">${diasLiquidos}</td><td style="text-align:right">${fmoney(total)}</td>
             <td>${esc([e.banco,e.agencia,e.conta].filter(Boolean).join(' / ') || '—')}</td></tr>`;
         }).join('')
@@ -13044,7 +13044,10 @@ function getVtRowsExport(){
         const vtBase = getVtDisplayDataForEmployee(e, cfg);
         const jornadaCfg = jornadaStringToVtCfg(vtBase.escala || '');
         const manual = normalizeVtCfgItem(cfg[e.nome] || {});
-        if(String(jornadaCfg.tipo || '').toUpperCase().includes('6X1') && (manual.paridade === 'pares' || manual.paridade === 'impares')){
+        if(String(jornadaCfg.tipo || '').toUpperCase().includes('6X1') && Number.isFinite(Number(manual.folgaSemana))){
+            jornadaCfg.folgaSemana = Number(manual.folgaSemana);
+        }
+        if(String(jornadaCfg.tipo || '').toUpperCase().includes('12X36') && (manual.paridade === 'pares' || manual.paridade === 'impares')){
             jornadaCfg.paridade = manual.paridade;
         }
         const jornada = vtBase.escala || jornadaCfg.tipo || '6x1';
