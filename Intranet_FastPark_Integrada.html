@@ -3275,7 +3275,8 @@ function fpEnsureAcessosLoginGuard(){
         return;
     }
     setAcessosActiveUserId('');
-    fpOpenAcessosLoginModal();
+    if(typeof fpLoginUrl === 'function') window.location.replace(fpLoginUrl());
+    else window.location.replace('/');
 }
 
 function fpToggleMenuGroup(groupId) {
