@@ -493,7 +493,7 @@
       <div class="f"><label for="empBairro">Bairro</label><input id="empBairro" placeholder="Bairro"></div>
       <div class="f"><label for="empCidade">Cidade</label><input id="empCidade" placeholder="Cidade"></div>
       <div class="f"><label for="empUf">UF</label><input id="empUf" placeholder="UF"></div>
-      <div class="f"><label for="empCep">CEP</label><input id="empCep" placeholder="00000-000"><div id="errEmpCep" class="field-error"></div></div>
+      <div class="f"><label for="empCep">CEP</label><input id="empCep" placeholder="00000-000" inputmode="numeric" autocomplete="postal-code" title="Ao completar 8 dígitos, o endereço é preenchido automaticamente"><div id="errEmpCep" class="field-error"></div></div>
 
       <div style="grid-column:1 / -1; font-weight:800; font-size:11px; color:var(--fp-mid-gray); text-transform:uppercase; letter-spacing:.5px;">Uniforme</div>
       <div class="f"><label for="empCamisa">Camisa</label><input id="empCamisa" placeholder="Ex: 6"></div>
@@ -3332,6 +3332,39 @@ function maskCep(v){
     if(d.length <= 5) return d;
     return `${d.slice(0,5)}-${d.slice(5,8)}`;
 }
+let fpLastCepFetched = '';
+let fpCepLookupTimer = null;
+let fpCepLookupInFlight = false;
+async function fpBuscarEnderecoPorCep(){
+    if(!EF.cep) return;
+    const digits = onlyDigits(EF.cep.value);
+    const errEl = document.getElementById('errEmpCep');
+    if(digits.length !== 8) return;
+    if(digits === fpLastCepFetched || fpCepLookupInFlight) return;
+    fpCepLookupInFlight = true;
+    EF.cep.classList.remove('invalid');
+    if(errEl){ errEl.textContent = 'Buscando endereço…'; errEl.style.color = 'var(--fp-mid-gray)'; }
+    try {
+        const res = await fetch('https://viacep.com.br/ws/' + digits + '/json/');
+        if(!res.ok) throw new Error('Não foi possível consultar o CEP.');
+        const data = await res.json();
+        if(data.erro) throw new Error('CEP não encontrado.');
+        const logParts = [data.logradouro, data.complemento].map(s => String(s || '').trim()).filter(Boolean);
+        if(EF.endereco) EF.endereco.value = logParts.join(' — ') || EF.endereco.value;
+        if(EF.bairro) EF.bairro.value = data.bairro || '';
+        if(EF.cidade) EF.cidade.value = data.localidade || '';
+        if(EF.uf) EF.uf.value = String(data.uf || '').toUpperCase().slice(0, 2);
+        fpLastCepFetched = digits;
+        if(errEl){ errEl.textContent = ''; errEl.style.color = ''; }
+        clearFieldError(EF.cep, 'errEmpCep');
+    } catch(e) {
+        fpLastCepFetched = '';
+        if(errEl) errEl.style.color = '';
+        setFieldError(EF.cep, 'errEmpCep', e.message || 'CEP não encontrado.');
+    } finally {
+        fpCepLookupInFlight = false;
+    }
+}
 function normalizeFeriasHistory(raw){
     if(Array.isArray(raw)) return raw.filter(Boolean).map(x => String(x).trim()).filter(Boolean);
     if(!raw) return [];
@@ -3485,13 +3518,34 @@ function fpIsDisplayableMediaUrl(u){
 function fpResolveDocDataUrl(doc, emp){
     if(!doc) return '';
     if(doc.dataUrl && fpIsDisplayableMediaUrl(doc.dataUrl)) return doc.dataUrl;
-    if(doc.dataRef && window.parent && typeof window.parent.fpResolveEmployeeMediaRef === 'function'){
+    const parent = window.parent;
+    if(parent){
+        const disp = parent.__FP_CLOUD_DISPLAY_URLS__ || {};
+        const ref = String(doc.dataRef || '').trim();
+        if(ref && disp[ref]) return disp[ref];
+        const bag = parent.__FP_EMPLOYEE_ATT_BAG__ || {};
+        if(ref && typeof bag[ref] === 'string' && fpIsDisplayableMediaUrl(bag[ref])) return bag[ref];
+    }
+    if(doc.dataRef && parent && typeof parent.fpResolveEmployeeMediaRef === 'function'){
         try {
-            const u = window.parent.fpResolveEmployeeMediaRef(doc.dataRef, emp || state.selected, window.parent.__FP_EMBEDDED_ATTACHMENTS__ || {}, window.parent.__FP_EMPLOYEE_ATT_BAG__ || {});
+            const u = parent.fpResolveEmployeeMediaRef(doc.dataRef, emp || state.selected, parent.__FP_EMBEDDED_ATTACHMENTS__ || {}, parent.__FP_EMPLOYEE_ATT_BAG__ || {});
             if(u) return u;
         } catch(e) { console.warn('[DashBoard] resolve doc', e); }
     }
     return doc.dataUrl || '';
+}
+async function fpResolveDocDataUrlAsync(doc, emp){
+    let u = fpResolveDocDataUrl(doc, emp);
+    if(u) return u;
+    const ref = String(doc?.dataRef || '').trim();
+    const parent = window.parent;
+    if(ref && parent && typeof parent.fpEnsureCloudDisplayUrl === 'function'){
+        try {
+            u = await parent.fpEnsureCloudDisplayUrl(ref);
+            if(u) return u;
+        } catch(e) { console.warn('[DashBoard] cloud doc url', e); }
+    }
+    return '';
 }
 function fpResolveEmployeeFotoUrl(emp){
     if(!emp) return '';
@@ -3504,10 +3558,14 @@ function fpResolveEmployeeFotoUrl(emp){
     }
     return emp.foto || '';
 }
-function viewEmployeeDocDraft(idx){
+async function viewEmployeeDocDraft(idx){
     const doc = employeeDocsDraft[idx];
-    const url = fpResolveDocDataUrl(doc, state.employees[employeeEditIndex]);
-    if(!url) return;
+    const emp = state.employees[employeeEditIndex] || state.selected;
+    const url = await fpResolveDocDataUrlAsync(doc, emp);
+    if(!url){
+        alert('Não foi possível abrir o documento. Aguarde a sincronização com a nuvem ou anexe o arquivo novamente.');
+        return;
+    }
     openDocumentInNewTab(url, doc.name || 'documento');
 }
 function openEmployeePhotoLarge(dataUrl, nome){
@@ -3532,18 +3590,26 @@ function removeEmployeeDocDraft(idx){
     employeeDocsDraft.splice(idx, 1);
     renderEmployeeDocsList();
 }
-function viewSelectedEmployeeDoc(idx){
+async function viewSelectedEmployeeDoc(idx){
     const docs = state.selected?.documentos || [];
     const doc = docs[idx];
-    const url = fpResolveDocDataUrl(doc, state.selected);
-    if(!url) return;
+    if(!doc){ alert('Documento não encontrado.'); return; }
+    const url = await fpResolveDocDataUrlAsync(doc, state.selected);
+    if(!url){
+        alert('Não foi possível abrir o documento. Verifique o login na nuvem (☁️ Carregar) ou anexe o arquivo novamente.');
+        return;
+    }
     openDocumentInNewTab(url, doc.name || 'documento');
 }
-function viewSelectedEmployeeRescisaoDoc(idx){
+async function viewSelectedEmployeeRescisaoDoc(idx){
     const docs = state.selected?.documentosRescisao || [];
     const doc = docs[idx];
-    const url = fpResolveDocDataUrl(doc, state.selected);
-    if(!url) return;
+    if(!doc){ alert('Documento não encontrado.'); return; }
+    const url = await fpResolveDocDataUrlAsync(doc, state.selected);
+    if(!url){
+        alert('Não foi possível abrir o documento de rescisão. Verifique a sincronização com a nuvem.');
+        return;
+    }
     openDocumentInNewTab(url, doc.name || 'rescisao');
 }
 async function pickRescisaoDocs(){
@@ -3569,10 +3635,17 @@ async function pickRescisaoDocs(){
     return docs;
 }
 function openDocumentInNewTab(dataUrl, fileName){
+    const u = String(dataUrl || '').trim();
+    if(!u){ alert('Documento sem conteúdo para visualizar.'); return; }
+    if(/^https?:\/\//i.test(u)){
+        const win = window.open(u, '_blank');
+        if(!win) alert('O navegador bloqueou a abertura. Permita pop-ups para este site.');
+        return;
+    }
     try{
-        const [meta, b64] = String(dataUrl || '').split(',');
+        const [meta, b64] = u.split(',');
         if(!meta || !b64){
-            window.open(dataUrl, '_blank');
+            window.open(u, '_blank');
             return;
         }
         const mimeMatch = meta.match(/data:(.*?);base64/i);
@@ -3619,6 +3692,7 @@ function clearEmployeeForm(){
     renderEmployeeDocsList();
     renderEmployeePhotoPreview();
     refreshFormDateBrHints();
+    fpLastCepFetched = '';
 }
 function populateCadastroUnitOptions(){
     const unitsSaved = JSON.parse(localStorage.getItem('fp_unidades') || '[]').map(u => String(u.nome || '').trim()).filter(Boolean);
@@ -3704,6 +3778,7 @@ function openEmployeeForm(emp = null){
     fillEmpBeneficioSelects();
     syncEmpVtFromTipo();
     syncEmpBeneficioFromSelects();
+    fpLastCepFetched = emp ? onlyDigits(emp.cep || '') : '';
     EF.panel.style.display = 'block';
     populateCadastroUnitOptions();
 }
@@ -3873,7 +3948,15 @@ EF.nascimento.addEventListener('change', () => {
 });
 EF.cpf.addEventListener('input', () => { EF.cpf.value = maskCpf(EF.cpf.value); clearFieldError(EF.cpf, 'errEmpCpf'); });
 EF.telefone.addEventListener('input', () => { EF.telefone.value = maskTelefone(EF.telefone.value); clearFieldError(EF.telefone, 'errEmpTelefone'); });
-EF.cep.addEventListener('input', () => { EF.cep.value = maskCep(EF.cep.value); clearFieldError(EF.cep, 'errEmpCep'); });
+EF.cep.addEventListener('input', () => {
+    EF.cep.value = maskCep(EF.cep.value);
+    const digits = onlyDigits(EF.cep.value);
+    if(digits.length < 8) fpLastCepFetched = '';
+    clearFieldError(EF.cep, 'errEmpCep');
+    clearTimeout(fpCepLookupTimer);
+    if(digits.length === 8) fpCepLookupTimer = setTimeout(() => { void fpBuscarEnderecoPorCep(); }, 350);
+});
+EF.cep.addEventListener('blur', () => { void fpBuscarEnderecoPorCep(); });
 EF.nome.addEventListener('input', () => clearFieldError(EF.nome, 'errEmpNome'));
 if(EF.empresa) EF.empresa.addEventListener('change', () => clearFieldError(EF.empresa, 'errEmpEmpresa'));
 EF.cargo.addEventListener('input', () => clearFieldError(EF.cargo, 'errEmpCargo'));
@@ -4321,9 +4404,12 @@ function exportRelatorioPersonalizadoExcel(){
 function applyEmployeesSyncFromParent(msg) {
     fpLoadRefCacheFromStorage(msg);
     __fpLastParentSyncAt = Date.now();
-    if(msg.empAttachmentsBag && typeof msg.empAttachmentsBag === 'object'){
-        if(window.parent){
+    if(window.parent){
+        if(msg.empAttachmentsBag && typeof msg.empAttachmentsBag === 'object'){
             window.parent.__FP_EMPLOYEE_ATT_BAG__ = { ...(window.parent.__FP_EMPLOYEE_ATT_BAG__ || {}), ...msg.empAttachmentsBag };
+        }
+        if(msg.cloudDisplayUrls && typeof msg.cloudDisplayUrls === 'object'){
+            window.parent.__FP_CLOUD_DISPLAY_URLS__ = { ...(window.parent.__FP_CLOUD_DISPLAY_URLS__ || {}), ...msg.cloudDisplayUrls };
         }
     }
     state.employees = (Array.isArray(msg.employees) ? msg.employees : []).map(emp => {
