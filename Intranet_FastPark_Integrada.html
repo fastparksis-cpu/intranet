@@ -12930,6 +12930,10 @@ function renderVtReport(){
     const totalGeral = vts.reduce((s,e) => {
         const vtBase = getVtDisplayDataForEmployee(e, cfg);
         const t = jornadaStringToVtCfg(vtBase.escala || '');
+        const manual = normalizeVtCfgItem(cfg[e.nome] || {});
+        if(String(t.tipo || '').toUpperCase().includes('6X1') && (manual.paridade === 'pares' || manual.paridade === 'impares')){
+            t.paridade = manual.paridade;
+        }
         const diasBase = calcDias(t);
         const faltasPrev = vtCountFaltasPeriodoAnterior(e.nome, ini, fim);
         const diasLiquidos = Math.max(0, diasBase - faltasPrev);
@@ -12946,13 +12950,17 @@ function renderVtReport(){
         vts.map(e=>{
             const vtBase = getVtDisplayDataForEmployee(e, cfg);
             const itemCfg = jornadaStringToVtCfg(vtBase.escala || '');
+            const manual = normalizeVtCfgItem(cfg[e.nome] || {});
+            if(String(itemCfg.tipo || '').toUpperCase().includes('6X1') && (manual.paridade === 'pares' || manual.paridade === 'impares')){
+                itemCfg.paridade = manual.paridade;
+            }
             const dias = calcDias(itemCfg);
             const faltasPrev = vtCountFaltasPeriodoAnterior(e.nome, ini, fim);
             const diasLiquidos = Math.max(0, dias - faltasPrev);
             const unit = Number(e.vtValor || 0);
             const total = (unit * 2) * diasLiquidos;
             return `<tr><td>${esc(vtBase.funcionario)}</td><td>${esc(vtBase.registro)}</td><td>${esc(vtBase.unidade)}</td>
-            <td>${esc(vtBase.escala || '—')}</td>
+            <td>${esc(vtBase.escala || '—')}${String(itemCfg.tipo || '').toUpperCase().includes('6X1') ? ` <select onchange="setVtParidade('${esc(e.nome)}', this.value)" style="margin-left:6px;"><option value="impares" ${String(itemCfg.paridade||'impares').toLowerCase()==='impares'?'selected':''}>Ímpares</option><option value="pares" ${String(itemCfg.paridade||'').toLowerCase()==='pares'?'selected':''}>Pares</option></select>` : ''}</td>
             <td style="text-align:right">${fmoney(unit)}</td><td style="text-align:right">${fmoney(unit*2)}</td><td style="text-align:right">${dias}</td><td style="text-align:right">${faltasPrev}</td><td style="text-align:right">${diasLiquidos}</td><td style="text-align:right">${fmoney(total)}</td>
             <td>${esc([e.banco,e.agencia,e.conta].filter(Boolean).join(' / ') || '—')}</td></tr>`;
         }).join('')
@@ -12987,7 +12995,9 @@ function setVtParidade(nome, paridade){
     const cfg = JSON.parse(localStorage.getItem(VT_CFG_KEY) || '{}');
     const emp = state.employees.find(x => x.nome === nome);
     const prev = emp ? getVtCfgForEmployee(emp, cfg) : normalizeVtCfgItem(cfg[nome]) || {};
-    cfg[nome] = { tipo: prev.tipo || '12x36', folgaSemana: Number(prev.folgaSemana ?? 0), paridade: paridade || 'impares', manual: true };
+    const vtBase = emp ? getVtDisplayDataForEmployee(emp, cfg) : null;
+    const baseTipo = vtBase ? jornadaStringToVtCfg(vtBase.escala || '').tipo : '';
+    cfg[nome] = { tipo: baseTipo || prev.tipo || '6x1', folgaSemana: Number(prev.folgaSemana ?? 0), paridade: paridade || 'impares', manual: true };
     localStorage.setItem(VT_CFG_KEY, JSON.stringify(cfg));
     fpAfterPersistentStorageWrite();
     renderVtReport();
@@ -13000,16 +13010,26 @@ function getVtRowsExport(){
     for(let d = new Date(ini); d <= fim; d.setDate(d.getDate() + 1)){ const wd = d.getDay(); if(wd!==0&&wd!==6) diasUteis++; }
     const calcDias = (cfgItem) => {
         const t = String(cfgItem?.tipo || cfgItem || '').toUpperCase();
+        const par = String(cfgItem?.paridade || '').toLowerCase();
+        const hasParidade = par === 'pares' || par === 'impares';
         if(t.includes('12X36')){
-            const par = String(cfgItem?.paridade || 'impares').toLowerCase();
+            const par36 = hasParidade ? par : 'impares';
             let c = 0;
             for(let d = new Date(ini); d <= fim; d.setDate(d.getDate() + 1)){
                 const day = d.getDate();
-                if((par === 'pares' && day % 2 === 0) || (par !== 'pares' && day % 2 !== 0)) c++;
+                if((par36 === 'pares' && day % 2 === 0) || (par36 !== 'pares' && day % 2 !== 0)) c++;
             }
             return Math.max(1, c);
         }
         if(t.includes('6X1')){
+            if(hasParidade){
+                let c = 0;
+                for(let d = new Date(ini); d <= fim; d.setDate(d.getDate() + 1)){
+                    const day = d.getDate();
+                    if((par === 'pares' && day % 2 === 0) || (par === 'impares' && day % 2 !== 0)) c++;
+                }
+                return Math.max(1, c);
+            }
             const folga = Number(cfgItem?.folgaSemana ?? 0);
             let c = 0;
             for(let d = new Date(ini); d <= fim; d.setDate(d.getDate() + 1)){
@@ -13023,6 +13043,10 @@ function getVtRowsExport(){
     return state.employees.filter(e => e.status !== 'Funcionário Desligado' && String(e.vt||'').toUpperCase() !== 'NÃO' && String(e.vt||'').toUpperCase().includes('SIM')).map(e => {
         const vtBase = getVtDisplayDataForEmployee(e, cfg);
         const jornadaCfg = jornadaStringToVtCfg(vtBase.escala || '');
+        const manual = normalizeVtCfgItem(cfg[e.nome] || {});
+        if(String(jornadaCfg.tipo || '').toUpperCase().includes('6X1') && (manual.paridade === 'pares' || manual.paridade === 'impares')){
+            jornadaCfg.paridade = manual.paridade;
+        }
         const jornada = vtBase.escala || jornadaCfg.tipo || '6x1';
         const dias = calcDias(jornadaCfg);
         const faltasPrev = vtCountFaltasPeriodoAnterior(e.nome, ini, fim);
