@@ -12777,24 +12777,49 @@ function findPostoQuadroRowForEmployee(emp){
     if(!scored.length || scored[0].score <= 0) return null;
     return scored[0].r;
 }
+function findPostoRowByCodigo(codigoPosto, unidadePreferida){
+    const cod = String(codigoPosto || '').trim().toUpperCase();
+    if(!cod) return null;
+    const uk = normText(String(unidadePreferida || ''));
+    const fontes = [
+        ...(state.quadroGeral || []).map((r, idx) => ({ ...r, __source: 'base', __idx: idx })),
+        ...getPostosExtras().map((r, idx) => ({ ...r, __source: 'extra', __idx: idx })),
+        ...(getUnidadesPostosCatalog() || []).map((r, idx) => ({ ...r, __source: 'catalog', __idx: idx }))
+    ];
+    const pickCod = (row) => String(row?.codigo || row?.posto || row?.idRh || row?.id_rh || row?.codPosto || row?.cod_posto || '').trim().toUpperCase();
+    const byCod = fontes.filter(r => pickCod(r) === cod);
+    if(!byCod.length) return null;
+    if(uk){
+        const byUni = byCod.find(r => normText(String(r.unidade || r.unidadeNome || r.unidadeCod || '')) === uk);
+        if(byUni) return byUni;
+    }
+    return byCod[0];
+}
 function getQuadroJornadaForEmployee(emp){
     const row = findPostoQuadroRowForEmployee(emp);
     return row ? String(row.jornada || '').trim() : '';
 }
 function getVtDisplayDataForEmployee(emp, cfg){
-    const row = findPostoQuadroRowForEmployee(emp);
+    const codEmp = String(
+        emp?.codPosto || emp?.codigoPosto || emp?.codigo_posto || emp?.posto || ''
+    ).trim();
+    const codByNome = getCodigoPostoByColaboradorNome(emp?.nome || '', emp?.atuando || '');
+    const codPosto = codEmp || codByNome;
+    const rowByCod = findPostoRowByCodigo(codPosto, emp?.atuando || '');
+    const row = rowByCod || findPostoQuadroRowForEmployee(emp);
     const escalaFonte = row ? String(row.escala || row.jornada || row.diasSemana || '').trim() : '';
     const escalaBase = row ? vtEscalaCanonicalFromQuadro(escalaFonte) : '';
     const parRaw = String((row && (row.paridade12x36 || row.paridade)) || '').trim();
     const parNorm = normText(parRaw);
     const parLabel = parNorm.includes('PARES') ? 'pares' : ((parNorm.includes('IMPARES') || parNorm.includes('ÍMPARES')) ? 'ímpares' : '');
-    const escalaQuadro = (normText(escalaBase) === '12X36' && parLabel) ? `12x36 (${parLabel})` : escalaBase;
+    const escalaQuadro = ((normText(escalaBase) === '12X36' || normText(escalaBase) === '6X1') && parLabel) ? `${escalaBase} (${parLabel})` : escalaBase;
     return {
         funcionario: (row && String(row.nome || '').trim()) || String(emp.nome || '').trim(),
         registro: (row && String(row.registro2 || row.registro || row.empresa || '').trim()) || String(emp.empresa || '').trim(),
         unidade: (row && String(row.unidade || '').trim()) || String(emp.atuando || '').trim(),
         // Regra solicitada: escala deve vir do Quadro de Postos pelo nome/unidade em atuação.
-        escala: escalaQuadro || ''
+        escala: escalaQuadro || '',
+        codPosto: codPosto || ''
     };
 }
 function jornadaStringToVtCfg(jornadaStr){
@@ -12872,16 +12897,26 @@ function renderVtReport(){
     }
     const calcDias = (cfgItem) => {
         const t = String(cfgItem?.tipo || cfgItem || '6x1').toUpperCase();
+        const par = String(cfgItem?.paridade || '').toLowerCase();
+        const hasParidade = par === 'pares' || par === 'impares';
         if(t.includes('12X36')){
-            const par = String(cfgItem?.paridade || 'impares').toLowerCase();
+            const par36 = hasParidade ? par : 'impares';
             let c = 0;
             for(let d = new Date(ini); d <= fim; d.setDate(d.getDate() + 1)){
                 const day = d.getDate();
-                if((par === 'pares' && day % 2 === 0) || (par !== 'pares' && day % 2 !== 0)) c++;
+                if((par36 === 'pares' && day % 2 === 0) || (par36 !== 'pares' && day % 2 !== 0)) c++;
             }
             return Math.max(1, c);
         }
         if(t.includes('6X1')){
+            if(hasParidade){
+                let c = 0;
+                for(let d = new Date(ini); d <= fim; d.setDate(d.getDate() + 1)){
+                    const day = d.getDate();
+                    if((par === 'pares' && day % 2 === 0) || (par === 'impares' && day % 2 !== 0)) c++;
+                }
+                return Math.max(1, c);
+            }
             const folga = Number(cfgItem?.folgaSemana ?? 0); // 0=domingo
             let c = 0;
             for(let d = new Date(ini); d <= fim; d.setDate(d.getDate() + 1)){
