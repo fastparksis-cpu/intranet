@@ -13077,22 +13077,42 @@ function vtSplitContaDigito(contaRaw){
 function exportVtBancoExcel(){
     const rows = getVtRowsExport();
     if(!rows.length){ alert('Sem dados de VT para gerar arquivo banco.'); return; }
-    const bankRows = rows.map(r => {
-        const conta = vtSplitContaDigito(r.conta);
-        return {
-            'Agência': String(r.agencia || '').trim(),
-            'Conta corrente': conta.contaCorrente,
-            'Dígito conta': conta.digitoConta,
-            'Nome do funcionário': r.nome || '',
-            'CPF': String(r.cpf || '').replace(/\D/g, ''),
-            'Cód': 1,
-            'Valor': Number(r.total || 0)
-        };
-    });
     const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(bankRows);
-    ws['!cols'] = [{ wch: 14 }, { wch: 16 }, { wch: 10 }, { wch: 34 }, { wch: 16 }, { wch: 8 }, { wch: 14 }];
-    XLSX.utils.book_append_sheet(wb, ws, 'Arquivo Banco');
+    const byRegistro = {};
+    rows.forEach(r => {
+        const reg = String(r.registro || 'Sem registro').trim() || 'Sem registro';
+        if(!byRegistro[reg]) byRegistro[reg] = [];
+        byRegistro[reg].push(r);
+    });
+    const usedNames = new Set();
+    const mkSheetName = (base) => {
+        const cleaned = String(base || 'Sem registro').replace(/[\\\/\?\*\[\]\:]/g, ' ').trim() || 'Sem registro';
+        let name = cleaned.slice(0, 31);
+        let n = 2;
+        while(usedNames.has(name)){
+            const suffix = ` ${n++}`;
+            name = cleaned.slice(0, Math.max(1, 31 - suffix.length)) + suffix;
+        }
+        usedNames.add(name);
+        return name;
+    };
+    Object.keys(byRegistro).sort((a, b) => a.localeCompare(b, 'pt-BR')).forEach(registro => {
+        const bankRows = byRegistro[registro].map(r => {
+            const conta = vtSplitContaDigito(r.conta);
+            return {
+                'Agência': String(r.agencia || '').trim(),
+                'Conta corrente': conta.contaCorrente,
+                'Dígito conta': conta.digitoConta,
+                'Nome do funcionário': r.nome || '',
+                'CPF': String(r.cpf || '').replace(/\D/g, ''),
+                'Cód': 1,
+                'Valor': Number(r.total || 0)
+            };
+        });
+        const ws = XLSX.utils.json_to_sheet(bankRows);
+        ws['!cols'] = [{ wch: 14 }, { wch: 16 }, { wch: 10 }, { wch: 34 }, { wch: 16 }, { wch: 8 }, { wch: 14 }];
+        XLSX.utils.book_append_sheet(wb, ws, mkSheetName(registro));
+    });
     XLSX.writeFile(wb, `Arquivo_Banco_VT_${new Date().toISOString().slice(0,10)}.xlsx`);
 }
 function saveVtMonthlyHistory(total, ini, fim){
