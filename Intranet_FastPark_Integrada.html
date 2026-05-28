@@ -3221,6 +3221,7 @@ function fpUserCanAccessTab(tab){
     if(tab === 'fp-home') return true;
     const active = getAcessosActiveUser();
     if(!active) return true;
+    if(String(active.id || '') === FP_ACESSOS_BOOTSTRAP_ID || String(active.login || '').trim().toLowerCase() === 'admin') return true;
     const allowed = Array.isArray(active.allowedTabs) ? active.allowedTabs : [];
     return allowed.includes(tab);
 }
