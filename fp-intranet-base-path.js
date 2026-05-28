@@ -51,5 +51,7 @@
     /** Login Supabase sempre obrigatório. */
     g.FP_AUTH_REQUIRED = true;
 
+    g.FP_PROPOSTA_MODELO_PATH = '\\\\192.168.0.64\\Servidor\\Propostas\\00-Modelo\\Modelo proposta Fast.pptx';
+
 })(typeof window !== 'undefined' ? window : globalThis);
 

@@ -10,12 +10,14 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.5.136/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="/fp-intranet-base-path.js"></script>
 <script src="/fp-local-bridge-client.js"></script>
 <script src="/fp-supabase-config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="/fp-auth.js"></script>
 <script src="/fp-supabase-sync.js"></script>
+<script src="/fp-propostas.js"></script>
 <script>
 (function () {
     if (window.FP_AUTH_REQUIRED === false) return;
@@ -1964,6 +1966,14 @@ td { color: var(--t); font-weight: 500;}
                 <button type="button" class="fp-menu-item" data-tab="laudos" onclick="fpMenuSwitchTab('laudos', 'dp')">Laudos</button>
             </div>
         </div>
+        <div class="fp-menu-group" data-fp-group="com">
+            <button type="button" class="fp-menu-group-btn" onclick="fpToggleMenuGroup('com')" aria-expanded="false">
+                <span>Comercial</span><span class="fp-menu-chevron">▶</span>
+            </button>
+            <div class="fp-menu-sub">
+                <button type="button" class="fp-menu-item" data-tab="propostas" onclick="fpMenuSwitchTab('propostas', 'com')">Propostas</button>
+            </div>
+        </div>
         <div class="fp-menu-group" data-fp-group="fin">
             <button type="button" class="fp-menu-group-btn" onclick="fpToggleMenuGroup('fin')" aria-expanded="false">
                 <span>Financeiro</span><span class="fp-menu-chevron">▶</span>
@@ -3103,6 +3113,60 @@ td { color: var(--t); font-weight: 500;}
         </div>
     </div>
 
+    <div id="propostas" class="tab-content fp-page-full">
+        <section class="hero">
+            <div class="hero-brand">
+                <div>
+                    <h1>Propostas comerciais</h1>
+                    <p class="hero-subtitle">Cadastre o local e gere PDF ou PPTX a partir do modelo FastPark.</p>
+                </div>
+            </div>
+            <div class="u" style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;min-width:260px;">
+                <p id="propModeloStatus" style="margin:0;font-size:11px;opacity:.9;max-width:320px;text-align:right;">Modelo PPTX: importe o arquivo do servidor.</p>
+                <label class="btn" style="cursor:pointer;margin:0;">
+                    Importar modelo PPTX
+                    <input type="file" accept=".pptx" style="display:none;" onchange="propostaImportarModeloPptx(this)">
+                </label>
+            </div>
+        </section>
+        <article class="panel">
+            <div class="head"><h2>Nova proposta</h2><span id="propEditHint" style="display:none;font-size:12px;color:var(--fp-orange);font-weight:600;">Editando — Salvar atualiza o registro.</span></div>
+            <div class="body" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;font-size:12px;">
+                <div><label><strong>Nº proposta</strong></label><br><input id="propNumero" type="text" readonly style="width:100%;box-sizing:border-box;background:#f3f4f6;"></div>
+                <div><label><strong>Data emissão</strong></label><br><input id="propData" type="date" style="width:100%;box-sizing:border-box;"></div>
+                <div><label><strong>Cliente</strong></label><br><input id="propCliente" type="text" placeholder="Razão social / condomínio" style="width:100%;box-sizing:border-box;"></div>
+                <div style="grid-column:span 2;"><label><strong>Local / Empreendimento</strong></label><br><input id="propLocal" type="text" placeholder="Nome do edifício ou unidade" style="width:100%;box-sizing:border-box;"></div>
+                <div style="grid-column:span 2;"><label><strong>Endereço</strong></label><br><input id="propEndereco" type="text" style="width:100%;box-sizing:border-box;"></div>
+                <div><label><strong>Bairro</strong></label><br><input id="propBairro" type="text" style="width:100%;box-sizing:border-box;"></div>
+                <div><label><strong>Cidade</strong></label><br><input id="propCidade" type="text" style="width:100%;box-sizing:border-box;"></div>
+                <div><label><strong>UF</strong></label><br><input id="propUf" type="text" maxlength="2" style="width:100%;box-sizing:border-box;"></div>
+                <div><label><strong>CEP</strong></label><br><input id="propCep" type="text" style="width:100%;box-sizing:border-box;"></div>
+                <div><label><strong>Contato</strong></label><br><input id="propContato" type="text" style="width:100%;box-sizing:border-box;"></div>
+                <div><label><strong>E-mail</strong></label><br><input id="propEmail" type="email" style="width:100%;box-sizing:border-box;"></div>
+                <div><label><strong>Telefone</strong></label><br><input id="propTelefone" type="text" style="width:100%;box-sizing:border-box;"></div>
+                <div><label><strong>Vagas carro</strong></label><br><input id="propVagasCarro" type="number" min="0" style="width:100%;box-sizing:border-box;"></div>
+                <div><label><strong>Vagas moto</strong></label><br><input id="propVagasMoto" type="number" min="0" style="width:100%;box-sizing:border-box;"></div>
+                <div><label><strong>Valor mensal (R$)</strong></label><br><input id="propValorMensal" type="text" placeholder="0,00" style="width:100%;box-sizing:border-box;"></div>
+                <div><label><strong>Valor implantação (R$)</strong></label><br><input id="propValorImplantacao" type="text" placeholder="0,00" style="width:100%;box-sizing:border-box;"></div>
+                <div><label><strong>Prazo (meses)</strong></label><br><input id="propPrazo" type="number" min="0" style="width:100%;box-sizing:border-box;"></div>
+                <div><label><strong>Validade (dias)</strong></label><br><input id="propValidade" type="number" min="1" value="15" style="width:100%;box-sizing:border-box;"></div>
+                <div><label><strong>Consultor FastPark</strong></label><br><input id="propConsultor" type="text" style="width:100%;box-sizing:border-box;"></div>
+                <div style="grid-column:1/-1;"><label><strong>Observações</strong></label><br><textarea id="propObs" rows="3" style="width:100%;box-sizing:border-box;"></textarea></div>
+                <div style="grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px;">
+                    <button type="button" class="btn btn-success" onclick="salvarProposta()">Salvar proposta</button>
+                    <button type="button" class="btn" onclick="propostaLimparForm()">Novo / limpar</button>
+                    <button type="button" class="btn btn-danger" onclick="gerarPropostaPdf()">Gerar PDF</button>
+                    <button type="button" class="btn btn-info" onclick="gerarPropostaPptx()">Gerar PPTX (modelo)</button>
+                </div>
+                <p style="grid-column:1/-1;margin:0;font-size:11px;color:#555;">No PowerPoint, use marcadores como <code>{{LOCAL}}</code>, <code>{{CLIENTE}}</code>, <code>{{ENDERECO}}</code>, <code>{{VALOR_MENSAL}}</code> etc. O PDF é gerado no layout FastPark mesmo sem marcadores no modelo.</p>
+            </div>
+        </article>
+        <article class="panel list" style="margin-top:12px;">
+            <h3>Histórico de propostas</h3>
+            <div class="inner" id="propLista"></div>
+        </article>
+    </div>
+
     <div id="fin-pagar" class="tab-content fp-page-full">
         <div class="fp-placeholder-panel"><p>Esta área será ligada ao fluxo financeiro. Indique quando quiser implementar os campos e integrações.</p></div>
     </div>
@@ -3415,6 +3479,7 @@ function switchTab(tab) {
     if(tab === 'dprefvt' && typeof refInitVtRefTab === 'function') refInitVtRefTab();
     if(tab === 'referencias' && typeof refInitEmpresasTab === 'function') refInitEmpresasTab();
     if(tab === 'acessos' && typeof renderAcessosTab === 'function') renderAcessosTab();
+    if(tab === 'propostas' && typeof renderPropostasTab === 'function') renderPropostasTab();
 }
 
 function limparFormUsuarioAcesso(){
@@ -6168,6 +6233,7 @@ function propagateStateToDashboardIframes() {
         type: 'fastpark-employees-sync',
         employees,
         empAttachmentsBag: window.__FP_EMPLOYEE_ATT_BAG__ || {},
+        cloudDisplayUrls: { ...(window.__FP_CLOUD_DISPLAY_URLS__ || {}) },
         ferias: Array.isArray(state.ferias) ? state.ferias : [],
         movimentacoes: Array.isArray(state.movimentacoes) ? state.movimentacoes : [],
         cnhMapObj: mapToPlainObjectFromMap(state.cnhMap),
@@ -7602,6 +7668,7 @@ const FP_SINISTROS_KEY = 'fp_sinistros';
 const FP_LAUDOS_KEY = 'fp_laudos';
 const FP_GESTAO_PAGAMENTOS_KEY = 'fp_gestao_pagamentos_rubricas_v1';
 const FP_GESTAO_PAGAMENTOS_HIST_IMPORT_KEY = 'fp_gestao_pagamentos_hist_import_v1';
+const FP_PROPOSTAS_KEY = 'fp_propostas_v1';
 const FP_DB_VERSION = 3;
 /** Chaves reservadas para módulos ainda em placeholder (Financeiro / Estoque). */
 const FP_FIN_CONTAS_PAGAR_KEY = 'fp_fin_contas_pagar';
@@ -7637,6 +7704,7 @@ const FP_SNAPSHOT_STORAGE_REGISTRY = [
     { key: FP_PEDIDOS_KEY, area: 'Gestão de Benefícios' },
     { key: FERIAS_HIST_KEY, area: 'Férias' },
     { key: FP_GESTAO_PAGAMENTOS_KEY, area: 'Gestão de Folha de Pagamento' },
+    { key: FP_PROPOSTAS_KEY, area: 'Comercial — Propostas' },
     { key: MOV_CAD_KEY, area: 'Movimentações' },
     { key: 'fp_vt_cfg', area: 'Vale Transporte' },
     { key: 'fp_vt_monthly', area: 'Vale Transporte (histórico)' },
@@ -7726,10 +7794,13 @@ function fpLookupAttMedia(att, ref, emp, ei){
     if(!ref && !emp) return null;
     att = att && typeof att === 'object' ? att : {};
     const disp = window.__FP_CLOUD_DISPLAY_URLS__ || {};
+    const bag = window.__FP_EMPLOYEE_ATT_BAG__ || {};
     const candidates = fpMediaPathCandidates(ref, emp, ei);
     for(let i = 0; i < candidates.length; i++){
         const p = candidates[i];
         if(disp[p]) return disp[p];
+        const bagV = bag[p];
+        if(typeof bagV === 'string' && fpIsDisplayableMediaUrl(bagV)) return bagV;
         const v = att[p];
         if(typeof v === 'string' && fpIsDisplayableMediaUrl(v)) return v;
     }
@@ -16997,6 +17068,7 @@ function refInitTab(){ refInitEmpresasTab(); }
         if(!state || !Array.isArray(state.employees)) return;
         state.employees = fpHydrateEmployeesMediaForSnapshot(state.employees, window.__FP_EMBEDDED_ATTACHMENTS__ || {});
         try { renderAll(); } catch(e) { /* ignore */ }
+        if(typeof propagateStateToDashboardIframes === 'function') propagateStateToDashboardIframes();
     });
     document.addEventListener('fp-cloud-media-batch-ready', function(){
         if(typeof window.fpOnCloudDataReady === 'function'){
