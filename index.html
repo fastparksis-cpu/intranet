@@ -101,7 +101,7 @@ button:disabled {
 <body>
 <div class="card">
     <h1>Intranet FastPark</h1>
-    <p class="sub">Acesse com e-mail corporativo e usuário de acesso</p>
+    <p class="sub">Acesse com seu e-mail corporativo</p>
     <div id="configWarn" class="config-warn">
         Configure <strong>fp-supabase-config.js</strong> com a URL e a chave anon do Supabase.
     </div>
@@ -110,10 +110,6 @@ button:disabled {
         <input type="email" id="email" name="email" required autocomplete="username">
         <label for="senha">Senha</label>
         <input type="password" id="senha" name="password" required autocomplete="current-password">
-        <label for="acessoLogin">Usuário de acesso</label>
-        <input type="text" id="acessoLogin" name="acesso_login" autocomplete="username">
-        <label for="acessoSenha">Senha de acesso</label>
-        <input type="password" id="acessoSenha" name="acesso_senha" autocomplete="current-password">
         <button type="submit" id="btnEntrar">Entrar</button>
     </form>
     <p id="msg" class="msg" role="alert"></p>
@@ -121,9 +117,6 @@ button:disabled {
 <script>
 (function () {
     var APP = (typeof window.fpAppUrl === 'function' ? window.fpAppUrl() : (window.FP_APP_URL || '/intranet-fastpark'));
-    var ACESSOS_KEY = 'fp_acessos_usuarios';
-    var ACESSOS_ACTIVE_KEY = 'fp_acessos_usuario_ativo';
-    var ACESSOS_AUTH_SESSION_KEY = 'fp_acessos_auth_ok';
     var form = document.getElementById('loginForm');
     var msg = document.getElementById('msg');
     var btn = document.getElementById('btnEntrar');
@@ -139,36 +132,7 @@ button:disabled {
     var linkApp = document.getElementById('linkIntranet');
     if (linkApp) linkApp.setAttribute('href', APP);
 
-    function getAcessosUsers(){
-        try{
-            var arr = JSON.parse(localStorage.getItem(ACESSOS_KEY) || '[]');
-            return Array.isArray(arr) ? arr : [];
-        }catch(_e){ return []; }
-    }
-    function validateAcessos(login, senha){
-        var users = getAcessosUsers();
-        if(!users.length){
-            localStorage.setItem(ACESSOS_ACTIVE_KEY, '');
-            sessionStorage.removeItem(ACESSOS_AUTH_SESSION_KEY);
-            return { ok: true };
-        }
-        var l = String(login || '').trim().toLowerCase();
-        var s = String(senha || '');
-        var user = users.find(function(u){
-            return String(u.login || '').trim().toLowerCase() === l && String(u.senha || '') === s;
-        });
-        if(!user) return { ok: false, message: 'Usuário/senha de acesso inválidos.' };
-        localStorage.setItem(ACESSOS_ACTIVE_KEY, String(user.id || ''));
-        sessionStorage.setItem(ACESSOS_AUTH_SESSION_KEY, '1');
-        return { ok: true };
-    }
-    window.fpRedirectIfSession(APP).then(function(ok){
-        if(!ok) return;
-        var users = getAcessosUsers();
-        if(!users.length || sessionStorage.getItem(ACESSOS_AUTH_SESSION_KEY) === '1'){
-            window.location.replace(APP);
-        }
-    }).catch(function () {});
+    window.fpRedirectIfSession(APP).catch(function () {});
 
     form.addEventListener('submit', function (e) {
         e.preventDefault();
@@ -176,19 +140,10 @@ button:disabled {
         btn.disabled = true;
         var email = document.getElementById('email').value.trim();
         var password = document.getElementById('senha').value;
-        var acessoLogin = document.getElementById('acessoLogin').value.trim();
-        var acessoSenha = document.getElementById('acessoSenha').value;
 
         window.fpSignIn(email, password).then(function (res) {
             if (res.error) {
                 msg.textContent = res.error.message || 'Erro ao entrar.';
-                btn.disabled = false;
-                return;
-            }
-            var acessoCheck = validateAcessos(acessoLogin, acessoSenha);
-            if(!acessoCheck.ok){
-                msg.textContent = acessoCheck.message || 'Acesso inválido.';
-                if(typeof window.fpSignOut === 'function') window.fpSignOut().catch(function(){});
                 btn.disabled = false;
                 return;
             }
