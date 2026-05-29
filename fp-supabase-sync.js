@@ -19,6 +19,96 @@
         return g.fpSupabase;
     }
 
+    function fpCountEmployeesInSnapshot(snap) {
+        if (!snap) return 0;
+        if (snap.state && Array.isArray(snap.state.employees)) return snap.state.employees.length;
+        return 0;
+    }
+
+    function fpGetLocalEmployeeCount() {
+        var n = (g.state && Array.isArray(g.state.employees)) ? g.state.employees.length : 0;
+        if (!n) {
+            try {
+                var raw = g.localStorage.getItem('fp_employees_json');
+                if (raw) {
+                    var arr = JSON.parse(raw);
+                    if (Array.isArray(arr)) n = arr.length;
+                }
+            } catch (_e) { /* ignore */ }
+        }
+        return n;
+    }
+
+    async function fpPeekCloudSnapshotMeta(supa) {
+        var res = await supa.from('intranet_snapshots')
+            .select('updated_at, exported_at, snapshot')
+            .eq('id', ROW_ID)
+            .maybeSingle();
+        if (res.error) throw res.error;
+        if (!res.data) return null;
+        return {
+            updatedAt: res.data.updated_at || res.data.exported_at || null,
+            employees: fpCountEmployeesInSnapshot(res.data.snapshot)
+        };
+    }
+
+    function fpCloudSaveWouldShrink(localCount, cloudCount) {
+        if (!cloudCount || cloudCount < 1) return false;
+        if (!localCount || localCount < 1) return cloudCount > 0;
+        if (localCount >= cloudCount) return false;
+        var diff = cloudCount - localCount;
+        if (diff >= 3) return true;
+        return localCount / cloudCount < 0.85;
+    }
+
+    function fpCloudLoadWouldShrinkLocal(localCount, cloudCount) {
+        if (!localCount || localCount < 1) return false;
+        if (!cloudCount || cloudCount < 1) return true;
+        if (cloudCount >= localCount) return false;
+        var diff = localCount - cloudCount;
+        if (diff >= 3) return true;
+        return cloudCount / localCount < 0.85;
+    }
+
+    function fpReadLocalSnapshotMeta() {
+        try {
+            var raw = g.localStorage.getItem('fp_local_snapshot_meta');
+            if (!raw) return null;
+            var o = JSON.parse(raw);
+            return o && typeof o === 'object' ? o : null;
+        } catch (_e) {
+            return null;
+        }
+    }
+
+    function fpTouchLocalSnapshotMeta() {
+        try {
+            g.localStorage.setItem('fp_local_snapshot_meta', JSON.stringify({
+                updatedAt: new Date().toISOString(),
+                employees: fpGetLocalEmployeeCount()
+            }));
+        } catch (_eMeta) { /* ignore */ }
+    }
+
+    function fpShouldAutoloadApplyCloud(localCount, cloudCount, cloudWhen, localWhen, opts) {
+        opts = opts || {};
+        if (opts.force) return true;
+        if (!opts.autoload) return true;
+        if (cloudCount === 0 && localCount > 0) return false;
+        if (localCount === 0 && cloudCount > 0) return true;
+        if (fpCloudLoadWouldShrinkLocal(localCount, cloudCount)) return false;
+        if (g.FP_CLOUD_AUTOLOAD_PREFER_NEWER !== false && cloudWhen) {
+            var cloudTs = new Date(cloudWhen).getTime();
+            var localTs = localWhen ? new Date(localWhen).getTime() : 0;
+            if (!localWhen || cloudTs > localTs + 1500) {
+                if (cloudCount >= localCount) return true;
+            }
+            if (localWhen && localTs > cloudTs + 1500 && localCount >= cloudCount) return false;
+        }
+        if (cloudCount > localCount) return true;
+        return false;
+    }
+
     function fpCloudSetStatus(msg, isError) {
         var el = g.document.getElementById('fpCloudStatus');
         var banner = g.document.getElementById('fpCloudBanner');
@@ -655,9 +745,11 @@
         var quick = opts.quick !== false && opts.autosave && g.FP_CLOUD_QUICK_SAVE !== false && g.FP_CLOUD_FAST_SYNC !== false;
         var pullMs = opts.iframeMs;
         if (pullMs == null) {
-            pullMs = quick ? (g.FP_CLOUD_IFRAME_PULL_MS || 280) : 2500;
+            var recentIframe = g.__fpLastIframePostAt && (Date.now() - g.__fpLastIframePostAt < 5000);
+            if (recentIframe && quick) pullMs = 0;
+            else pullMs = quick ? (g.FP_CLOUD_IFRAME_PULL_MS || 900) : 2500;
         }
-        await g.fpPullStateFromDashboardIframes(pullMs);
+        if (pullMs > 0) await g.fpPullStateFromDashboardIframes(pullMs);
         if (typeof g.syncBeneficiosFuncionariosFromEmployees === 'function') {
             g.syncBeneficiosFuncionariosFromEmployees();
         }
@@ -749,6 +841,37 @@
         } else if (!preview.employees) {
             throw new Error('Nenhum colaborador encontrado. Importe a planilha Excel ou abra a aba Cadastro/Início antes de salvar.');
         }
+        if (!opts.allowShrink) {
+            try {
+                var cloudMetaSave = await fpPeekCloudSnapshotMeta(supa);
+                if (cloudMetaSave && cloudMetaSave.employees > 0) {
+                    var localSaveCount = preview.employees || 0;
+                    if (!localSaveCount) {
+                        var blockMsg = 'Gravação cancelada: cadastro vazio não substitui a nuvem (' +
+                            cloudMetaSave.employees + ' colaborador(es)). Abra Cadastro/Início ou importe o Excel.';
+                        fpCloudSetStatus(blockMsg, true);
+                        return { skipped: true, reason: 'empty-save-blocked', cloudEmployees: cloudMetaSave.employees };
+                    }
+                    if (fpCloudSaveWouldShrink(localSaveCount, cloudMetaSave.employees)) {
+                        var shrinkMsg = 'Gravação cancelada: este PC tem ' + localSaveCount +
+                            ' colaborador(es) e a nuvem tem ' + cloudMetaSave.employees +
+                            '. Use ☁️ Salvar manualmente se quiser substituir.';
+                        fpCloudSetStatus(shrinkMsg, true);
+                        if (typeof g.fpSetSaveIndicator === 'function') {
+                            g.fpSetSaveIndicator('Nuvem não alterada (menos cadastros)', 'error');
+                        }
+                        return {
+                            skipped: true,
+                            reason: 'shrink-save-blocked',
+                            localEmployees: localSaveCount,
+                            cloudEmployees: cloudMetaSave.employees
+                        };
+                    }
+                }
+            } catch (peekSaveErr) {
+                console.warn('[fp-cloud] peek antes de gravar', peekSaveErr);
+            }
+        }
         if (!opts.autosave) {
             fpCloudSetStatus('A preparar ' + (preview.employees || 0) + ' colaborador(es)…');
         }
@@ -781,6 +904,7 @@
         fpCloudSetStatus(msg, false);
         if (typeof g.fpSetSaveIndicator === 'function') g.fpSetSaveIndicator('Salvo na nuvem agora', 'ok');
         g.__fpCloudLastSaveAt = Date.now();
+        fpTouchLocalSnapshotMeta();
         if (typeof g.addAudit === 'function') {
             g.addAudit(opts.autosave ? 'Auto-gravação Supabase.' : 'Banco gravado no Supabase.', 'action');
         }
@@ -930,24 +1054,40 @@
                 } catch (e) {
                     console.warn('[fp-cloud] media upload', e);
                 }
-                g.fpScheduleCloudSave();
+                g.fpScheduleCloudSave({ afterMedia: true });
             })().catch(function (e) { console.warn('[fp-cloud] media save', e); });
         }, ms);
     };
 
-    g.fpScheduleCloudSave = function () {
+    g.fpScheduleCloudSave = function (opts) {
+        opts = opts || {};
         if (g.FP_CLOUD_AUTOSAVE === false) return;
         g.__fpCloudUserEditedAt = Date.now();
-        if (typeof g.fpSetSaveIndicator === 'function') g.fpSetSaveIndicator('Sincronizando alterações…', 'sync');
+        if (typeof g.fpSetSaveIndicator === 'function') g.fpSetSaveIndicator('A guardar na nuvem…', 'sync');
         if (fpCloudAutosavePaused()) {
             fpQueueCloudSaveRetry();
             return;
         }
         clearTimeout(cloudTimer);
-        var ms = g.FP_CLOUD_AUTOSAVE_DEBOUNCE_MS || 8000;
+        var ms;
+        if (opts.flush) ms = 0;
+        else if (opts.afterMedia) ms = g.FP_CLOUD_SAVE_AFTER_MEDIA_MS || 180;
+        else if (opts.instant) ms = g.FP_CLOUD_SAVE_INSTANT_MS || 350;
+        else ms = g.FP_CLOUD_AUTOSAVE_DEBOUNCE_MS || 550;
         cloudTimer = setTimeout(function () {
             g.fpExecuteCloudAutosave().catch(function (e) { console.warn('[fp-cloud]', e); });
         }, ms);
+    };
+
+    g.fpFlushCloudSaveNow = function () {
+        clearTimeout(cloudTimer);
+        clearTimeout(mediaTimer);
+        if (g.FP_CLOUD_AUTOSAVE === false) return Promise.resolve();
+        if (fpCloudAutosavePaused()) {
+            fpQueueCloudSaveRetry();
+            return Promise.resolve();
+        }
+        return g.fpExecuteCloudAutosave();
     };
 
     g.fpInitCloudAutosave = function () {
@@ -967,12 +1107,23 @@
             if (typeof g.fpScheduleCloudMediaSave === 'function') {
                 g.fpScheduleCloudMediaSave();
             } else {
-                g.fpScheduleCloudSave();
+                g.fpScheduleCloudSave({ instant: true });
             }
         });
-        var sec = Math.round((g.FP_CLOUD_AUTOSAVE_DEBOUNCE_MS || 8000) / 1000);
-        var loadHint = g.FP_CLOUD_AUTOLOAD !== false ? ' Carregamento automático ao abrir.' : '';
-        fpCloudSetStatus('Auto-gravação ligada (~' + sec + ' s após alterações).' + loadHint, false);
+        if (g.FP_CLOUD_FLUSH_ON_HIDE !== false) {
+            g.document.addEventListener('visibilitychange', function () {
+                if (g.document.visibilityState === 'hidden' && g.FP_CLOUD_AUTOSAVE !== false) {
+                    g.fpFlushCloudSaveNow().catch(function (e) { console.warn('[fp-cloud] flush hide', e); });
+                }
+            });
+            g.window.addEventListener('pagehide', function () {
+                if (g.FP_CLOUD_AUTOSAVE !== false) {
+                    g.fpFlushCloudSaveNow().catch(function () { /* ignore */ });
+                }
+            });
+        }
+        var loadHint = g.FP_CLOUD_AUTOLOAD !== false ? ' Carrega ao abrir.' : '';
+        fpCloudSetStatus('Sincronização automática activa — cada alteração e documento é guardado na nuvem.' + loadHint, false);
     };
 
     /** Carrega da nuvem ao iniciar (repete se ainda não houver sessão). */
@@ -1024,7 +1175,14 @@
                     return { loaded: false, reason: 'no-snapshot' };
                 }
                 console.warn('[fp-cloud] autoload', err);
-                fpCloudSetStatus('Erro ao carregar da nuvem: ' + msg, true);
+                if (/permission denied|42501/i.test(msg)) {
+                    fpCloudSetStatus(
+                        'Sem permissão na nuvem (GRANT). Execute supabase/GRANTS_DATA_API.sql no SQL Editor do Supabase.',
+                        true
+                    );
+                } else {
+                    fpCloudSetStatus('Erro ao carregar da nuvem: ' + msg, true);
+                }
                 return { loaded: false, reason: 'error', error: err };
             } finally {
                 g.__fpCloudAutoloadPromise = null;
@@ -1054,23 +1212,40 @@
                 throw new Error('Ainda não há dados gravados na nuvem.');
             }
             var db = res.data.snapshot;
-            var cloudEmpCount = (db && db.state && Array.isArray(db.state.employees)) ? db.state.employees.length : 0;
-            var localEmpCount = (g.state && Array.isArray(g.state.employees)) ? g.state.employees.length : 0;
-            if (!localEmpCount) {
-                try {
-                    var rawLocal = g.localStorage.getItem('fp_employees_json');
-                    if (rawLocal) {
-                        var arrLocal = JSON.parse(rawLocal);
-                        if (Array.isArray(arrLocal)) localEmpCount = arrLocal.length;
-                    }
-                } catch (_eLocal) { /* ignore */ }
-            }
-            if (opts.autoload && cloudEmpCount === 0 && localEmpCount > 0) {
+            var cloudEmpCount = fpCountEmployeesInSnapshot(db);
+            var localEmpCount = fpGetLocalEmployeeCount();
+            var cloudWhen = res.data.updated_at || res.data.exported_at || '';
+            var localMeta = fpReadLocalSnapshotMeta();
+            var localWhen = localMeta && localMeta.updatedAt ? localMeta.updatedAt : null;
+            if (!opts.force && opts.autoload && !fpShouldAutoloadApplyCloud(
+                localEmpCount, cloudEmpCount, cloudWhen, localWhen, opts
+            )) {
+                if (cloudEmpCount === 0 && localEmpCount > 0) {
+                    fpCloudSetStatus(
+                        'Nuvem vazia; mantidos ' + localEmpCount + ' colaborador(es) deste PC (sincronização automática activa).',
+                        false
+                    );
+                    return { skipped: true, reason: 'empty-cloud-vs-local', localEmployees: localEmpCount };
+                }
+                if (fpCloudLoadWouldShrinkLocal(localEmpCount, cloudEmpCount)) {
+                    fpCloudSetStatus(
+                        'Nuvem com menos cadastros (' + cloudEmpCount + ') que este PC (' + localEmpCount + '). ' +
+                        'Dados locais mantidos; alterações serão enviadas automaticamente.',
+                        false
+                    );
+                    return {
+                        skipped: true,
+                        reason: 'cloud-fewer-than-local',
+                        localEmployees: localEmpCount,
+                        cloudEmployees: cloudEmpCount,
+                        cloudUpdatedAt: cloudWhen
+                    };
+                }
                 fpCloudSetStatus(
-                    'Snapshot da nuvem está vazio; mantidos os dados locais (' + localEmpCount + ' colaborador(es)).',
+                    'Dados locais mais recentes (' + localEmpCount + ' colaborador(es)). Sincronização automática envia alterações à nuvem.',
                     false
                 );
-                return { skipped: true, reason: 'empty-cloud-vs-local', localEmployees: localEmpCount };
+                return { skipped: true, reason: 'local-newer', localEmployees: localEmpCount, cloudEmployees: cloudEmpCount };
             }
             var attStats = { ok: 0, fail: 0, total: 0 };
             var useFast = g.FP_CLOUD_FAST_SYNC !== false;
@@ -1178,12 +1353,21 @@
                 'Lançamentos pagas: ' + (preview.pagas || 0),
                 'Postos no quadro: ' + (preview.quadroGeral || 0)
             ].join('\n');
+            var cloudMetaUi = null;
+            try {
+                cloudMetaUi = await fpPeekCloudSnapshotMeta(clientOrThrow());
+            } catch (peekUiErr) { console.warn('[fp-cloud] peek UI salvar', peekUiErr); }
+            var warnShrink = '';
+            if (cloudMetaUi && cloudMetaUi.employees > (preview.employees || 0) + 2) {
+                warnShrink = '\n\nATENÇÃO: a nuvem tem ' + cloudMetaUi.employees +
+                    ' colaborador(es) e você vai gravar ' + (preview.employees || 0) + '.';
+            }
             if (!confirm(
                 'Gravar na nuvem (Supabase)?\n\n' + linhas + '\n\n' +
                 'Inclui dados da planilha já carregada + cestas, férias, unidades, etc.\n' +
-                'Substitui a cópia anterior na nuvem.'
+                'Substitui a cópia anterior na nuvem.' + warnShrink
             )) return;
-            await g.fpCloudSaveSnapshot();
+            await g.fpCloudSaveSnapshot({ allowShrink: true });
         } catch (err) {
             console.error(err);
             fpCloudSetStatus('Erro: ' + (err && err.message ? err.message : err), true);
@@ -1191,10 +1375,31 @@
         }
     };
 
+    g.fpGetLocalEmployeeCount = fpGetLocalEmployeeCount;
+    g.fpTouchLocalSnapshotMeta = fpTouchLocalSnapshotMeta;
+    g.fpReadLocalSnapshotMeta = fpReadLocalSnapshotMeta;
+    g.fpFlushCloudSaveNow = g.fpFlushCloudSaveNow;
+    g.fpPeekCloudSnapshotMeta = function () {
+        return fpPeekCloudSnapshotMeta(clientOrThrow());
+    };
+
     g.fpCloudLoadSnapshotUi = async function () {
         try {
-            if (!confirm('Carregar da nuvem? Os dados actuais neste separador serão substituídos.')) return;
-            await g.fpCloudLoadSnapshot();
+            var localN = fpGetLocalEmployeeCount();
+            var cloudMetaLoad = null;
+            try {
+                cloudMetaLoad = await fpPeekCloudSnapshotMeta(clientOrThrow());
+            } catch (peekLoadErr) { console.warn('[fp-cloud] peek UI carregar', peekLoadErr); }
+            var extra = '';
+            if (cloudMetaLoad) {
+                extra = '\n\nNuvem: ' + (cloudMetaLoad.employees || 0) + ' colaborador(es)';
+                if (cloudMetaLoad.updatedAt) {
+                    extra += ' — ' + new Date(cloudMetaLoad.updatedAt).toLocaleString('pt-BR');
+                }
+                if (localN) extra += '\nEste PC: ' + localN + ' colaborador(es).';
+            }
+            if (!confirm('Carregar da nuvem? Os dados actuais neste separador serão substituídos.' + extra)) return;
+            await g.fpCloudLoadSnapshot({ force: true });
         } catch (err) {
             console.error(err);
             fpCloudSetStatus('Erro: ' + (err && err.message ? err.message : err), true);

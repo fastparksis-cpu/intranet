@@ -3482,7 +3482,7 @@ function handleEmployeePhotoSelected(ev){
                 state.selected = state.employees[idx];
             }
         }
-        fpPostFullStateToParentIfEmbedded();
+        fpPostFullStateToParentIfEmbedded(true);
     };
     reader.readAsDataURL(file);
 }
@@ -3505,7 +3505,7 @@ async function handleEmployeeDocsSelected(ev){
     }
     if(EF.docs) EF.docs.value = '';
     renderEmployeeDocsList();
-    fpPostFullStateToParentIfEmbedded();
+    fpPostFullStateToParentIfEmbedded(true);
 }
 function fpIsDisplayableMediaUrl(u){
     if(!u || typeof u !== 'string') return false;
@@ -3785,6 +3785,97 @@ function openEmployeeForm(emp = null){
 function closeEmployeeForm(){
     EF.panel.style.display = 'none';
 }
+let __fpFormLiveSyncTimer = null;
+function fpBuildFormDraftPayload(){
+    const admStr = EF.admissao.value.trim();
+    return {
+        nome: EF.nome.value.trim(),
+        empresa: EF.empresa?.value?.trim() || 'Sem empresa',
+        status: EF.status.value || 'Funcionário Ativo',
+        admissao: toIsoDateOnlyFromParsed(admStr) || admStr,
+        cargo: EF.cargo.value.trim(),
+        nivel: EF.nivel.value.trim(),
+        atuando: EF.unidade.value.trim(),
+        salario: Number(EF.salario.value || 0),
+        ajuda: Number(EF.ajuda.value || 0),
+        vr: Number(EF.vr.value || 0),
+        plano: EF.plano.value.trim(),
+        depPlano: Number(EF.depPlano.value || 0),
+        depBeneficios: Number(EF.depBeneficios.value || 0),
+        valorPlano: Number(EF.valorPlano.value || 0),
+        odonto: EF.odonto.value.trim(),
+        cargoConfianca: Number(EF.cargoConfianca.value || 0),
+        periculosidade: Number(EF.periculosidade.value || 0),
+        vt: EF.vt.value.trim(),
+        vtTipo: EF.vtTipo.value.trim(),
+        vtValor: Number(EF.vtValor?.value || 0),
+        cnh: EF.cnh.value || '',
+        cnhNumero: EF.cnhNumero.value.trim(),
+        cnhCategoria: EF.cnhCategoria.value.trim(),
+        aso: EF.aso.value || '',
+        cpf: EF.cpf.value.trim(),
+        telefone: EF.telefone.value.trim(),
+        nascimento: EF.nascimento.value || '',
+        idade: Number(EF.idade.value || 0) || '',
+        estadoCivil: EF.estadoCivil.value.trim(),
+        raca: EF.raca.value.trim(),
+        instrucao: EF.instrucao.value.trim(),
+        deficiencia: EF.pcd.value.trim(),
+        trienios: calcTrienios(toIsoDateOnlyFromParsed(admStr) || admStr),
+        banco: EF.banco.value.trim(),
+        agencia: EF.agencia.value.trim(),
+        conta: EF.conta.value.trim(),
+        endereco: EF.endereco.value.trim(),
+        bairro: EF.bairro.value.trim(),
+        cidade: EF.cidade.value.trim(),
+        uf: EF.uf.value.trim(),
+        cep: EF.cep.value.trim(),
+        camisa: EF.camisa.value.trim(),
+        calca: EF.calca.value.trim(),
+        sapato: EF.sapato.value.trim(),
+        mae: EF.mae.value.trim(),
+        pai: EF.pai.value.trim(),
+        rg: EF.rg?.value?.trim() || '',
+        escala: EF.escala?.value || '',
+        carga: EF.carga?.value?.trim() || '',
+        jornada: EF.jornada?.value?.trim() || '',
+        cestas: EF.cestas?.value || '',
+        vtIdaVolta: Number(EF.vtIdaVolta?.value || 0),
+        saudeDepValor: Number(EF.saudeDepValor?.value || 0),
+        odontoTitularValor: Number(EF.odontoTitularValor?.value || 0),
+        odontoDepValor: Number(EF.odontoDepValor?.value || 0),
+        dependentesQtd: Number(EF.dependentesQtd.value || 0),
+        dependentesNomes: EF.dependentesNomes.value.trim(),
+        foto: employeePhotoDraft || '',
+        documentos: employeeDocsDraft.map(d => ({
+            name: d.name || 'Documento',
+            type: d.type || '',
+            size: Number(d.size || 0),
+            addedAt: d.addedAt || new Date().toLocaleString('pt-BR'),
+            dataUrl: d.dataUrl || ''
+        }))
+    };
+}
+function fpApplyFormDraftToState(){
+    if(!EF.panel || EF.panel.style.display === 'none') return;
+    if(employeeEditIndex < 0) return;
+    const nome = EF.nome.value.trim();
+    if(!nome) return;
+    const payload = fpBuildFormDraftPayload();
+    const current = state.employees[employeeEditIndex] || {};
+    state.employees[employeeEditIndex] = { ...current, ...payload };
+    if(state.selected === current) state.selected = state.employees[employeeEditIndex];
+    syncCnhMapForEmployee(state.employees[employeeEditIndex]);
+}
+function fpScheduleFormLiveSyncToParent(){
+    if(!EF.panel || EF.panel.style.display === 'none') return;
+    if(employeeEditIndex < 0) return;
+    clearTimeout(__fpFormLiveSyncTimer);
+    __fpFormLiveSyncTimer = setTimeout(() => {
+        fpApplyFormDraftToState();
+        fpPostFullStateToParentIfEmbedded(true);
+    }, 500);
+}
 /** Envia o cadastro completo (incl. documentos e foto em base64) para a intranet integrada gravar no JSON/localStorage. */
 function fpPostFullStateToParentIfEmbedded(immediate){
     if(!window.parent || window.parent === window) return;
@@ -3962,6 +4053,10 @@ if(EF.empresa) EF.empresa.addEventListener('change', () => clearFieldError(EF.em
 EF.cargo.addEventListener('input', () => clearFieldError(EF.cargo, 'errEmpCargo'));
 if(EF.docs) EF.docs.addEventListener('change', handleEmployeeDocsSelected);
 if(EF.foto) EF.foto.addEventListener('change', handleEmployeePhotoSelected);
+if(EF.panel){
+    EF.panel.addEventListener('input', fpScheduleFormLiveSyncToParent);
+    EF.panel.addEventListener('change', fpScheduleFormLiveSyncToParent);
+}
 function editSelectedEmployee(){
     if(!state.selected){ alert('Selecione um funcionário no filtro para editar.'); return; }
     openEmployeeForm(state.selected);

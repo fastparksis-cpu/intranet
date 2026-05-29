@@ -2050,8 +2050,8 @@ td { color: var(--t); font-weight: 500;}
 <div class="fp-main-wrap">
 <header class="fp-topbar">
     <div class="navbar-actions">
-        <button type="button" class="nav-btn-cloud" onclick="fpCloudSaveSnapshotUi()" title="Salvar todos os dados e documentos no Supabase">☁️ Salvar</button>
-        <button type="button" class="nav-btn-cloud" onclick="fpCloudLoadSnapshotUi()" title="Carregar dados e documentos do Supabase">☁️ Carregar</button>
+        <button type="button" class="nav-btn-cloud" onclick="fpCloudSaveSnapshotUi()" title="Forçar gravação imediata na nuvem (também é automático após cada alteração)">☁️ Salvar agora</button>
+        <button type="button" class="nav-btn-cloud" onclick="fpCloudLoadSnapshotUi()" title="Forçar leitura da nuvem (também carrega automaticamente ao abrir)">☁️ Recarregar nuvem</button>
         <button type="button" class="nav-btn-sair" onclick="fpLogout()" title="Encerrar sessão">Sair</button>
     </div>
 </header>
@@ -6304,6 +6304,7 @@ window.addEventListener('message', (ev) => {
             const sig = fpIframePayloadSig(incoming, msg.ferias, msg.movimentacoes);
             if(sig === __fpLastIframeEmployeesJson) return;
             __fpLastIframeEmployeesJson = sig;
+            window.__fpLastIframePostAt = Date.now();
             state.employees = incoming;
             if(Array.isArray(msg.ferias)) state.ferias = msg.ferias;
             if(Array.isArray(msg.movimentacoes)) state.movimentacoes = msg.movimentacoes;
@@ -8675,6 +8676,7 @@ async function applyFpEmbeddedIntranetDb(db, opts){
     fpPrimeEmployeeAttBagFromDb(state.employees, window.__FP_EMBEDDED_ATTACHMENTS__ || att);
     state.employees = fpMergeEmployeeAttachments(state.employees || [], window.__FP_EMPLOYEE_ATT_BAG__ || {});
     state.employees = fpHydrateEmployeesMediaForSnapshot(state.employees, window.__FP_EMBEDDED_ATTACHMENTS__ || att);
+    if(typeof fpTouchLocalSnapshotMeta === 'function') fpTouchLocalSnapshotMeta();
     if(window.__FP_CLOUD_SNAPSHOT_LOADED__ && typeof fpMatchEmployeeMediaFromStorageIndex === 'function'){
         fpMatchEmployeeMediaFromStorageIndex({ state: { employees: state.employees } });
     }
@@ -8937,12 +8939,30 @@ function fpNotifyIntranetChanged(){
 function fpAfterPersistentStorageWrite(){
     try {
         if(typeof window !== 'undefined' && window.__fpLsHookPause) return;
-        if(typeof fpSetSaveIndicator === 'function') fpSetSaveIndicator('Sincronizando alterações…', 'sync');
+        if(typeof fpTouchLocalSnapshotMeta === 'function') fpTouchLocalSnapshotMeta();
+        if(typeof fpSetSaveIndicator === 'function') fpSetSaveIndicator('A guardar na nuvem…', 'sync');
         fpNotifyIntranetChanged();
-        if(typeof fpScheduleCloudSave === 'function') fpScheduleCloudSave();
+        if(typeof fpScheduleCloudSave === 'function') fpScheduleCloudSave({ instant: true });
         if(typeof fpScheduleCloudMediaSave === 'function') fpScheduleCloudMediaSave();
     } catch(_){}
 }
+function fpTouchLocalSnapshotMeta(){
+    try {
+        const n = (state.employees && state.employees.length) ||
+            (function(){
+                try {
+                    const raw = localStorage.getItem(FP_EMPLOYEES_STORE_KEY);
+                    const arr = raw ? JSON.parse(raw) : [];
+                    return Array.isArray(arr) ? arr.length : 0;
+                } catch(_e) { return 0; }
+            })();
+        localStorage.setItem('fp_local_snapshot_meta', JSON.stringify({
+            updatedAt: new Date().toISOString(),
+            employees: n
+        }));
+    } catch(_meta) { /* ignore */ }
+}
+window.fpTouchLocalSnapshotMeta = fpTouchLocalSnapshotMeta;
 function fpOpenIdb(){
     return new Promise((resolve, reject) => {
         const req = indexedDB.open(FP_IDB_NAME, 1);
@@ -17136,12 +17156,13 @@ function refInitTab(){ refInitEmpresasTab(); }
     try { fpApplyAccessRestrictions(); } catch(_acc) {}
     try { fpEnsureAcessosLoginGuard(); } catch(_acc2) {}
     window.__fpIntranetBootComplete = true;
+    if(typeof fpTouchLocalSnapshotMeta === 'function') fpTouchLocalSnapshotMeta();
     if(window.FP_AUTH_REQUIRED !== false && (!(state.employees && state.employees.length)) && typeof fpCloudLoadSnapshot === 'function'){
         setTimeout(async function(){
             try {
                 if(state.employees && state.employees.length) return;
                 if(typeof fpResetCloudAutoloadForRetry === 'function') fpResetCloudAutoloadForRetry();
-                await fpCloudLoadSnapshot({ autoload: true, skipIframeSync: true });
+                await fpCloudLoadSnapshot({ autoload: true, skipIframeSync: true, force: true });
                 state.employees = fpHydrateEmployeesMediaForSnapshot(state.employees || [], window.__FP_EMBEDDED_ATTACHMENTS__ || {});
                 if(typeof window.fpOnCloudDataReady === 'function') await window.fpOnCloudDataReady();
             } catch(retryErr) { console.warn('[fp-cloud] retry autoload', retryErr); }
