@@ -449,7 +449,9 @@
       <div style="grid-column:1 / -1; font-weight:800; font-size:11px; color:var(--fp-mid-gray); text-transform:uppercase; letter-spacing:.5px;">Dados Contratuais</div>
       <div class="f"><label for="empEmpresa">Registro</label><select id="empEmpresa"><option value="">Selecione a empresa</option></select><div id="errEmpEmpresa" class="field-error"></div></div>
       <div class="f"><label for="empStatus">Status</label><select id="empStatus"><option value="Funcionário Ativo">Funcionário Ativo</option><option value="Funcionário Desligado">Funcionário Desligado</option><option value="FÉRIAS">FÉRIAS</option></select></div>
+      <div class="f" id="empDemissaoWrap" style="display:none;"><label for="empDemissao">Data de desligamento (dd/mm/aaaa)</label><input id="empDemissao" type="text" inputmode="numeric" placeholder="dd/mm/aaaa" maxlength="10" autocomplete="off"><div id="errEmpDemissao" class="field-error"></div></div>
       <div class="f"><label for="empAdmissao">Data de Admissão (dd/mm/aaaa)</label><input id="empAdmissao" type="text" inputmode="numeric" placeholder="dd/mm/aaaa" maxlength="10" autocomplete="off"><div id="errEmpAdmissao" class="field-error"></div></div>
+      <div class="f"><label for="empTempoCasa">Tempo de casa</label><input id="empTempoCasa" readonly placeholder="—" title="Calculado pela admissão; para desligados, até a data de desligamento"></div>
       <div class="f"><label for="empTrienios">Triênios (auto)</label><input id="empTrienios" readonly placeholder="0"></div>
       <div class="f"><label for="empCargo">Cargo</label><input id="empCargo" placeholder="Cargo"><div id="errEmpCargo" class="field-error"></div></div>
       <div class="f"><label for="empNivel">Nível</label><input id="empNivel" placeholder="Nível"></div>
@@ -827,7 +829,10 @@ const EF = {
     nome: document.getElementById('empNome'),
     empresa: document.getElementById('empEmpresa'),
     status: document.getElementById('empStatus'),
+    demissaoWrap: document.getElementById('empDemissaoWrap'),
+    demissao: document.getElementById('empDemissao'),
     admissao: document.getElementById('empAdmissao'),
+    tempoCasa: document.getElementById('empTempoCasa'),
     cargo: document.getElementById('empCargo'),
     nivel: document.getElementById('empNivel'),
     unidade: document.getElementById('empUnidade'),
@@ -1263,20 +1268,29 @@ const daysTo = v => {
     return Math.round((target - t) / 86400000);
 };
 /** Dias corridos desde a data (só dia civil local): mesmo dia da admissão = 0. */
-const daysSince = v => {
-    const d = dparse(v);
+const daysSince = v => daysSinceUntil(v, null);
+/** Dias entre admissão e data fim (desligamento ou hoje). */
+function daysSinceUntil(fromVal, untilVal){
+    const d = dparse(fromVal);
     if(!d) return null;
     const anchor = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    const t = today();
-    return Math.round((t - anchor) / 86400000);
-};
-/** Tempo de casa a partir da data de admissão (calendário + dias corridos). */
-function tempoDeCasaLabels(admissaoVal){
+    const endRaw = untilVal ? dparse(untilVal) : today();
+    if(!endRaw) return null;
+    const end = new Date(endRaw.getFullYear(), endRaw.getMonth(), endRaw.getDate());
+    return Math.round((end - anchor) / 86400000);
+}
+function tempoDeCasaFimParaEmpregado(emp){
+    if(emp && ehDesligado(emp) && emp.demissao) return emp.demissao;
+    return null;
+}
+/** Tempo de casa a partir da data de admissão (até desligamento, se houver). */
+function tempoDeCasaLabels(admissaoVal, demissaoVal){
     const d = dparse(admissaoVal);
     if(!d) return { titulo: '—', subtitulo: '', linhaGrelha: '—', titleAttr: 'Sem data de admissão válida' };
+    const fimDeslig = demissaoVal && dparse(demissaoVal) ? dparse(demissaoVal) : null;
     const start = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    const end = today();
-    const dias = daysSince(admissaoVal);
+    const end = fimDeslig || today();
+    const dias = daysSinceUntil(admissaoVal, demissaoVal || null);
     if(dias === null) return { titulo: '—', subtitulo: '', linhaGrelha: '—', titleAttr: '' };
     if(dias < 0) return { titulo: '—', subtitulo: 'Data posterior a hoje', linhaGrelha: '—', titleAttr: 'Verifique a data de admissão' };
     let y = end.getFullYear() - start.getFullYear();
@@ -1295,10 +1309,10 @@ function tempoDeCasaLabels(admissaoVal){
     if(m) bits.push(m + (m === 1 ? ' mês' : ' meses'));
     if(day > 0 || bits.length === 0) bits.push(day + (day === 1 ? ' dia' : ' dias'));
     const titulo = bits.join(', ');
-    const subtitulo = `${dias} ${dias === 1 ? 'dia corrido' : 'dias corridos'}`;
+    const subtitulo = `${dias} ${dias === 1 ? 'dia corrido' : 'dias corridos'}` + (fimDeslig ? ' · até desligamento' : '');
     const linhaGrelha = titulo + (subtitulo ? ` (${subtitulo})` : '');
-    const titleAttr = titulo + ' · ' + subtitulo;
-    return { titulo, subtitulo, linhaGrelha, titleAttr };
+    const titleAttr = titulo + ' · ' + subtitulo + (fimDeslig ? ' · encerrado em ' + fdate(demissaoVal) : '');
+    return { titulo, subtitulo, linhaGrelha, titleAttr, dias, encerrado: !!fimDeslig };
 }
 const ini = n => String(n || '??').split(' ').filter(Boolean).slice(0, 2).map(x => x[0].toUpperCase()).join('');
 function pill(kind, text) { return `<span class="tag ${kind}">${esc(text)}</span>`; }
@@ -2570,15 +2584,17 @@ function renderProfile(e, qtd) {
     if(!E.profile) return;
     if(!e) { E.profile.innerHTML = '<div class="empty">Nenhum funcionário encontrado.</div>'; return; }
     const fotoDisplay = fpResolveEmployeeFotoUrl(e);
-    const cd = daysTo(e.cnh), ad = daysTo(e.aso), xd = daysSince(e.admissao);
-    const tc = tempoDeCasaLabels(e.admissao);
+    const cd = daysTo(e.cnh), ad = daysTo(e.aso), xd = daysSinceUntil(e.admissao, tempoDeCasaFimParaEmpregado(e));
+    const tc = tempoDeCasaLabels(e.admissao, tempoDeCasaFimParaEmpregado(e));
     const addr = [e.endereco, e.bairro, e.cidade, e.uf, e.cep].filter(Boolean).join(' • ');
     const stRaw = String(e.status || '');
     const st = stRaw.includes('Deslig') ? 'd' : stRaw.includes('FÉR') ? 'w' : 'ok';
     const vtIv = Number(e.vtIdaVolta) > 0 ? e.vtIdaVolta : (Number(e.vtValor) > 0 ? Number(e.vtValor) * 2 : 0);
     const codPosto = fpGetCodigoPostoByEmployeeName(e.nome, e);
     const part1 = [
-        ['Registro', e.empresa], ['Status', e.status], ['Admissão', fdate(e.admissao)], ['Tempo de casa (automático)', tc.linhaGrelha],
+        ['Registro', e.empresa], ['Status', e.status], ['Admissão', fdate(e.admissao)],
+        ...(ehDesligado(e) ? [['Data de desligamento', fdate(e.demissao) || '—']] : []),
+        ['Tempo de casa (automático)', tc.linhaGrelha + (tc.encerrado ? ' — congelado no desligamento' : '')],
         ['Cargo', e.cargo], ['Nível', e.nivel], ['Atuando (Unidade)', e.atuando], ['Escala', e.escala || '—'],
         ['Cód. de posto', codPosto || '—'],
         ['Carga horária', e.carga || '—'], ['Jornada', e.jornada || '—'],
@@ -2641,7 +2657,8 @@ function renderProfile(e, qtd) {
                     <div class="mini">
                         <div class="mk"><div class="x">Salário</div><div class="y">${esc(fmoney(e.salario))}</div></div>
                         <div class="mk"><div class="x">Admissão</div><div class="y">${esc(fdate(e.admissao) || '—')}</div></div>
-                        <div class="mk"><div class="x">Tempo de casa</div><div class="y" title="${esc(tc.titleAttr)}">${esc(tc.titulo)}${tc.subtitulo ? ` <span style="font-size:11px;opacity:.82;white-space:nowrap;">(${esc(tc.subtitulo)})</span>` : ''}</div></div>
+                        ${ehDesligado(e) ? `<div class="mk"><div class="x">Desligamento</div><div class="y">${esc(fdate(e.demissao) || '—')}</div></div>` : ''}
+                        <div class="mk"><div class="x">Tempo de casa</div><div class="y" title="${esc(tc.titleAttr)}">${esc(tc.titulo)}${tc.subtitulo ? ` <span style="font-size:11px;opacity:.82;white-space:nowrap;">(${esc(tc.subtitulo)})</span>` : ''}${tc.encerrado ? ' <span style="font-size:11px;opacity:.75;">· congelado</span>' : ''}</div></div>
                         <div class="mk"><div class="x">ASO</div><div class="y">${esc(fdate(e.aso))}</div></div>
                         <div class="mk"><div class="x">CNH</div><div class="y">${esc(formatCnhDisplay(e))}</div></div>
                     </div>
@@ -3025,7 +3042,7 @@ function exportFichaExcel() {
         ['=== DADOS CONTRATUAIS ===', ''],
         ['Empresa', e.empresa], ['Status', e.status], ['Cargo', e.cargo], ['Nível', e.nivel],
         ['Unidade / Atuando', e.atuando], ['Admissão', fdate(e.admissao)], ['Demissão', fdate(e.demissao)],
-        ['Tempo de casa (automático)', tempoDeCasaLabels(e.admissao).linhaGrelha],
+        ['Tempo de casa (automático)', tempoDeCasaLabels(e.admissao, tempoDeCasaFimParaEmpregado(e)).linhaGrelha],
         ...([e.tempo, e.faixa].filter(Boolean).length ? [['Tempo / faixa (planilha)', [e.tempo, e.faixa].filter(Boolean).join(' · ')]] : []),
         ['Triênios', e.trienios || '0'],
         ['Jornada', e.jornada], ['Carga Horária', e.carga], ['Cód. RH', e.codigoRH], ['Cód. eSocial', e.codigoESocial],
@@ -3105,7 +3122,7 @@ function exportRelatorioGeral() {
     const rows = list.map(e => ({
         'Nome': e.nome, 'Empresa': e.empresa, 'Status': e.status, 'Cargo': e.cargo,
         'Nível': e.nivel, 'Unidade': e.atuando, 'Admissão': fdate(e.admissao),
-        'Demissão': fdate(e.demissao), 'Tempo de casa': tempoDeCasaLabels(e.admissao).linhaGrelha,
+        'Demissão': fdate(e.demissao), 'Tempo de casa': tempoDeCasaLabels(e.admissao, tempoDeCasaFimParaEmpregado(e)).linhaGrelha,
         'Tempo planilha': e.tempo || e.faixa || '—',
         'Salário Base': e.salario, 'Ajuda de Custos': e.ajuda, 'Vale Refeição': e.vr,
         'Vale Transporte': e.vt, 'Plano Saúde': e.plano, 'Valor Plano': e.valorPlano,
@@ -3275,12 +3292,55 @@ function maskEmpAdmissaoBr() {
     else if(digits.length >= 3) out = `${digits.slice(0, 2)}/${digits.slice(2)}`;
     else out = digits;
     EF.admissao.value = out;
-    if(out.length >= 10 && dparse(out)) EF.trienios.value = String(calcTrienios(out));
+    if(out.length >= 10 && dparse(out)) refreshEmpTempoCasaForm();
 }
-function calcTrienios(admissaoVal){
+function maskEmpDemissaoBr(){
+    if(!EF.demissao) return;
+    const s = String(EF.demissao.value || '');
+    const digits = s.replace(/\D/g, '').slice(0, 8);
+    let out = '';
+    if(digits.length >= 5) out = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+    else if(digits.length >= 3) out = `${digits.slice(0, 2)}/${digits.slice(2)}`;
+    else out = digits;
+    EF.demissao.value = out;
+    refreshEmpTempoCasaForm();
+}
+function refreshEmpTempoCasaForm(){
+    if(!EF.tempoCasa) return;
+    const admStr = EF.admissao?.value?.trim() || '';
+    const admIso = toIsoDateOnlyFromParsed(admStr) || admStr;
+    const deslig = ehDesligadoPorStatus(EF.status?.value);
+    let demIso = '';
+    if(deslig && EF.demissao){
+        demIso = toIsoDateOnlyFromParsed(EF.demissao.value.trim()) || '';
+    }
+    const tc = tempoDeCasaLabels(admIso, demIso || null);
+    EF.tempoCasa.value = tc.linhaGrelha;
+    if(EF.trienios && admIso && dparse(admIso)){
+        EF.trienios.value = String(calcTrienios(admIso, demIso || null));
+    }
+}
+function ehDesligadoPorStatus(status){
+    return String(status || '').trim().toLowerCase().includes('deslig');
+}
+function syncEmpStatusDesligamentoUi(){
+    const deslig = ehDesligadoPorStatus(EF.status?.value);
+    if(EF.demissaoWrap) EF.demissaoWrap.style.display = deslig ? '' : 'none';
+    if(deslig && EF.demissao && !String(EF.demissao.value || '').trim()){
+        const t = today();
+        EF.demissao.value = `${String(t.getDate()).padStart(2, '0')}/${String(t.getMonth() + 1).padStart(2, '0')}/${t.getFullYear()}`;
+    }
+    if(!deslig && EF.demissao) EF.demissao.value = '';
+    clearFieldError(EF.demissao, 'errEmpDemissao');
+    refreshEmpTempoCasaForm();
+}
+function calcTrienios(admissaoVal, demissaoVal){
     const d = dparse(admissaoVal);
     if(!d) return 0;
-    const years = Math.floor((today() - d) / 31557600000);
+    const end = demissaoVal && dparse(demissaoVal) ? dparse(demissaoVal) : today();
+    const endD = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+    const startD = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const years = Math.floor((endD - startD) / 31557600000);
     const tri = Math.floor(Math.max(0, years) / 3);
     return Math.min(3, tri);
 }
@@ -3311,6 +3371,7 @@ function clearEmployeeFormErrors(){
     clearFieldError(EF.cpf, 'errEmpCpf');
     clearFieldError(EF.telefone, 'errEmpTelefone');
     clearFieldError(EF.cep, 'errEmpCep');
+    clearFieldError(EF.demissao, 'errEmpDemissao');
 }
 function onlyDigits(v){ return String(v || '').replace(/\D/g, ''); }
 function maskCpf(v){
@@ -3752,6 +3813,7 @@ function clearEmployeeForm(){
     renderEmployeeDocsList();
     renderEmployeePhotoPreview();
     refreshFormDateBrHints();
+    syncEmpStatusDesligamentoUi();
     fpLastCepFetched = '';
 }
 function populateCadastroUnitOptions(){
@@ -3770,6 +3832,7 @@ function openEmployeeForm(emp = null){
     if(emp){
         EF.nome.value = emp.nome || '';
         EF.status.value = emp.status || 'Funcionário Ativo';
+        if(EF.demissao) EF.demissao.value = emp.demissao ? fdate(emp.demissao) : '';
         EF.admissao.value = emp.admissao ? fdate(emp.admissao) : '';
         EF.cargo.value = emp.cargo || '';
         EF.nivel.value = emp.nivel || '';
@@ -3799,7 +3862,7 @@ function openEmployeeForm(emp = null){
         EF.raca.value = emp.raca || '';
         EF.instrucao.value = emp.instrucao || '';
         EF.pcd.value = emp.deficiencia || '';
-        EF.trienios.value = String(emp.trienios || calcTrienios(emp.admissao));
+        EF.trienios.value = String(emp.trienios || calcTrienios(emp.admissao, tempoDeCasaFimParaEmpregado(emp)));
         EF.banco.value = emp.banco || '';
         EF.agencia.value = emp.agencia || '';
         EF.conta.value = emp.conta || '';
@@ -3839,6 +3902,7 @@ function openEmployeeForm(emp = null){
     fillEmpBeneficioSelects();
     syncEmpVtFromTipo();
     syncEmpBeneficioFromSelects();
+    syncEmpStatusDesligamentoUi();
     fpLastCepFetched = emp ? onlyDigits(emp.cep || '') : '';
     EF.panel.style.display = 'block';
     populateCadastroUnitOptions();
@@ -3853,6 +3917,7 @@ function fpBuildFormDraftPayload(){
         nome: EF.nome.value.trim(),
         empresa: EF.empresa?.value?.trim() || 'Sem empresa',
         status: EF.status.value || 'Funcionário Ativo',
+        demissao: ehDesligadoPorStatus(EF.status.value) ? (toIsoDateOnlyFromParsed(EF.demissao?.value?.trim() || '') || '') : '',
         admissao: toIsoDateOnlyFromParsed(admStr) || admStr,
         cargo: EF.cargo.value.trim(),
         nivel: EF.nivel.value.trim(),
@@ -3882,7 +3947,10 @@ function fpBuildFormDraftPayload(){
         raca: EF.raca.value.trim(),
         instrucao: EF.instrucao.value.trim(),
         deficiencia: EF.pcd.value.trim(),
-        trienios: calcTrienios(toIsoDateOnlyFromParsed(admStr) || admStr),
+        trienios: calcTrienios(
+            toIsoDateOnlyFromParsed(admStr) || admStr,
+            ehDesligadoPorStatus(EF.status.value) ? (toIsoDateOnlyFromParsed(EF.demissao?.value?.trim() || '') || '') : ''
+        ),
         banco: EF.banco.value.trim(),
         agencia: EF.agencia.value.trim(),
         conta: EF.conta.value.trim(),
@@ -3998,11 +4066,17 @@ function saveEmployeeForm(){
     if(EF.telefone.value.trim() && !(telDigits.length === 10 || telDigits.length === 11)){ setFieldError(EF.telefone, 'errEmpTelefone', 'Telefone deve ter 10 ou 11 dígitos.'); hasError = true; }
     const cepDigits = onlyDigits(EF.cep.value);
     if(EF.cep.value.trim() && cepDigits.length !== 8){ setFieldError(EF.cep, 'errEmpCep', 'CEP deve ter 8 dígitos.'); hasError = true; }
+    if(ehDesligadoPorStatus(EF.status.value)){
+        const demStr = EF.demissao?.value?.trim() || '';
+        if(!demStr){ setFieldError(EF.demissao, 'errEmpDemissao', 'Informe a data de desligamento.'); hasError = true; }
+        else if(!dparse(demStr)){ setFieldError(EF.demissao, 'errEmpDemissao', 'Data de desligamento inválida.'); hasError = true; }
+    }
     if(hasError) return;
     const payload = {
         nome,
         empresa: EF.empresa.value.trim() || 'Sem empresa',
         status: EF.status.value || 'Funcionário Ativo',
+        demissao: ehDesligadoPorStatus(EF.status.value) ? (toIsoDateOnlyFromParsed(EF.demissao?.value?.trim() || '') || '') : '',
         admissao: toIsoDateOnlyFromParsed(EF.admissao.value.trim()) || EF.admissao.value.trim(),
         cargo: EF.cargo.value.trim(),
         nivel: EF.nivel.value.trim(),
@@ -4032,7 +4106,10 @@ function saveEmployeeForm(){
         raca: EF.raca.value.trim(),
         instrucao: EF.instrucao.value.trim(),
         deficiencia: EF.pcd.value.trim(),
-        trienios: calcTrienios(toIsoDateOnlyFromParsed(EF.admissao.value.trim()) || EF.admissao.value.trim()),
+        trienios: calcTrienios(
+            toIsoDateOnlyFromParsed(EF.admissao.value.trim()) || EF.admissao.value.trim(),
+            ehDesligadoPorStatus(EF.status.value) ? (toIsoDateOnlyFromParsed(EF.demissao?.value?.trim() || '') || '') : ''
+        ),
         banco: EF.banco.value.trim(),
         agencia: EF.agencia.value.trim(),
         conta: EF.conta.value.trim(),
@@ -4082,10 +4159,15 @@ function saveEmployeeForm(){
     fpPostFullStateToParentIfEmbedded(true);
 }
 
+if(EF.status) EF.status.addEventListener('change', syncEmpStatusDesligamentoUi);
+if(EF.demissao){
+    EF.demissao.addEventListener('input', () => { maskEmpDemissaoBr(); clearFieldError(EF.demissao, 'errEmpDemissao'); });
+    EF.demissao.addEventListener('change', () => { maskEmpDemissaoBr(); clearFieldError(EF.demissao, 'errEmpDemissao'); });
+}
 EF.admissao.addEventListener('change', () => {
     maskEmpAdmissaoBr();
-    EF.trienios.value = String(calcTrienios(toIsoDateOnlyFromParsed(EF.admissao.value.trim()) || EF.admissao.value.trim()));
     clearFieldError(EF.admissao, 'errEmpAdmissao');
+    refreshEmpTempoCasaForm();
 });
 EF.admissao.addEventListener('input', () => {
     maskEmpAdmissaoBr();
@@ -4164,11 +4246,15 @@ async function terminateSelectedEmployee(){
         }
     }
     state.employees[idx].status = 'Funcionário Desligado';
-    state.employees[idx].demissao = new Date().toISOString().slice(0,10);
+    state.employees[idx].demissao = new Date().toISOString().slice(0, 10);
+    state.employees[idx].trienios = calcTrienios(state.employees[idx].admissao, state.employees[idx].demissao);
     state.employees[idx].documentosRescisao = docsRescisao;
+    state.selected = state.employees[idx];
     addAudit(`Funcionário desligado: ${state.selected.nome}`, 'action');
     fillCompanies();
     applyFilters();
+    const list = typeof listagemParaPainel === 'function' ? listagemParaPainel() : [];
+    renderProfile(state.selected, list.length);
     fpPostFullStateToParentIfEmbedded(true);
 }
 
@@ -4446,7 +4532,7 @@ const FICHA_REL_FIELDS = [
     { id: 'registro', label: 'Registro', group: 'contratual', get: e => e.empresa },
     { id: 'status', label: 'Status', group: 'contratual', get: e => e.status },
     { id: 'admissao', label: 'Admissão', group: 'contratual', get: e => fdate(e.admissao) },
-    { id: 'tempoCasa', label: 'Tempo de casa', group: 'contratual', get: e => tempoDeCasaLabels(e.admissao).linhaGrelha },
+    { id: 'tempoCasa', label: 'Tempo de casa', group: 'contratual', get: e => tempoDeCasaLabels(e.admissao, tempoDeCasaFimParaEmpregado(e)).linhaGrelha },
     { id: 'demissao', label: 'Demissão', group: 'contratual', get: e => fdate(e.demissao) },
     { id: 'cargo', label: 'Cargo', group: 'contratual', get: e => e.cargo },
     { id: 'nivel', label: 'Nível', group: 'contratual', get: e => e.nivel },
