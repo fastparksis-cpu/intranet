@@ -3862,7 +3862,7 @@ function mapPostoQuadroRows(rows){
             posto, status, unidade, enderecoUnidade, cnpjUnidade,
             empresaUnidade,
             razaoSocialUnidade, idRh, nome, funcao, registro2,
-            diasSemana, diasSemana2, jornada, entrada, intervalo, intervalo2, saida, supervisor, empresa
+            diasSemana, diasSemana2, escala: jornada, jornada, entrada, intervalo, intervalo2, saida, supervisor, empresa
         };
     }).filter(x => x.posto || x.unidade || x.nome || x.funcao || x.status || String(x.idRh || '').trim());
 }
@@ -12279,7 +12279,8 @@ function ensureQuadroMaterializedFromEmployeesIfNeeded(){
         registro2: '',
         diasSemana: e.jornada || '',
         diasSemana2: '',
-        jornada: e.jornada || '',
+        escala: e.escala || e.jornada || '',
+        jornada: e.escala || e.jornada || '',
         entrada: '',
         intervalo: '',
         intervalo2: '',
@@ -13033,11 +13034,18 @@ function savePostoInline(source, idx, field, value, opts){
         const nomeRow = String(p.nome || '').trim();
         if(field === 'nome' && nomeRow){
             const emp = state.employees.find(e => String(e.nome || '').trim() === nomeRow);
-            if(emp){ emp.cargo = p.funcao || emp.cargo; emp.jornada = p.jornada || p.diasSemana || emp.jornada; }
+            if(emp){
+                emp.cargo = p.funcao || emp.cargo;
+                emp.escala = p.escala || p.jornada || emp.escala || '';
+                emp.jornada = p.escala || p.jornada || p.diasSemana || emp.jornada || '';
+            }
             syncEmployeeAtuandoFromPostoQuadro(nomeRow);
             fpSaveEmployeesToLocalStorage();
         }
         renderPostosPanorama();
+        if(field === 'jornada' || field === 'escala'){
+            if(typeof renderVtReport === 'function') renderVtReport();
+        }
         if(nomeRow && field === 'nome') renderAll();
         return;
     }
@@ -13057,10 +13065,18 @@ function savePostoInline(source, idx, field, value, opts){
 
     if(src === 'base'){
         state.quadroGeral[i][field] = clean;
+        if(field === 'jornada' || field === 'escala'){
+            state.quadroGeral[i].escala = clean;
+            state.quadroGeral[i].jornada = clean;
+        }
         if(field === 'unidade') aplicarDadosUnidadeNoPosto(state.quadroGeral[i], clean);
     } else {
         const arr = getPostosExtras();
         arr[i][field] = clean;
+        if(field === 'jornada' || field === 'escala'){
+            arr[i].escala = clean;
+            arr[i].jornada = clean;
+        }
         if(field === 'unidade') aplicarDadosUnidadeNoPosto(arr[i], clean);
         setPostosExtras(arr);
     }
@@ -13073,10 +13089,13 @@ function savePostoInline(source, idx, field, value, opts){
         refreshPostosUnidadeOptions();
         renderPostosPanorama();
         if(nomeRow) renderMovimentacoes();
-    } else if(field === 'jornada'){
+    } else if(field === 'jornada' || field === 'escala'){
         if(nomeRow){
             const emp = state.employees.find(e => String(e.nome || '').trim() === nomeRow);
-            if(emp) emp.jornada = clean;
+            if(emp){
+                emp.escala = clean;
+                emp.jornada = clean;
+            }
         }
         renderPostosPanorama();
         if(typeof renderVtReport === 'function') renderVtReport();
@@ -13275,15 +13294,20 @@ function vtTipoNorm(t){
 function vtTipoMatches(a, b){
     return vtTipoNorm(a) === vtTipoNorm(b);
 }
+/** Todas as linhas do Quadro de Postos (catálogo Unidades + planilha base + extras). */
+function getQuadroRowsForLookup(){
+    return [
+        ...(getUnidadesPostosCatalog() || []).map((p, i) => catalogPostoToQuadroRow(p, i)),
+        ...(state.quadroGeral || []).map((r, idx) => ({ ...r, __source: r.__source || 'base', __idx: idx })),
+        ...getPostosExtras().map((r, idx) => ({ ...r, __source: 'extra', __idx: idx }))
+    ];
+}
 /** Localiza linha do panorama Postos/Quadro pelo nome (e unidade do cadastro, se houver). */
 function findPostoQuadroRowForEmployee(emp){
     if(!emp) return null;
     const nomeK = normVtNomeKey(emp.nome);
     const uniK = normText(String(emp.atuando || ''));
-    const rows = [
-        ...(state.quadroGeral || []).map((r, idx) => ({ ...r, __source: 'base', __idx: idx })),
-        ...getPostosExtras().map((r, idx) => ({ ...r, __source: 'extra', __idx: idx }))
-    ];
+    const rows = getQuadroRowsForLookup();
     const scored = rows.map(r => {
         const nomes = [
             r?.nome, r?.funcionario, r?.colaborador, r?.nomeColaborador,
@@ -13295,6 +13319,8 @@ function findPostoQuadroRowForEmployee(emp){
             else if(n && nomeK && (n.includes(nomeK) || nomeK.includes(n))) score = Math.max(score, 70);
         }
         if(score > 0 && uniK && normText(String(r.unidade || '')) === uniK) score += 25;
+        if(score > 0 && r.__source === 'catalog') score += 8;
+        if(score > 0 && String(r.escala || r.jornada || '').trim()) score += 3;
         return { r, score };
     });
     scored.sort((a, b) => b.score - a.score);
@@ -13319,9 +13345,13 @@ function findPostoRowByCodigo(codigoPosto, unidadePreferida){
     }
     return byCod[0];
 }
-function getQuadroJornadaForEmployee(emp){
+function getQuadroEscalaForEmployee(emp){
     const row = findPostoQuadroRowForEmployee(emp);
-    return row ? String(row.jornada || '').trim() : '';
+    if(!row) return '';
+    return String(row.escala || row.jornada || row.diasSemana || '').trim();
+}
+function getQuadroJornadaForEmployee(emp){
+    return getQuadroEscalaForEmployee(emp);
 }
 function getVtDisplayDataForEmployee(emp, cfg){
     const codEmp = String(
@@ -13385,9 +13415,9 @@ function getVtCfgForEmployee(emp, cfg){
             quadroRef: getQuadroJornadaForEmployee(emp)
         };
     }
-    const quadroJ = getQuadroJornadaForEmployee(emp) || String(emp.jornada || '').trim();
-    const fromQuadro = jornadaStringToVtCfg(quadroJ || '6x1');
-    return { ...fromQuadro, manual: false, quadroRef: quadroJ };
+    const quadroEscala = getQuadroEscalaForEmployee(emp) || String(emp.escala || emp.jornada || '').trim();
+    const fromQuadro = jornadaStringToVtCfg(quadroEscala || '6x1');
+    return { ...fromQuadro, manual: false, quadroRef: quadroEscala };
 }
 function vtJornadaSelectHtml(nome, currentTipo){
     const list = getPostosJornadaLista();
