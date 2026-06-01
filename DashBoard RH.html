@@ -3539,11 +3539,23 @@ async function fpResolveDocDataUrlAsync(doc, emp){
     if(u) return u;
     const ref = String(doc?.dataRef || '').trim();
     const parent = window.parent;
-    if(ref && parent && typeof parent.fpEnsureCloudDisplayUrl === 'function'){
-        try {
-            u = await parent.fpEnsureCloudDisplayUrl(ref);
-            if(u) return u;
-        } catch(e) { console.warn('[DashBoard] cloud doc url', e); }
+    const paths = [];
+    if(ref) paths.push(ref);
+    if(parent && typeof parent.fpStableEmployeeSlug === 'function' && emp){
+        const slug = parent.fpStableEmployeeSlug(emp, 0);
+        const di = doc && doc.i != null ? doc.i : (Array.isArray(emp.documentos) ? emp.documentos.indexOf(doc) : -1);
+        if(di >= 0){
+            const seg = String(doc.name || 'doc').replace(/[^\w.\-]/g, '_').replace(/_+/g, '_').slice(0, 32);
+            paths.push('colaboradores/docs/' + slug + '_' + di + '_' + seg);
+        }
+    }
+    if(parent && typeof parent.fpEnsureCloudDisplayUrl === 'function'){
+        for(let pi = 0; pi < paths.length; pi++){
+            try {
+                u = await parent.fpEnsureCloudDisplayUrl(paths[pi]);
+                if(u) return u;
+            } catch(e) { console.warn('[DashBoard] cloud doc url', paths[pi], e); }
+        }
     }
     return '';
 }
@@ -3556,7 +3568,55 @@ function fpResolveEmployeeFotoUrl(emp){
             if(u) return u;
         } catch(e) { console.warn('[DashBoard] resolve foto', e); }
     }
+    const parent = window.parent;
+    if(parent){
+        const disp = parent.__FP_CLOUD_DISPLAY_URLS__ || {};
+        if(emp.fotoRef && disp[emp.fotoRef]) return disp[emp.fotoRef];
+        if(typeof parent.fpStableEmployeeSlug === 'function'){
+            const slug = parent.fpStableEmployeeSlug(emp, 0);
+            const p = 'colaboradores/foto/' + slug;
+            if(disp[p]) return disp[p];
+        }
+    }
     return emp.foto || '';
+}
+async function fpResolveEmployeeFotoUrlAsync(emp){
+    if(!emp) return '';
+    let u = fpResolveEmployeeFotoUrl(emp);
+    if(u) return u;
+    const parent = window.parent;
+    const paths = [];
+    if(emp.fotoRef) paths.push(String(emp.fotoRef).trim());
+    if(parent && typeof parent.fpStableEmployeeSlug === 'function'){
+        paths.push('colaboradores/foto/' + parent.fpStableEmployeeSlug(emp, 0));
+    }
+    if(parent && typeof parent.fpEnsureCloudDisplayUrl === 'function'){
+        for(let i = 0; i < paths.length; i++){
+            if(!paths[i]) continue;
+            try {
+                u = await parent.fpEnsureCloudDisplayUrl(paths[i]);
+                if(u) return u;
+            } catch(e) { console.warn('[DashBoard] cloud foto url', paths[i], e); }
+        }
+    }
+    return '';
+}
+async function fpHydrateEmployeeFormMedia(emp){
+    if(!emp) return;
+    const foto = await fpResolveEmployeeFotoUrlAsync(emp);
+    if(foto) employeePhotoDraft = foto;
+    const docs = Array.isArray(emp.documentos) ? emp.documentos : [];
+    const hydrated = [];
+    for(let i = 0; i < docs.length; i++){
+        const d = { ...docs[i], i: docs[i].i != null ? docs[i].i : i };
+        let u = fpResolveDocDataUrl(d, emp);
+        if(!u) u = await fpResolveDocDataUrlAsync(d, emp);
+        if(u) d.dataUrl = u;
+        hydrated.push(d);
+    }
+    employeeDocsDraft = hydrated;
+    renderEmployeePhotoPreview();
+    renderEmployeeDocsList();
 }
 async function viewEmployeeDocDraft(idx){
     const doc = employeeDocsDraft[idx];
@@ -3768,6 +3828,7 @@ function openEmployeeForm(emp = null){
         employeeDocsDraft = Array.isArray(emp.documentos) ? emp.documentos.map(d => ({...d})) : [];
         renderEmployeeDocsList();
         renderEmployeePhotoPreview();
+        void fpHydrateEmployeeFormMedia(emp);
     } else {
         clearEmployeeForm();
     }
@@ -4559,6 +4620,17 @@ window.addEventListener('message', (ev) => {
     if(msg.type === 'fastpark-employees-sync') {
         try {
             applyEmployeesSyncFromParent(msg);
+            if(state.selected){
+                const sel = state.employees.find(e => e === state.selected || String(e.nome) === String(state.selected.nome));
+                if(sel){
+                    state.selected = sel;
+                    const list = typeof listagemParaPainel === 'function' ? listagemParaPainel() : [];
+                    renderProfile(sel, list.length);
+                    if(EF.panel && EF.panel.style.display !== 'none'){
+                        void fpHydrateEmployeeFormMedia(sel);
+                    }
+                }
+            }
             if(IS_INICIO_VIEW) {
                 try { renderDashInicioSinistrosUnidadesCard(); } catch(e2) { console.warn('[DashBoard] inicio sinistros', e2); }
             }

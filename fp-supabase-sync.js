@@ -334,10 +334,18 @@
         function add(k) {
             if (k) keys.add(String(k));
         }
-        (snap.state && snap.state.employees || []).forEach(function (e) {
+        (snap.state && snap.state.employees || []).forEach(function (e, ei) {
             add(e.fotoRef);
             (e.documentos || []).forEach(function (d) { add(d && d.dataRef); });
             (e.documentosRescisao || []).forEach(function (d) { add(d && d.dataRef); });
+            if (typeof g.fpStableEmployeeSlug === 'function') {
+                try {
+                    var slug = g.fpStableEmployeeSlug(e, ei);
+                    add('colaboradores/foto/' + slug);
+                    add('colaboradores/docs/' + slug);
+                    add('colaboradores/rescisao/' + slug);
+                } catch (slugErr) { /* ignore */ }
+            }
         });
         (snap.faltasResolved || []).forEach(function (f) { add(f.anexoRef); });
         (snap.unidadesResolved || []).forEach(function (u) {
@@ -568,47 +576,78 @@
         g.window.__FP_EMBEDDED_ATTACHMENTS__ = att;
     }
 
-    g.fpScheduleCloudMediaPrefetch = function (db) {
-        if (g.__fpCloudPrefetchRunning) return;
-        g.__fpCloudPrefetchRunning = true;
-        queueMicrotask(async function () {
+    async function fpRunCloudMediaPrefetch(db, opts) {
+        opts = opts || {};
+        db = db || { state: g.state, attachments: g.window.__FP_EMBEDDED_ATTACHMENTS__ || {} };
+        var keys = collectAttachmentRefKeys(db);
+        var list = Array.from(keys);
+        var foto = list.filter(function (k) { return k.indexOf('/foto/') >= 0; });
+        var rest = list.filter(function (k) { return k.indexOf('/foto/') < 0; });
+        list = foto.concat(rest);
+        if (!list.length) {
+            return { ok: 0, fail: 0, total: 0 };
+        }
+        if (typeof g.fpGetAuthContext === 'function') {
+            try { await g.fpGetAuthContext(); } catch (_auth) { /* tenta na mesma */ }
+        }
+        fpCloudSetStatus('A carregar fotos e documentos da nuvem… (' + list.length + ')', false);
+        var conc = g.FP_CLOUD_MEDIA_PREFETCH_CONCURRENCY || 16;
+        var pi = 0;
+        var ok = 0;
+        var fail = 0;
+        async function worker() {
+            while (true) {
+                var i = pi++;
+                if (i >= list.length) break;
+                var key = sanitizeStoragePath(list[i]);
+                var disp = g.window.__FP_CLOUD_DISPLAY_URLS__ || (g.window.__FP_CLOUD_DISPLAY_URLS__ = {});
+                if (disp[key]) { ok++; continue; }
+                try {
+                    var url = await resolveCloudPathToDisplayUrl(key);
+                    disp[key] = url;
+                    ok++;
+                    g.document.dispatchEvent(new CustomEvent('fp-cloud-media-ready', { detail: { path: key, url: url } }));
+                } catch (e) {
+                    fail++;
+                }
+            }
+        }
+        await Promise.all(Array.from({ length: Math.min(conc, list.length) }, worker));
+        if (typeof g.fpMatchEmployeeMediaFromStorageIndex === 'function' && db && db.state) {
+            g.fpMatchEmployeeMediaFromStorageIndex(db);
+        }
+        if (opts.indexOnManyFails !== false && fail > 0 && ok < list.length * 0.35 && typeof fpCloudIndexStorageBucket === 'function') {
             try {
-                var keys = collectAttachmentRefKeys(db || {});
-                var list = Array.from(keys);
-                var foto = list.filter(function (k) { return k.indexOf('/foto/') >= 0; });
-                var rest = list.filter(function (k) { return k.indexOf('/foto/') < 0; });
-                list = foto.concat(rest);
-                var conc = g.FP_CLOUD_MEDIA_PREFETCH_CONCURRENCY || 16;
-                var pi = 0;
-                var ok = 0;
-                async function worker() {
-                    while (true) {
-                        var i = pi++;
-                        if (i >= list.length) break;
-                        var key = sanitizeStoragePath(list[i]);
-                        var disp = g.window.__FP_CLOUD_DISPLAY_URLS__ || (g.window.__FP_CLOUD_DISPLAY_URLS__ = {});
-                        if (disp[key]) { ok++; continue; }
-                        try {
-                            var url = await resolveCloudPathToDisplayUrl(key);
-                            disp[key] = url;
-                            ok++;
-                            g.document.dispatchEvent(new CustomEvent('fp-cloud-media-ready', { detail: { path: key, url: url } }));
-                        } catch (e) { /* próximo */ }
-                    }
-                }
-                if (list.length) {
-                    await Promise.all(Array.from({ length: Math.min(conc, list.length) }, worker));
-                }
+                fpCloudSetStatus('A indexar ficheiros no Storage (caminhos alternativos)…', false);
+                var idx = await fpCloudIndexStorageBucket();
+                ok += idx.ok || 0;
                 if (typeof g.fpMatchEmployeeMediaFromStorageIndex === 'function' && db && db.state) {
                     g.fpMatchEmployeeMediaFromStorageIndex(db);
                 }
-                g.document.dispatchEvent(new CustomEvent('fp-cloud-media-batch-ready'));
-            } catch (e) {
-                console.warn('[fp-cloud] prefetch', e);
-            } finally {
-                g.__fpCloudPrefetchRunning = false;
+            } catch (idxErr) {
+                console.warn('[fp-cloud] index após prefetch', idxErr);
             }
+        }
+        g.document.dispatchEvent(new CustomEvent('fp-cloud-media-batch-ready'));
+        if (ok) {
+            fpCloudSetStatus('Fotos/documentos: ' + ok + ' carregado(s)' + (fail ? ' (' + fail + ' falha(s))' : '') + '.', fail > ok);
+        }
+        return { ok: ok, fail: fail, total: list.length };
+    }
+
+    g.fpAwaitCloudMediaPrefetch = function (db, opts) {
+        if (g.__fpCloudPrefetchPromise) return g.__fpCloudPrefetchPromise;
+        g.__fpCloudPrefetchRunning = true;
+        g.__fpCloudPrefetchPromise = fpRunCloudMediaPrefetch(db, opts).finally(function () {
+            g.__fpCloudPrefetchRunning = false;
+            g.__fpCloudPrefetchPromise = null;
         });
+        return g.__fpCloudPrefetchPromise;
+    };
+
+    g.fpScheduleCloudMediaPrefetch = function (db) {
+        if (g.__fpCloudPrefetchRunning || g.__fpCloudPrefetchPromise) return g.__fpCloudPrefetchPromise || undefined;
+        return g.fpAwaitCloudMediaPrefetch(db, { indexOnManyFails: true });
     };
 
     g.fpEnsureCloudDisplayUrl = function (path) {
@@ -1252,7 +1291,6 @@
             if (useFast) {
                 fpCloudSetStatus(opts.autoload ? 'A carregar dados da nuvem…' : 'A carregar dados…');
                 fpNormalizeCloudMarkersOnly(db);
-                attStats = { ok: 0, fail: 0, total: collectAttachmentRefKeys(db).size, fast: true };
             } else if (typeof g.fpResolveCloudAttachmentMarkers === 'function') {
                 fpCloudSetStatus('A transferir documentos da nuvem…');
                 attStats = await g.fpResolveCloudAttachmentMarkers(db, { full: true }) || attStats;
@@ -1264,8 +1302,16 @@
                 throw new Error('Função applyFpEmbeddedIntranetDb não encontrada.');
             }
             await g.applyFpEmbeddedIntranetDb(db, { fromCloud: true });
-            if (useFast && typeof g.fpScheduleCloudMediaPrefetch === 'function') {
-                g.fpScheduleCloudMediaPrefetch(db);
+            if (useFast && typeof g.fpAwaitCloudMediaPrefetch === 'function') {
+                try {
+                    attStats = await g.fpAwaitCloudMediaPrefetch(db, { indexOnManyFails: true }) || attStats;
+                    attStats.fast = true;
+                } catch (prefErr) {
+                    console.warn('[fp-cloud] prefetch pós-carga', prefErr);
+                    attStats = { ok: 0, fail: 0, total: collectAttachmentRefKeys(db).size, fast: true };
+                }
+            } else if (!useFast) {
+                attStats = attStats || { ok: 0, fail: 0, total: 0 };
             }
             if (typeof g.fpPersistEmployeeAttBagFromState === 'function') {
                 await g.fpPersistEmployeeAttBagFromState();

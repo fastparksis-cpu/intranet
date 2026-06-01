@@ -7804,13 +7804,19 @@ function fpLookupAttMedia(att, ref, emp, ei){
         if(typeof bagV === 'string' && fpIsDisplayableMediaUrl(bagV)) return bagV;
         const v = att[p];
         if(typeof v === 'string' && fpIsDisplayableMediaUrl(v)) return v;
+        if(v && typeof v === 'object' && v.__cloud === true){
+            const cp = sanitizeStoragePathForAtt(v.path || p);
+            if(disp[cp]) return disp[cp];
+            if(disp[p]) return disp[p];
+        }
     }
     const r = ref ? sanitizeStoragePathForAtt(ref) : '';
     const v = ref ? (att[ref] || att[r]) : null;
     if(typeof v === 'string' && fpIsDisplayableMediaUrl(v)) return v;
-    if(v && typeof v === 'object' && v.__cloud === true && v.path){
-        const p = sanitizeStoragePathForAtt(v.path);
+    if(v && typeof v === 'object' && v.__cloud === true){
+        const p = sanitizeStoragePathForAtt(v.path || r || ref);
         if(disp[p]) return disp[p];
+        if(r && disp[r]) return disp[r];
     }
     return null;
 }
@@ -17172,6 +17178,19 @@ function refInitTab(){ refInitEmpresasTab(); }
         window.__FP_EMBEDDED_PARSED__ = getFpEmbeddedFromDom();
         if(window.__FP_EMBEDDED_PARSED__ && window.__FP_EMBEDDED_PARSED__.state){
             await applyFpEmbeddedIntranetDb(window.__FP_EMBEDDED_PARSED__, { fromEmbeddedFile: true });
+        }
+        const attLocal = window.__FP_EMBEDDED_ATTACHMENTS__ || {};
+        const hasCloudMarkers = Object.keys(attLocal).some(function(k){
+            const v = attLocal[k];
+            return v && typeof v === 'object' && v.__cloud === true;
+        });
+        if(hasCloudMarkers && typeof fpAwaitCloudMediaPrefetch === 'function' && window.fpSupabase){
+            try {
+                await fpAwaitCloudMediaPrefetch({ state: { employees: state.employees }, attachments: attLocal }, { indexOnManyFails: true });
+                state.employees = fpApplyEmployeeMediaFromAttachments(state.employees || [], attLocal);
+                fpPrimeEmployeeAttBagFromDb(state.employees, attLocal);
+                state.employees = fpMergeEmployeeAttachments(state.employees, window.__FP_EMPLOYEE_ATT_BAG__ || {});
+            } catch(prefBootErr) { console.warn('[fp-cloud] prefetch local', prefBootErr); }
         }
     }
     state.employees = fpHydrateEmployeesMediaForSnapshot(state.employees || [], window.__FP_EMBEDDED_ATTACHMENTS__ || {});
