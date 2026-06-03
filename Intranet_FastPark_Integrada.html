@@ -8033,6 +8033,12 @@ function uniResolveAnexoDataUrlSync(item){
     const inline = item.anexoData || item.contratoAnexoData;
     if(inline && typeof fpIsDisplayableMediaUrl === 'function' && fpIsDisplayableMediaUrl(inline)) return inline;
     const ref = item.anexoRef || item.contratoAnexoRef;
+    if(ref){
+        const bag = uniAttBagGet();
+        const bagKey = typeof sanitizeStoragePathForAtt === 'function' ? sanitizeStoragePathForAtt(ref) : ref;
+        if(bag[ref]) return bag[ref];
+        if(bag[bagKey]) return bag[bagKey];
+    }
     if(!ref) return null;
     const att = window.__FP_EMBEDDED_ATTACHMENTS__ || {};
     if(typeof fpLookupAttMedia === 'function'){
@@ -8265,11 +8271,13 @@ function onUniContratoAnexoCadastroChange(){
         renderUniContratoAnexoCadastro(u);
         return;
     }
+    if(!uniValidateContratoFile(file)) return;
     const r = new FileReader();
     r.onload = ev => {
         unidadeContratoAnexoPending = { anexoNome: file.name, anexoData: String(ev.target?.result || '') };
         renderUniContratoAnexoCadastro(null);
     };
+    r.onerror = () => alert('Erro ao ler o arquivo do contrato.');
     r.readAsDataURL(file);
 }
 function uniCollectContratoAnexoPayload(atual){
@@ -8285,11 +8293,49 @@ function uniCollectContratoAnexoPayload(atual){
     }
     return { contratoAnexoNome: '', contratoAnexoData: '', contratoAnexoRef: '' };
 }
+const UNI_CONTRATO_ANEXO_MAX_BYTES = 15 * 1024 * 1024;
+function uniValidateContratoFile(file){
+    if(!file) return true;
+    if(file.size > UNI_CONTRATO_ANEXO_MAX_BYTES){
+        alert('Arquivo muito grande (máximo 15 MB). Comprima o PDF ou use uma imagem menor.');
+        return false;
+    }
+    return true;
+}
 function readUniContratoAnexoFileInput(inputId, cb){
     const file = document.getElementById(inputId)?.files?.[0];
     if(!file){ cb(null); return; }
+    if(!uniValidateContratoFile(file)) return;
     const r = new FileReader();
     r.onload = ev => cb({ anexoNome: file.name, anexoData: String(ev.target?.result || '') });
+    r.onerror = () => { alert('Erro ao ler o arquivo do contrato.'); cb(null); };
+    r.readAsDataURL(file);
+}
+function ensureUniContratoAnexoReady(done){
+    const finish = (ok) => { if(typeof done === 'function') done(ok !== false); };
+    if(unidadeContratoAnexoPending && unidadeContratoAnexoPending.anexoData){
+        finish(true);
+        return;
+    }
+    const file = document.getElementById('uniContratoAnexo')?.files?.[0];
+    if(!file){
+        finish(true);
+        return;
+    }
+    if(!uniValidateContratoFile(file)){
+        finish(false);
+        return;
+    }
+    const r = new FileReader();
+    r.onload = ev => {
+        unidadeContratoAnexoPending = { anexoNome: file.name, anexoData: String(ev.target?.result || '') };
+        renderUniContratoAnexoCadastro(null);
+        finish(true);
+    };
+    r.onerror = () => {
+        alert('Erro ao ler o arquivo do contrato. Tente novamente.');
+        finish(false);
+    };
     r.readAsDataURL(file);
 }
 let unidadeCompactMode = false;
@@ -8734,9 +8780,21 @@ function expandAnexoRefsInAditivos(aditivos, att){
 function expandUnidadeContratoAnexo(u, att){
     if(!u) return u;
     const o = { ...u, aditivos: expandAnexoRefsInAditivos(u.aditivos, att) };
-    if(o.contratoAnexoRef && att && att[o.contratoAnexoRef]){
-        o.contratoAnexoData = att[o.contratoAnexoRef];
-        delete o.contratoAnexoRef;
+    const bag = typeof uniAttBagGet === 'function' ? uniAttBagGet() : {};
+    if(o.contratoAnexoRef){
+        if(att && att[o.contratoAnexoRef]){
+            o.contratoAnexoData = att[o.contratoAnexoRef];
+            delete o.contratoAnexoRef;
+        } else if(bag[o.contratoAnexoRef]){
+            o.contratoAnexoData = bag[o.contratoAnexoRef];
+        }
+    }
+    if(Array.isArray(o.aditivos)){
+        o.aditivos = o.aditivos.map(a => {
+            if(!a || a.anexoData || !a.anexoRef) return a;
+            if(bag[a.anexoRef]) return { ...a, anexoData: bag[a.anexoRef] };
+            return a;
+        });
     }
     return o;
 }
@@ -8946,6 +9004,11 @@ async function collectFpIntranetSnapshot(){
         try { await fpPersistEmployeeAttBagFromState(); } catch(bagErr) { console.warn('[FP] bag pré-snapshot', bagErr); }
     }
     const attachments = {};
+    try {
+        Object.entries(uniAttBagGet()).forEach(([k, v]) => {
+            if(typeof v === 'string' && v.startsWith('data:')) attachments[k] = v;
+        });
+    } catch(_bagMerge) { /* ignore */ }
     async function putAtt(relPath, dataUrl){
         if(!dataUrl || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:')) return null;
         const p = String(relPath).replace(/[^\w./\-]/g, '_').replace(/_+/g, '_');
@@ -8982,15 +9045,18 @@ async function collectFpIntranetSnapshot(){
         }
     }
     const uIn = getUnidades();
+    const uniBagSnap = uniAttBagGet();
     const unidadesResolved = [];
     for(let ui = 0; ui < uIn.length; ui++){
         const u = uIn[ui];
         const aditivos = [];
         for(let ai = 0; ai < (u.aditivos || []).length; ai++){
             const a = u.aditivos[ai];
-            if(a.anexoData && String(a.anexoData).startsWith('data:')){
-                const ref = await putAtt('unidades/aditivos/u' + ui + '_' + ai + '_' + String(u.nome || 'posto').replace(/[^\w.-]/g, '_').slice(0, 32), a.anexoData);
-                aditivos.push({ ...a, anexoData: '', anexoRef: ref });
+            let anexoData = a.anexoData;
+            if(!anexoData && a.anexoRef && uniBagSnap[a.anexoRef]) anexoData = uniBagSnap[a.anexoRef];
+            if(anexoData && String(anexoData).startsWith('data:')){
+                const ref = await putAtt('unidades/aditivos/u' + ui + '_' + ai + '_' + String(u.nome || 'posto').replace(/[^\w.-]/g, '_').slice(0, 32), anexoData);
+                aditivos.push({ ...a, anexoData: '', anexoRef: ref || a.anexoRef });
             } else {
                 aditivos.push({ ...a });
             }
@@ -8998,6 +9064,7 @@ async function collectFpIntranetSnapshot(){
         let contratoAnexoRef = u.contratoAnexoRef;
         let contratoAnexoNome = u.contratoAnexoNome;
         let contratoAnexoData = u.contratoAnexoData;
+        if(!contratoAnexoData && contratoAnexoRef && uniBagSnap[contratoAnexoRef]) contratoAnexoData = uniBagSnap[contratoAnexoRef];
         if(contratoAnexoData && String(contratoAnexoData).startsWith('data:')){
             contratoAnexoRef = await putAtt('unidades/contrato/u' + ui + '_' + fpSlugAttSeg(u.nome || u.cod, 32), contratoAnexoData);
             contratoAnexoData = '';
@@ -10245,9 +10312,66 @@ function renderMovCadList(){
     }</tbody></table>`;
 }
 
+const FP_UNIDADES_ATT_BAG_KEY = 'fp_unidades_att_bag';
+const UNI_ANEXO_INLINE_MAX = 60000;
+function uniAttBagGet(){
+    try { return JSON.parse(localStorage.getItem(FP_UNIDADES_ATT_BAG_KEY) || '{}') || {}; }
+    catch(_){ return {}; }
+}
+function uniAttBagSet(bag){
+    try {
+        localStorage.setItem(FP_UNIDADES_ATT_BAG_KEY, JSON.stringify(bag || {}));
+    } catch(e){
+        if(e && (e.name === 'QuotaExceededError' || e.code === 22)){
+            throw new Error('Espaço insuficiente para guardar anexos. Use um PDF menor, ligue a pasta de anexos ou exporte dados antigos.');
+        }
+        throw e;
+    }
+}
+function uniAttBagKey(cod, part){
+    const c = String(cod || 'u').replace(/[^\w.-]/g, '_').slice(0, 40);
+    return 'unidades/' + c + '/' + part;
+}
+function uniOffloadAnexoToBag(cod, part, nome, dataUrl){
+    if(!dataUrl || typeof dataUrl !== 'string') return { anexoNome: nome || '', anexoData: '', anexoRef: '' };
+    if(dataUrl.length <= UNI_ANEXO_INLINE_MAX) return { anexoNome: nome || '', anexoData: dataUrl, anexoRef: '' };
+    const key = uniAttBagKey(cod, part);
+    const bag = uniAttBagGet();
+    bag[key] = dataUrl;
+    uniAttBagSet(bag);
+    return { anexoNome: nome || '', anexoData: '', anexoRef: key };
+}
+function uniPrepareUnidadeForStorage(u){
+    if(!u) return u;
+    const o = { ...u };
+    const cod = o.cod || o.nome || 'u';
+    if(o.contratoAnexoData){
+        const off = uniOffloadAnexoToBag(cod, 'contrato', o.contratoAnexoNome, o.contratoAnexoData);
+        o.contratoAnexoNome = off.anexoNome;
+        o.contratoAnexoData = off.anexoData;
+        o.contratoAnexoRef = off.anexoRef || o.contratoAnexoRef || '';
+    }
+    if(Array.isArray(o.aditivos)){
+        o.aditivos = o.aditivos.map((a, i) => {
+            if(!a || !a.anexoData) return a;
+            const off = uniOffloadAnexoToBag(cod, 'aditivo_' + i, a.anexoNome, a.anexoData);
+            return { ...a, anexoNome: off.anexoNome, anexoData: off.anexoData, anexoRef: off.anexoRef || a.anexoRef || '' };
+        });
+    }
+    return o;
+}
 function getUnidades(){ return JSON.parse(localStorage.getItem(UNI_KEY) || '[]'); }
 function setUnidades(v){
-    localStorage.setItem(UNI_KEY, JSON.stringify(v));
+    const prepared = Array.isArray(v) ? v.map(u => uniPrepareUnidadeForStorage(u)) : v;
+    try {
+        localStorage.setItem(UNI_KEY, JSON.stringify(prepared));
+    } catch(e){
+        const msg = (e && (e.name === 'QuotaExceededError' || e.code === 22))
+            ? 'Não foi possível guardar: o anexo ou os dados da unidade excedem o espaço do navegador. Reduza o PDF, ligue a pasta de anexos ou sincronize com a nuvem.'
+            : ('Erro ao guardar unidades: ' + (e && e.message ? e.message : String(e)));
+        alert(msg);
+        throw e;
+    }
     fpAfterPersistentStorageWrite();
     if(typeof refreshUnidadesPostosUnidadeSelect === 'function') refreshUnidadesPostosUnidadeSelect();
 }
@@ -11021,7 +11145,13 @@ function finalizarSalvarUnidadeCadastro(opts){
         const merged = { ...atual, ...item, ...uniCollectContratoAnexoPayload(atual), indiceReajuste: opts.indice, aditivos, vencimentoContrato: venc, historicoTabela };
         uniMergeTabelaIntoUnidade(merged, uniExtractTabelaFromUnidade(merged));
         arr[editIdx] = merged;
-        setUnidades(arr);
+        try {
+            setUnidades(arr);
+        } catch(e){
+            console.error('[uni] finalizarSalvarUnidadeCadastro', e);
+            alert(e && e.message ? e.message : 'Erro ao guardar a unidade.');
+            return;
+        }
         uniReajustePendingData = null;
         unidadeContratoAnexoPending = null;
         limparUnidadeForm();
@@ -11052,10 +11182,39 @@ function limparUnidadeForm(){
     if(panel) panel.style.display = 'none';
 }
 function salvarUnidade(){
+    const btn = document.querySelector('#uni-cadastro .btn-success[onclick*="salvarUnidade"]') ||
+        document.querySelector('button.btn-success[onclick="salvarUnidade()"]');
+    if(btn && btn.dataset.uniSaving === '1') return;
     const cod = document.getElementById('uniCod')?.value?.trim();
     if(!cod){ alert('Informe o código da unidade.'); return; }
     const nome = getInputVal('uniNome').trim();
     if(!nome){ alert('Informe o nome da unidade.'); return; }
+    if(btn){ btn.dataset.uniSaving = '1'; btn.disabled = true; const t = btn.textContent; btn.textContent = 'Salvando…'; }
+    const endBusy = () => {
+        if(!btn) return;
+        btn.dataset.uniSaving = '';
+        btn.disabled = false;
+        btn.textContent = 'Salvar unidade';
+    };
+    ensureUniContratoAnexoReady((ok) => {
+        if(!ok){ endBusy(); return; }
+        try {
+            const saved = salvarUnidadeCommit();
+            if(saved) alert('Unidade guardada com sucesso.');
+        } catch(e){
+            console.error('[uni] salvarUnidade', e);
+            if(!(e && (e.name === 'QuotaExceededError' || e.code === 22))) alert('Não foi possível concluir o guardar. Verifique os dados e tente de novo.');
+        } finally {
+            endBusy();
+        }
+    });
+}
+/** @returns {boolean} true se gravou; false se abriu modal de reajuste */
+function salvarUnidadeCommit(){
+    const cod = document.getElementById('uniCod')?.value?.trim();
+    if(!cod){ alert('Informe o código da unidade.'); return false; }
+    const nome = getInputVal('uniNome').trim();
+    if(!nome){ alert('Informe o nome da unidade.'); return false; }
     const tabela = uniCollectTabelaPayload();
     const indiceReajuste = getInputVal('uniIndiceReajuste');
     const item = {
@@ -11118,7 +11277,7 @@ function salvarUnidade(){
             uniReajustePendingData = { type: 'cadastro', editIdx, item, atual, aditivos, venc };
             uniReajustePendingSave = (opts) => finalizarSalvarUnidadeCadastro(opts);
             promptUniReajusteTabela({ indice: indiceReajuste || atual.indiceReajuste || '', percentualReajuste: '' });
-            return;
+            return false;
         }
         const histNovos = uniBuildHistoricoTabelaDiff(atual, { ...atual, ...item }, { indice: indiceReajuste, percentualReajuste: '' });
         const historicoTabela = uniMergeHistoricoTabela(atual.historicoTabela, histNovos);
@@ -11139,6 +11298,7 @@ function salvarUnidade(){
     if(document.getElementById('uniViewShell')?.style.display !== 'none'){
         renderUnidadeVisualizacao();
     }
+    return true;
 }
 function excluirUnidadeIndividual(idx){
     const arr = getUnidades();
@@ -11664,15 +11824,27 @@ function salvarUnidadeViewDados(){
 function salvarUnidadeViewContratos(){
     const idx = uniViewSelectedIdx ?? getUniViewSelectedIdx();
     if(idx == null){ alert('Selecione uma unidade.'); return; }
+    const btn = document.querySelector('#uniViewContratosBar .btn-fp-orange');
+    if(btn && btn.disabled) return;
+    if(btn){ btn.disabled = true; btn.textContent = 'Salvando…'; }
+    const endBusy = () => { if(btn){ btn.disabled = false; btn.textContent = 'Salvar'; } };
     const arr = getUnidades();
     const atual = arr[idx];
     const finish = (anexoPatch) => {
-        arr[idx] = { ...atual, ...uniCollectContratosPayloadView(), ...anexoPatch };
-        setUnidades(arr);
-        alert('Contratos salvos.');
-        uniViewEditing.contratos = false;
-        renderUnidadeVisualizacao();
+        try {
+            arr[idx] = { ...atual, ...uniCollectContratosPayloadView(), ...anexoPatch };
+            setUnidades(arr);
+            alert('Contratos salvos.');
+            uniViewEditing.contratos = false;
+            renderUnidadeVisualizacao();
+        } catch(e){
+            console.error('[uni] salvar contratos', e);
+        } finally {
+            endBusy();
+        }
     };
+    const file = document.getElementById('uniVcContratoAnexo')?.files?.[0];
+    if(file && !uniValidateContratoFile(file)) { endBusy(); return; }
     readUniContratoAnexoFileInput('uniVcContratoAnexo', pending => {
         if(pending){
             finish({ contratoAnexoNome: pending.anexoNome, contratoAnexoData: pending.anexoData, contratoAnexoRef: '' });
