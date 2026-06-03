@@ -2915,7 +2915,7 @@ td { color: var(--t); font-weight: 500;}
                 </div>
                 <div id="uniViewPanelPostos" class="uni-view-panel active">
                     <div id="uniViewPostosReadonly">
-                        <p style="margin:0 0 8px;font-size:12px;color:#555;">Ficha de postos — o Quadro de Postos usa estes registos.</p>
+                        <p style="margin:0 0 8px;font-size:12px;color:#555;">Ficha de postos (código, horários, escala). Colaborador aparece no <strong>Quadro atual</strong> conforme o <strong>Cadastro</strong> de funcionários (<strong>Atuando</strong> = esta unidade).</p>
                         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 10px;">
                             <input id="uniPostoBuscaCodigo" type="text" placeholder="Buscar posto por código (ex.: 1501)" style="max-width:280px;">
                             <button type="button" class="btn btn-fp-gray" onclick="localizarPostoPorCodigo()">Localizar</button>
@@ -2928,7 +2928,6 @@ td { color: var(--t); font-weight: 500;}
                     <div class="body uni-postos-form" id="uniViewPostosForm">
                         <input type="hidden" id="uniPostoEditId" value="">
                         <div><label for="uniPostoCodigo">Código do posto</label><input id="uniPostoCodigo" type="text" placeholder="Ex.: P-01" oninput="uniMarkFilledInputs(this.closest('.uni-postos-form'))"></div>
-                        <div style="grid-column: span 2;"><label for="uniPostoColaborador">Colaborador</label><select id="uniPostoColaborador" onchange="uniMarkFilledInputs(this.closest('.uni-postos-form'))"><option value="">— Selecione —</option></select></div>
                         <div><label for="uniPostoDias">Dias da semana</label><select id="uniPostoDias" onchange="uniMarkFilledInputs(this.closest('.uni-postos-form'))"><option value="">Selecione</option></select></div>
                         <div><label for="uniPostoEscala">Escala</label><select id="uniPostoEscala" onchange="uniMarkFilledInputs(this.closest('.uni-postos-form'))"><option value="">Selecione</option></select></div>
                         <div><label for="uniPostoParidade">12x36 (pares/ímpares)</label><select id="uniPostoParidade" onchange="uniMarkFilledInputs(this.closest('.uni-postos-form'))"><option value="">N/A</option><option value="PARES">PARES</option><option value="ÍMPARES">ÍMPARES</option></select></div>
@@ -3037,7 +3036,7 @@ td { color: var(--t); font-weight: 500;}
             <article class="panel list ref-report quadro-atual-report">
                 <div class="head">
                     <h2>Quadro atual</h2>
-                    <p class="ref-report-sub">Relatório de postos cadastrados em <strong>Unidades → Postos</strong>. Colaborador e função do cadastro de funcionários; <strong>Registro</strong> = empresa em que o colaborador está registrado.</p>
+                    <p class="ref-report-sub">Relatório de postos cadastrados em <strong>Unidades → Postos</strong>. <strong>Colaborador, função e registro</strong> vêm só da aba <strong>Cadastro</strong> (campo <strong>Atuando</strong> = unidade; opcional código do posto no cadastro). A aba Postos não grava nome de funcionário.</p>
                 </div>
                 <div class="ref-report-actions">
                     <button type="button" class="btn btn-info" onclick="abrirUnidadePostos()">Abrir cadastro de postos (Unidades)</button>
@@ -12296,7 +12295,6 @@ function onUnidadePostosViewSelectChange(){
         uniViewEditing.postos = false;
         renderUnidadeVisualizacao();
         renderUnidadesPostosList();
-        fillUniPostoColaboradorSelect();
     } catch(e){
         console.error('[uni] onUnidadePostosViewSelectChange', e);
         alert('Não foi possível abrir os postos desta unidade. Atualize a página (Ctrl+F5).');
@@ -13512,25 +13510,11 @@ function catalogPostoToQuadroRow(p, catalogIdx){
         __idx: catalogIdx,
         __catalogId: p.id
     };
-    const emp = typeof findColaboradorParaPostoCatalog === 'function' ? findColaboradorParaPostoCatalog(p, row) : null;
-    if(emp){
-        if(!String(row.nome || '').trim()) row.nome = String(emp.nome || '').trim();
-        if(!String(row.registro2 || '').trim()){
-            const reg = String(emp.empresa || '').trim();
-            if(reg && reg !== 'Sem empresa') row.registro2 = reg;
-        }
-        if(!String(row.funcao || '').trim()) row.funcao = String(emp.cargo || '').trim();
-        if(!String(row.escala || '').trim()){
-            row.escala = String(emp.escala || emp.jornada || '').trim();
-            row.jornada = row.escala;
-        }
-    }
     return row;
 }
 function refreshUnidadesPostosUnidadeSelect(){
     fillUniPostoDiasSelect();
     fillUniPostoEscalaSelect();
-    fillUniPostoColaboradorSelect();
 }
 /** Colaborador «Atuando» coincide com nome ou código da unidade (cadastro de funcionários / unidades). */
 function employeeAtuandoMatchesUnidade(emp, unidadeNome, unidadeCod){
@@ -13547,37 +13531,8 @@ function employeeAtuandoMatchesUnidade(emp, unidadeNome, unidadeCod){
     }
     return false;
 }
-function fillUniPostoColaboradorSelect(selected){
-    const sel = document.getElementById('uniPostoColaborador');
-    if(!sel) return;
-    const cur = selected !== undefined ? selected : (sel.value || '');
-    const unidade = getUnidadeAtualParaPostosView();
-    const ativos = (state.employees || []).filter(e => {
-        const st = String(e.status || '').toUpperCase();
-        return !st.includes('DESLIG');
-    });
-    const naUnidade = unidade
-        ? ativos.filter(e => employeeAtuandoMatchesUnidade(e, unidade.nome, unidade.cod))
-        : [];
-    const list = naUnidade.length ? naUnidade : ativos;
-    const nomes = [...new Set(list.map(e => String(e.nome || '').trim()).filter(Boolean))]
-        .sort((a, b) => a.localeCompare(b, 'pt-BR'));
-    let html = '<option value="">— Selecione —</option>';
-    if(unidade && naUnidade.length){
-        html += '<optgroup label="Colaboradores nesta unidade (Atuando)">';
-        html += naUnidade.map(e => `<option value="${esc(e.nome)}">${esc(e.nome)}</option>`).join('');
-        html += '</optgroup>';
-        const outros = ativos.filter(e => !naUnidade.includes(e));
-        if(outros.length){
-            html += '<optgroup label="Outros colaboradores">';
-            html += outros.map(e => `<option value="${esc(e.nome)}">${esc(e.nome)}</option>`).join('');
-            html += '</optgroup>';
-        }
-    } else {
-        html += nomes.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
-    }
-    sel.innerHTML = html;
-    if(cur && [...sel.options].some(o => o.value === cur)) sel.value = cur;
+function employeeCodigoPostoCadastro(emp){
+    return String(emp?.codPosto || emp?.codigoPosto || emp?.codigo_posto || '').trim().toUpperCase();
 }
 function fillUniPostoEscalaSelect(selected){
     const sel = document.getElementById('uniPostoEscala');
@@ -13605,7 +13560,6 @@ function limparFormPostoUnidade(){
     ids.forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
     fillUniPostoDiasSelect('');
     fillUniPostoEscalaSelect('');
-    fillUniPostoColaboradorSelect('');
     const parEl = document.getElementById('uniPostoParidade');
     if(parEl) parEl.value = '';
     const title = document.getElementById('uniViewPostosListTitle');
@@ -13629,7 +13583,6 @@ function salvarPostoUnidadeCatalog(){
     const retornoIntervalo = (document.getElementById('uniPostoRetornoIntervalo')?.value || '').trim();
     const saida = (document.getElementById('uniPostoSaida')?.value || '').trim();
     const supervisor = (document.getElementById('uniPostoSupervisor')?.value || '').trim();
-    const nomeColaborador = (document.getElementById('uniPostoColaborador')?.value || '').trim();
     const editId = (document.getElementById('uniPostoEditId')?.value || '').trim();
     const arr = getUnidadesPostosCatalog();
     const uKey = _normUniPostoUnidadeKey(unidade.cod, unidade.nome);
@@ -13653,33 +13606,25 @@ function salvarPostoUnidadeCatalog(){
         retornoIntervalo,
         saida,
         supervisor,
-        nome: nomeColaborador,
         atualizadoEm: new Date().toISOString()
     };
-    if(nomeColaborador){
-        const emp = findEmployeeForPostoNome(nomeColaborador);
-        if(emp){
-            payload.funcao = String(emp.cargo || '').trim();
-            const reg = String(emp.empresa || '').trim();
-            if(reg && reg !== 'Sem empresa') payload.registro2 = reg;
-            payload.idRh = String(emp.codigoRH || emp.codigoESocial || '').trim();
-            if(!String(emp.atuando || '').trim() && unidade.nome) emp.atuando = String(unidade.nome).trim();
-        }
-    } else {
-        payload.funcao = '';
-        payload.registro2 = '';
-        payload.idRh = '';
-    }
+    const stripColaboradorDoCatalogo = (o) => {
+        if(!o || typeof o !== 'object') return o;
+        delete o.nome;
+        delete o.funcao;
+        delete o.registro2;
+        delete o.idRh;
+        return o;
+    };
     if(editId){
         const ix = arr.findIndex(p => String(p.id) === editId);
-        if(ix >= 0) arr[ix] = { ...arr[ix], ...payload };
-        else arr.unshift(payload);
+        if(ix >= 0) arr[ix] = stripColaboradorDoCatalogo({ ...arr[ix], ...payload });
+        else arr.unshift(stripColaboradorDoCatalogo({ ...payload }));
     } else {
         payload.criadoEm = payload.atualizadoEm;
-        arr.unshift(payload);
+        arr.unshift(stripColaboradorDoCatalogo(payload));
     }
     setUnidadesPostosCatalog(arr);
-    if(nomeColaborador && typeof fpSaveEmployeesToLocalStorage === 'function') fpSaveEmployeesToLocalStorage();
     limparFormPostoUnidade();
     renderUnidadesPostosList();
     if(typeof renderPostosPanorama === 'function') renderPostosPanorama();
@@ -13710,7 +13655,6 @@ function editarPostoUnidadeCatalog(idEnc){
     document.getElementById('uniPostoRetornoIntervalo').value = row.retornoIntervalo || '';
     document.getElementById('uniPostoSaida').value = row.saida || '';
     document.getElementById('uniPostoSupervisor').value = row.supervisor || '';
-    fillUniPostoColaboradorSelect(row.nome || '');
     const title = document.getElementById('uniViewPostosListTitle');
     if(title) title.textContent = 'Postos cadastrados — editando ' + (row.codigo || '');
     renderUnidadesPostosList();
@@ -13753,11 +13697,8 @@ function renderUnidadesPostosList(){
         <th class="uni-ficha-lbl">Retorno int.</th><th class="uni-ficha-lbl">Saída</th><th class="uni-ficha-lbl">Supervisor</th>${acoesTh}
         </tr></thead><tbody>${
         rows.map(r => {
-            const colab = String(r.nome || '').trim();
-            const colabExibir = colab || (function(){
-                const emp = findColaboradorParaPostoCatalog(r, null);
-                return emp ? String(emp.nome || '').trim() : '';
-            })();
+            const empCad = findColaboradorParaPostoCatalog(r, null);
+            const colabExibir = empCad ? String(empCad.nome || '').trim() : '';
             const idEnc = encodeURIComponent(String(r.id || ''));
             const acoes = `<td class="uni-ficha-val" style="white-space:nowrap;">
                     <button type="button" class="btn btn-fp-gray" onclick="editarPostoUnidadeCatalog('${idEnc}')">Editar</button>
@@ -13964,54 +13905,49 @@ function fmtQuadroAtualHora(v){
     const s = String(v || '').trim();
     return s || '—';
 }
-/** Colaborador do posto: nome no catálogo, cadastro (Atuando/código posto) ou linha legada do quadro. */
+/** Colaborador do posto: somente aba Cadastro (Atuando / código posto). Ignora nome gravado no catálogo Unidades→Postos. */
 function findColaboradorParaPostoCatalog(p, row){
     row = row || {};
-    const nomeCat = String(p.nome || row.nome || '').trim();
-    if(nomeCat){
-        const emp = findEmployeeForPostoNome(nomeCat);
-        if(emp) return emp;
-    }
     const postoK = String(p.codigo || row.posto || '').trim().toUpperCase();
     const uniNome = String(p.unidadeNome || row.unidade || '').trim();
     const uniCod = String(p.unidadeCod || '').trim();
     const uniK = normText(uniNome || uniCod);
+    const empsAtivos = (state.employees || []).filter(e => {
+        const st = String(e.status || '').toUpperCase();
+        return !st.includes('DESLIG') && employeeAtuandoMatchesUnidade(e, uniNome, uniCod);
+    });
+    if(empsAtivos.length){
+        if(postoK){
+            const byCod = empsAtivos.filter(e => employeeCodigoPostoCadastro(e) === postoK);
+            if(byCod.length === 1) return byCod[0];
+        }
+        const uKey = _normUniPostoUnidadeKey(uniCod, uniNome);
+        const catUni = (getUnidadesPostosCatalog() || []).filter(cp =>
+            _normUniPostoUnidadeKey(cp.unidadeCod, cp.unidadeNome) === uKey
+        );
+        const assignedElsewhere = new Set();
+        catUni.forEach(cp => {
+            const ck = String(cp.codigo || '').trim().toUpperCase();
+            if(!ck || ck === postoK) return;
+            empsAtivos.forEach(e => {
+                if(employeeCodigoPostoCadastro(e) === ck) assignedElsewhere.add(normText(e.nome || ''));
+            });
+        });
+        const livres = empsAtivos.filter(e => !assignedElsewhere.has(normText(e.nome || '')));
+        const vagas = catUni.filter(cp => !String(cp.nome || '').trim());
+        if(livres.length === 1){
+            if(postoK && vagas.length === 1 && String(vagas[0].codigo || '').trim().toUpperCase() === postoK) return livres[0];
+            if(catUni.length === 1 && String(catUni[0].codigo || '').trim().toUpperCase() === postoK) return livres[0];
+            if(empsAtivos.length === 1) return livres[0];
+        }
+        if(empsAtivos.length === 1 && catUni.length <= 1) return empsAtivos[0];
+    }
     const q = (state.quadroGeral || []).find(r =>
         normText(String(r.unidade || '').trim()) === uniK &&
         String(r.posto || r.codigo || '').trim().toUpperCase() === postoK &&
         String(r.nome || '').trim()
     );
     if(q) return findEmployeeForPostoNome(q.nome);
-    const empsAtivos = (state.employees || []).filter(e => {
-        const st = String(e.status || '').toUpperCase();
-        return !st.includes('DESLIG') && employeeAtuandoMatchesUnidade(e, uniNome, uniCod);
-    });
-    if(!empsAtivos.length) return null;
-    const byCodEmp = empsAtivos.find(e => {
-        const c = String(e.codPosto || e.codigoPosto || e.codigo_posto || e.posto || '').trim().toUpperCase();
-        return c && c === postoK;
-    });
-    if(byCodEmp) return byCodEmp;
-    const byCodInv = empsAtivos.find(e => {
-        const cod = getCodigoPostoByColaboradorNome(e.nome, uniNome || uniCod);
-        return cod && String(cod).trim().toUpperCase() === postoK;
-    });
-    if(byCodInv) return byCodInv;
-    const uKey = _normUniPostoUnidadeKey(uniCod, uniNome);
-    const catUni = (getUnidadesPostosCatalog() || []).filter(cp =>
-        _normUniPostoUnidadeKey(cp.unidadeCod, cp.unidadeNome) === uKey
-    );
-    const ocupados = new Set(
-        catUni.map(cp => normText(cp.nome || '')).filter(Boolean)
-    );
-    const livres = empsAtivos.filter(e => !ocupados.has(normText(e.nome || '')));
-    const vagas = catUni.filter(cp => !String(cp.nome || '').trim());
-    if(livres.length === 1){
-        if(vagas.length === 1 && String(vagas[0].codigo || '').trim().toUpperCase() === postoK) return livres[0];
-        if(catUni.length === 1 && String(catUni[0].codigo || '').trim().toUpperCase() === postoK) return livres[0];
-        if(!nomeCat && empsAtivos.length === 1) return livres[0];
-    }
-    if(empsAtivos.length === 1 && !nomeCat) return empsAtivos[0];
     return null;
 }
 function fmtEmpresaRegistroColaborador(emp){
@@ -14268,7 +14204,7 @@ function renderPostosPanorama(){
                 </select>
             </div>
         </div>
-        <p style="margin:0 0 10px;font-size:12px;color:#6b7280;">${linhasFiltradas.length} posto(s) exibido(s) de ${linhas.length} total — competência de cálculo mensal: <strong>${String(comp.mes).padStart(2,'0')}/${comp.ano}</strong>. Alterações em <strong>Unidades → Postos</strong>; vínculo do colaborador no <strong>Cadastro</strong> de funcionários.</p>
+        <p style="margin:0 0 10px;font-size:12px;color:#6b7280;">${linhasFiltradas.length} posto(s) exibido(s) de ${linhas.length} total — competência: <strong>${String(comp.mes).padStart(2,'0')}/${comp.ano}</strong>. Postos em <strong>Unidades → Postos</strong>; colaborador só na aba <strong>Cadastro</strong> (<strong>Atuando</strong> = unidade).</p>
         ${gruposHtml}`;
 }
 
