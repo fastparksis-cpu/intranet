@@ -6924,6 +6924,16 @@ window.fpOnCloudDataReady = async function () {
         if(typeof renderUnidadesList === 'function') renderUnidadesList();
         else if(typeof refreshUnidadesViewSelect === 'function') refreshUnidadesViewSelect();
     } catch(uniUiErr) { console.warn('[FP] UI unidades pós-nuvem', uniUiErr); }
+    try {
+        if(typeof renderLaudosList === 'function') renderLaudosList();
+        if(typeof renderLaudosHistorico === 'function') renderLaudosHistorico();
+        if(typeof renderSinistrosList === 'function') renderSinistrosList();
+        if(typeof renderSinistrosBaixa === 'function') renderSinistrosBaixa();
+        if(typeof renderSinistrosHistorico === 'function') renderSinistrosHistorico();
+        if(typeof renderPropostasLista === 'function') renderPropostasLista();
+        if(typeof refreshMovGestaoPagamentosUi === 'function') refreshMovGestaoPagamentosUi();
+        if(typeof renderVtHistory === 'function') renderVtHistory();
+    } catch(modUiErr) { console.warn('[FP] UI módulos pós-nuvem', modUiErr); }
     fpPushDashboardWithRetry();
 };
 async function fpWaitForAuthSession(maxMs){
@@ -7924,6 +7934,10 @@ const FP_FIN_RELATORIOS_KEY = 'fp_fin_relatorios';
 const FP_EST_FORNECEDORES_KEY = 'fp_est_fornecedores';
 const FP_EST_ESTOQUE_KEY = 'fp_est_estoque';
 const FP_EST_SAIDAS_KEY = 'fp_est_saidas';
+const FP_ASO_RENOV_KEY = 'fp_aso_renov_hist';
+const FP_SALARIO_HIST_KEY = 'fp_salario_hist';
+const FP_FICHA_VALORES_KEY = 'fp_ficha_valores_visiveis';
+const FP_PROPOSTA_MODELO_IDB_KEY = 'fp_proposta_modelo_pptx_v1';
 const FP_PEDIDOS_KEY = 'fastparkPedidosCestas';
 const FP_IDB_NAME = 'fp-intranet-autosave-v1';
 const FP_IDB_STORE = 'kv';
@@ -7941,17 +7955,23 @@ const FP_SNAPSHOT_STORAGE_REGISTRY = [
     { key: FP_REF_SAUDE_KEY, area: 'Referências — Saúde' },
     { key: FP_REF_ODONTO_KEY, area: 'Referências — Odonto' },
     { key: FP_REF_VT_TIPOS_KEY, area: 'Referências — VT tipos' },
-    { key: FP_REF_EMPRESAS_KEY, area: 'Referências — Empresas' },
+    { key: FP_REF_EMPRESAS_KEY, area: 'Empresas / Referências — Empresas' },
+    { key: FP_ASO_RENOV_KEY, area: 'DP — Início / Cadastro (histórico ASO)' },
+    { key: FP_SALARIO_HIST_KEY, area: 'DP — Início / Cadastro (histórico salário)' },
+    { key: FP_FICHA_VALORES_KEY, area: 'DP — Cadastro (preferência valores na ficha)' },
     { key: FP_REF_SAUDE_HIST_KEY, area: 'Referências — Histórico saúde' },
     { key: FP_REF_ODONTO_HIST_KEY, area: 'Referências — Histórico odonto' },
     { key: FP_REF_VT_HIST_KEY, area: 'Referências — Histórico VT' },
     { key: FP_REF_VR_KEY, area: 'Referências — Vale refeição' },
     { key: FP_REF_VR_HIST_KEY, area: 'Referências — Histórico VR' },
     { key: UNI_KEY, area: 'Unidades' },
+    { key: FP_UNIDADES_ATT_BAG_KEY, area: 'Unidades — Anexos (contrato/aditivos)' },
     { key: FP_PEDIDOS_KEY, area: 'Gestão de Benefícios' },
     { key: FERIAS_HIST_KEY, area: 'Férias' },
     { key: FP_GESTAO_PAGAMENTOS_KEY, area: 'Gestão de Folha de Pagamento' },
+    { key: FP_GESTAO_PAGAMENTOS_HIST_IMPORT_KEY, area: 'Gestão de Folha — Histórico importado' },
     { key: FP_PROPOSTAS_KEY, area: 'Comercial — Propostas' },
+    { key: FP_PROPOSTA_MODELO_IDB_KEY, area: 'Comercial — Modelo PPTX (metadado IDB)' },
     { key: MOV_CAD_KEY, area: 'Movimentações' },
     { key: 'fp_vt_cfg', area: 'Vale Transporte' },
     { key: 'fp_vt_monthly', area: 'Vale Transporte (histórico)' },
@@ -7971,6 +7991,14 @@ const FP_SNAPSHOT_STORAGE_REGISTRY = [
     { key: 'pagasEmpresaPagadora', area: 'Pagas (empresa pagadora)' },
     { key: 'fp_darkmode', area: 'Preferências UI' }
 ];
+/** Chaves que devem disparar gravação automática no Supabase (alinhado ao sweep do snapshot). */
+function fpStorageKeyTriggersCloudSync(k){
+    if(!k) return false;
+    if(k === 'pagasEmpresaPagadora') return true;
+    const kl = String(k).toLowerCase();
+    return kl.indexOf('fp_') === 0 || kl.indexOf('fastpark') === 0;
+}
+window.fpStorageKeyTriggersCloudSync = fpStorageKeyTriggersCloudSync;
 function fpCollectAllIntranetLocalStorage(){
     const out = {};
     const seen = new Set();
@@ -9173,7 +9201,7 @@ async function collectFpIntranetSnapshot(){
         vtPeriodoIni: document.getElementById('vtPeriodoIni')?.value || '',
         vtPeriodoFim: document.getElementById('vtPeriodoFim')?.value || ''
     };
-    return {
+    const snap = {
         version: FP_DB_VERSION,
         sealed: true,
         exportedAt: new Date().toISOString(),
@@ -9241,6 +9269,42 @@ async function collectFpIntranetSnapshot(){
             return attachments;
         })()
     };
+    try {
+        const modeloBuf = await fpIdbGet(FP_PROPOSTA_MODELO_IDB_KEY);
+        if(modeloBuf && (modeloBuf.byteLength || modeloBuf.length)){
+            const modeloBlob = modeloBuf instanceof Blob
+                ? modeloBuf
+                : new Blob([modeloBuf], { type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' });
+            const modeloDataUrl = await new Promise(function(resolve, reject){
+                const r = new FileReader();
+                r.onload = function(){ resolve(String(r.result || '')); };
+                r.onerror = function(){ reject(r.error); };
+                r.readAsDataURL(modeloBlob);
+            });
+            if(modeloDataUrl && modeloDataUrl.startsWith('data:')){
+                const modeloRef = await putAtt('propostas/modelo_template.pptx', modeloDataUrl);
+                if(modeloRef){
+                    snap.attachments = snap.attachments || {};
+                    snap.attachments[modeloRef] = attachments[modeloRef];
+                }
+            }
+        }
+    } catch(modeloErr) { console.warn('[FP] modelo proposta snapshot', modeloErr); }
+    return snap;
+}
+async function fpRestorePropostaModeloFromSnapshot(att){
+    if(!att || typeof att !== 'object') return;
+    const path = 'propostas/modelo_template.pptx';
+    const v = att[path];
+    if(!v) return;
+    try {
+        let buf = null;
+        if(typeof v === 'string' && v.startsWith('data:')){
+            const blob = await fpDataUrlToBlob(v);
+            buf = await blob.arrayBuffer();
+        }
+        if(buf && buf.byteLength) await fpIdbPut(FP_PROPOSTA_MODELO_IDB_KEY, buf);
+    } catch(e) { console.warn('[FP] restore modelo proposta', e); }
 }
 async function applyFpEmbeddedIntranetDb(db, opts){
     opts = opts || {};
@@ -9397,6 +9461,7 @@ async function applyFpEmbeddedIntranetDb(db, opts){
         if(typeof renderUnidadesList === 'function') renderUnidadesList();
         else if(typeof refreshUnidadesViewSelect === 'function') refreshUnidadesViewSelect();
     } catch(uniUiErr) { console.warn('[FP] UI unidades pós-snapshot', uniUiErr); }
+    await fpRestorePropostaModeloFromSnapshot(att);
     } finally {
         window.__fpLsHookPause = false;
     }
@@ -9595,6 +9660,13 @@ async function fpFlushAllTabsToLocalStorage(){
         try { localStorage.setItem(FP_GESTAO_PAGAMENTOS_KEY, JSON.stringify(movGestGetStore())); } catch(e8) { console.warn(e8); }
         try { localStorage.setItem(FERIAS_HIST_KEY, JSON.stringify(getFeriasHist())); } catch(e11) { console.warn(e11); }
         try { localStorage.setItem(FP_PEDIDOS_KEY, JSON.stringify(loadPedidos())); } catch(e12) { console.warn(e12); }
+        try { localStorage.setItem(FP_PROPOSTAS_KEY, localStorage.getItem(FP_PROPOSTAS_KEY) || '[]'); } catch(e12b) { console.warn(e12b); }
+        try { localStorage.setItem('fp_vt_cfg', localStorage.getItem('fp_vt_cfg') || '{}'); } catch(eVt) { console.warn(eVt); }
+        try { localStorage.setItem('fp_vt_monthly', localStorage.getItem('fp_vt_monthly') || '[]'); } catch(eVt2) { console.warn(eVt2); }
+        try {
+            const gph = localStorage.getItem(FP_GESTAO_PAGAMENTOS_HIST_IMPORT_KEY);
+            if(gph != null) localStorage.setItem(FP_GESTAO_PAGAMENTOS_HIST_IMPORT_KEY, gph);
+        } catch(eGph) { console.warn(eGph); }
         [FP_FIN_CONTAS_PAGAR_KEY, FP_FIN_CONTAS_RECEBER_KEY, FP_FIN_RELATORIOS_KEY,
             FP_EST_FORNECEDORES_KEY, FP_EST_ESTOQUE_KEY, FP_EST_SAIDAS_KEY].forEach(function(k){
             try { if(localStorage.getItem(k) === null) localStorage.setItem(k, '[]'); } catch(_e) {}
@@ -9647,7 +9719,13 @@ async function fpIdbPut(key, val){
     return new Promise((resolve, reject) => {
         const tx = db.transaction(FP_IDB_STORE, 'readwrite');
         tx.objectStore(FP_IDB_STORE).put(val, key);
-        tx.oncomplete = () => { try { db.close(); } catch(e) {} resolve(); };
+        tx.oncomplete = () => {
+            try { db.close(); } catch(e) {}
+            if(key === FP_EMPLOYEES_ATTACHMENTS_IDB_KEY || key === FP_PROPOSTA_MODELO_IDB_KEY){
+                if(typeof fpAfterPersistentStorageWrite === 'function') fpAfterPersistentStorageWrite();
+            }
+            resolve();
+        };
         tx.onerror = () => reject(tx.error);
     });
 }
@@ -10059,12 +10137,11 @@ async function fpExecutePersistToDiskAndDom(){
 }
 function fpInstallAutosaveHooks(){
     if(Storage.prototype.__fpOrigSetItem) return;
-    const keys = new Set(['fastparkHistorico','fastparkPedidosCestas','fp_mov_cad','fp_unidades','fp_unidades_att_bag','fp_faltas_atestados','fp_pagas_signed_docs','fp_ferias_hist','fp_vt_cfg','fp_vt_monthly','pagasEmpresaPagadora','fp_postos_extras', FP_UNIDADES_POSTOS_KEY, 'fp_audit', FP_QUADRO_GERAL_KEY, FP_EMPLOYEES_STORE_KEY, FP_PAGAS_LANCAMENTOS_KEY, FP_SINISTROS_KEY, FP_LAUDOS_KEY, FP_GESTAO_PAGAMENTOS_KEY]);
     Storage.prototype.__fpOrigSetItem = Storage.prototype.setItem;
     Storage.prototype.setItem = function(k, v){
         Storage.prototype.__fpOrigSetItem.call(this, k, v);
         if(window.__fpLsHookPause) return;
-        if(keys.has(k)) {
+        if(typeof fpStorageKeyTriggersCloudSync === 'function' && fpStorageKeyTriggersCloudSync(k)) {
             fpSchedulePersist();
             fpAfterPersistentStorageWrite();
         }
