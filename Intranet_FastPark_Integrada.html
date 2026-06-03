@@ -2928,6 +2928,7 @@ td { color: var(--t); font-weight: 500;}
                     <div class="body uni-postos-form" id="uniViewPostosForm">
                         <input type="hidden" id="uniPostoEditId" value="">
                         <div><label for="uniPostoCodigo">Código do posto</label><input id="uniPostoCodigo" type="text" placeholder="Ex.: P-01" oninput="uniMarkFilledInputs(this.closest('.uni-postos-form'))"></div>
+                        <div style="grid-column: span 2;"><label for="uniPostoColaborador">Colaborador</label><select id="uniPostoColaborador" onchange="uniMarkFilledInputs(this.closest('.uni-postos-form'))"><option value="">— Selecione —</option></select></div>
                         <div><label for="uniPostoDias">Dias da semana</label><select id="uniPostoDias" onchange="uniMarkFilledInputs(this.closest('.uni-postos-form'))"><option value="">Selecione</option></select></div>
                         <div><label for="uniPostoEscala">Escala</label><select id="uniPostoEscala" onchange="uniMarkFilledInputs(this.closest('.uni-postos-form'))"><option value="">Selecione</option></select></div>
                         <div><label for="uniPostoParidade">12x36 (pares/ímpares)</label><select id="uniPostoParidade" onchange="uniMarkFilledInputs(this.closest('.uni-postos-form'))"><option value="">N/A</option><option value="PARES">PARES</option><option value="ÍMPARES">ÍMPARES</option></select></div>
@@ -10271,6 +10272,7 @@ function salvarNovoFuncionario(){
     renderBeneficiosCestas();
     renderVtReport();
     renderPostosPanorama();
+    if(typeof sincronizarTodosPostosComCadastro === 'function') sincronizarTodosPostosComCadastro();
     alert('Funcionário cadastrado.');
     fpNotifyIntranetChanged();
     if(typeof propagateStateToDashboardIframes === 'function') propagateStateToDashboardIframes();
@@ -12294,6 +12296,7 @@ function onUnidadePostosViewSelectChange(){
         uniViewEditing.postos = false;
         renderUnidadeVisualizacao();
         renderUnidadesPostosList();
+        fillUniPostoColaboradorSelect();
     } catch(e){
         console.error('[uni] onUnidadePostosViewSelectChange', e);
         alert('Não foi possível abrir os postos desta unidade. Atualize a página (Ctrl+F5).');
@@ -13527,6 +13530,54 @@ function catalogPostoToQuadroRow(p, catalogIdx){
 function refreshUnidadesPostosUnidadeSelect(){
     fillUniPostoDiasSelect();
     fillUniPostoEscalaSelect();
+    fillUniPostoColaboradorSelect();
+}
+/** Colaborador «Atuando» coincide com nome ou código da unidade (cadastro de funcionários / unidades). */
+function employeeAtuandoMatchesUnidade(emp, unidadeNome, unidadeCod){
+    const a = normText(String(emp?.atuando || emp?.unidade || '').trim());
+    if(!a) return false;
+    if(unidadeNome && normText(unidadeNome) === a) return true;
+    if(unidadeCod && normText(unidadeCod) === a) return true;
+    const u = getUnidades().find(x =>
+        normText(x.nome) === normText(unidadeNome) || normText(x.cod) === normText(unidadeCod)
+    );
+    if(u){
+        if(normText(u.nome) === a) return true;
+        if(normText(u.cod) === a) return true;
+    }
+    return false;
+}
+function fillUniPostoColaboradorSelect(selected){
+    const sel = document.getElementById('uniPostoColaborador');
+    if(!sel) return;
+    const cur = selected !== undefined ? selected : (sel.value || '');
+    const unidade = getUnidadeAtualParaPostosView();
+    const ativos = (state.employees || []).filter(e => {
+        const st = String(e.status || '').toUpperCase();
+        return !st.includes('DESLIG');
+    });
+    const naUnidade = unidade
+        ? ativos.filter(e => employeeAtuandoMatchesUnidade(e, unidade.nome, unidade.cod))
+        : [];
+    const list = naUnidade.length ? naUnidade : ativos;
+    const nomes = [...new Set(list.map(e => String(e.nome || '').trim()).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    let html = '<option value="">— Selecione —</option>';
+    if(unidade && naUnidade.length){
+        html += '<optgroup label="Colaboradores nesta unidade (Atuando)">';
+        html += naUnidade.map(e => `<option value="${esc(e.nome)}">${esc(e.nome)}</option>`).join('');
+        html += '</optgroup>';
+        const outros = ativos.filter(e => !naUnidade.includes(e));
+        if(outros.length){
+            html += '<optgroup label="Outros colaboradores">';
+            html += outros.map(e => `<option value="${esc(e.nome)}">${esc(e.nome)}</option>`).join('');
+            html += '</optgroup>';
+        }
+    } else {
+        html += nomes.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+    }
+    sel.innerHTML = html;
+    if(cur && [...sel.options].some(o => o.value === cur)) sel.value = cur;
 }
 function fillUniPostoEscalaSelect(selected){
     const sel = document.getElementById('uniPostoEscala');
@@ -13554,6 +13605,7 @@ function limparFormPostoUnidade(){
     ids.forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
     fillUniPostoDiasSelect('');
     fillUniPostoEscalaSelect('');
+    fillUniPostoColaboradorSelect('');
     const parEl = document.getElementById('uniPostoParidade');
     if(parEl) parEl.value = '';
     const title = document.getElementById('uniViewPostosListTitle');
@@ -13577,6 +13629,7 @@ function salvarPostoUnidadeCatalog(){
     const retornoIntervalo = (document.getElementById('uniPostoRetornoIntervalo')?.value || '').trim();
     const saida = (document.getElementById('uniPostoSaida')?.value || '').trim();
     const supervisor = (document.getElementById('uniPostoSupervisor')?.value || '').trim();
+    const nomeColaborador = (document.getElementById('uniPostoColaborador')?.value || '').trim();
     const editId = (document.getElementById('uniPostoEditId')?.value || '').trim();
     const arr = getUnidadesPostosCatalog();
     const uKey = _normUniPostoUnidadeKey(unidade.cod, unidade.nome);
@@ -13600,8 +13653,23 @@ function salvarPostoUnidadeCatalog(){
         retornoIntervalo,
         saida,
         supervisor,
+        nome: nomeColaborador,
         atualizadoEm: new Date().toISOString()
     };
+    if(nomeColaborador){
+        const emp = findEmployeeForPostoNome(nomeColaborador);
+        if(emp){
+            payload.funcao = String(emp.cargo || '').trim();
+            const reg = String(emp.empresa || '').trim();
+            if(reg && reg !== 'Sem empresa') payload.registro2 = reg;
+            payload.idRh = String(emp.codigoRH || emp.codigoESocial || '').trim();
+            if(!String(emp.atuando || '').trim() && unidade.nome) emp.atuando = String(unidade.nome).trim();
+        }
+    } else {
+        payload.funcao = '';
+        payload.registro2 = '';
+        payload.idRh = '';
+    }
     if(editId){
         const ix = arr.findIndex(p => String(p.id) === editId);
         if(ix >= 0) arr[ix] = { ...arr[ix], ...payload };
@@ -13611,6 +13679,7 @@ function salvarPostoUnidadeCatalog(){
         arr.unshift(payload);
     }
     setUnidadesPostosCatalog(arr);
+    if(nomeColaborador && typeof fpSaveEmployeesToLocalStorage === 'function') fpSaveEmployeesToLocalStorage();
     limparFormPostoUnidade();
     renderUnidadesPostosList();
     if(typeof renderPostosPanorama === 'function') renderPostosPanorama();
@@ -13641,6 +13710,7 @@ function editarPostoUnidadeCatalog(idEnc){
     document.getElementById('uniPostoRetornoIntervalo').value = row.retornoIntervalo || '';
     document.getElementById('uniPostoSaida').value = row.saida || '';
     document.getElementById('uniPostoSupervisor').value = row.supervisor || '';
+    fillUniPostoColaboradorSelect(row.nome || '');
     const title = document.getElementById('uniViewPostosListTitle');
     if(title) title.textContent = 'Postos cadastrados — editando ' + (row.codigo || '');
     renderUnidadesPostosList();
@@ -13679,10 +13749,15 @@ function renderUnidadesPostosList(){
     const acoesTh = '<th class="uni-ficha-lbl" style="width:12%;">Ações</th>';
     el.innerHTML = uniFichaWrap('<section class="uni-ficha-block"><h4 class="uni-ficha-block-title">Postos cadastrados</h4>' +
         `<table class="uni-ficha-table"><thead><tr>
-        <th class="uni-ficha-lbl">Código</th><th class="uni-ficha-lbl">Dias</th><th class="uni-ficha-lbl">Escala</th><th class="uni-ficha-lbl">12x36</th><th class="uni-ficha-lbl">Entrada</th><th class="uni-ficha-lbl">Saída int.</th>
+        <th class="uni-ficha-lbl">Código</th><th class="uni-ficha-lbl">Colaborador</th><th class="uni-ficha-lbl">Dias</th><th class="uni-ficha-lbl">Escala</th><th class="uni-ficha-lbl">12x36</th><th class="uni-ficha-lbl">Entrada</th><th class="uni-ficha-lbl">Saída int.</th>
         <th class="uni-ficha-lbl">Retorno int.</th><th class="uni-ficha-lbl">Saída</th><th class="uni-ficha-lbl">Supervisor</th>${acoesTh}
         </tr></thead><tbody>${
         rows.map(r => {
+            const colab = String(r.nome || '').trim();
+            const colabExibir = colab || (function(){
+                const emp = findColaboradorParaPostoCatalog(r, null);
+                return emp ? String(emp.nome || '').trim() : '';
+            })();
             const idEnc = encodeURIComponent(String(r.id || ''));
             const acoes = `<td class="uni-ficha-val" style="white-space:nowrap;">
                     <button type="button" class="btn btn-fp-gray" onclick="editarPostoUnidadeCatalog('${idEnc}')">Editar</button>
@@ -13690,6 +13765,7 @@ function renderUnidadesPostosList(){
                 </td>`;
             return `<tr>
                 <td class="uni-ficha-val"><strong>${esc(r.codigo || '')}</strong></td>
+                <td class="uni-ficha-val">${esc(colabExibir) || '<span class="uni-ficha-empty">—</span>'}</td>
                 <td class="uni-ficha-val">${esc(r.diasSemana || '') || '<span class="uni-ficha-empty">—</span>'}</td>
                 <td class="uni-ficha-val">${esc(r.escala || r.jornada || '') || '<span class="uni-ficha-empty">—</span>'}</td>
                 <td class="uni-ficha-val">${esc(r.paridade12x36 || '') || '<span class="uni-ficha-empty">—</span>'}</td>
@@ -13888,26 +13964,54 @@ function fmtQuadroAtualHora(v){
     const s = String(v || '').trim();
     return s || '—';
 }
-/** Colaborador do posto: cadastro de funcionários (nome no catálogo, quadro ou único ativo na unidade). */
+/** Colaborador do posto: nome no catálogo, cadastro (Atuando/código posto) ou linha legada do quadro. */
 function findColaboradorParaPostoCatalog(p, row){
+    row = row || {};
     const nomeCat = String(p.nome || row.nome || '').trim();
     if(nomeCat){
         const emp = findEmployeeForPostoNome(nomeCat);
         if(emp) return emp;
     }
     const postoK = String(p.codigo || row.posto || '').trim().toUpperCase();
-    const uniK = normText(String(p.unidadeNome || row.unidade || '').trim());
+    const uniNome = String(p.unidadeNome || row.unidade || '').trim();
+    const uniCod = String(p.unidadeCod || '').trim();
+    const uniK = normText(uniNome || uniCod);
     const q = (state.quadroGeral || []).find(r =>
         normText(String(r.unidade || '').trim()) === uniK &&
-        String(r.posto || '').trim().toUpperCase() === postoK &&
+        String(r.posto || r.codigo || '').trim().toUpperCase() === postoK &&
         String(r.nome || '').trim()
     );
     if(q) return findEmployeeForPostoNome(q.nome);
-    const emps = (state.employees || []).filter(e =>
-        e.status !== 'Funcionário Desligado' &&
-        normText(String(e.atuando || '').trim()) === uniK
+    const empsAtivos = (state.employees || []).filter(e => {
+        const st = String(e.status || '').toUpperCase();
+        return !st.includes('DESLIG') && employeeAtuandoMatchesUnidade(e, uniNome, uniCod);
+    });
+    if(!empsAtivos.length) return null;
+    const byCodEmp = empsAtivos.find(e => {
+        const c = String(e.codPosto || e.codigoPosto || e.codigo_posto || e.posto || '').trim().toUpperCase();
+        return c && c === postoK;
+    });
+    if(byCodEmp) return byCodEmp;
+    const byCodInv = empsAtivos.find(e => {
+        const cod = getCodigoPostoByColaboradorNome(e.nome, uniNome || uniCod);
+        return cod && String(cod).trim().toUpperCase() === postoK;
+    });
+    if(byCodInv) return byCodInv;
+    const uKey = _normUniPostoUnidadeKey(uniCod, uniNome);
+    const catUni = (getUnidadesPostosCatalog() || []).filter(cp =>
+        _normUniPostoUnidadeKey(cp.unidadeCod, cp.unidadeNome) === uKey
     );
-    if(emps.length === 1) return emps[0];
+    const ocupados = new Set(
+        catUni.map(cp => normText(cp.nome || '')).filter(Boolean)
+    );
+    const livres = empsAtivos.filter(e => !ocupados.has(normText(e.nome || '')));
+    const vagas = catUni.filter(cp => !String(cp.nome || '').trim());
+    if(livres.length === 1){
+        if(vagas.length === 1 && String(vagas[0].codigo || '').trim().toUpperCase() === postoK) return livres[0];
+        if(catUni.length === 1 && String(catUni[0].codigo || '').trim().toUpperCase() === postoK) return livres[0];
+        if(!nomeCat && empsAtivos.length === 1) return livres[0];
+    }
+    if(empsAtivos.length === 1 && !nomeCat) return empsAtivos[0];
     return null;
 }
 function fmtEmpresaRegistroColaborador(emp){
