@@ -2897,20 +2897,6 @@ td { color: var(--t); font-weight: 500;}
                 </div>
             </article>
         </div>
-        <div id="uniReajusteModal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)cancelUniReajusteModal()">
-            <div class="modal-card" style="width:420px;">
-                <div class="modal-header"><h3>Reajuste de tabela</h3><button type="button" class="modal-close" onclick="cancelUniReajusteModal()">✕</button></div>
-                <div class="modal-body">
-                    <p style="margin:0 0 12px;font-size:12px;color:#555;">Informe o índice e o percentual aplicados nesta alteração de preços.</p>
-                    <label style="display:block;margin-bottom:10px;font-size:12px;"><strong>Índice utilizado</strong><br><input id="uniReajusteIndice" type="text" placeholder="Ex.: IPCA, IGPM, contrato..." style="width:100%;margin-top:4px;padding:8px;"></label>
-                    <label style="display:block;font-size:12px;"><strong>Percentual do reajuste (%)</strong><br><input id="uniReajustePct" type="number" step="0.01" placeholder="Ex.: 5.5" style="width:100%;margin-top:4px;padding:8px;"></label>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" onclick="cancelUniReajusteModal()">Cancelar</button>
-                    <button type="button" class="btn-primary" onclick="confirmUniReajusteModal()">Confirmar e salvar</button>
-                </div>
-            </div>
-        </div>
         </div>
     </div>
     <div id="uni-postos" class="tab-content uni-module fp-page-full">
@@ -3042,19 +3028,6 @@ td { color: var(--t); font-weight: 500;}
                     </div>
                 </div>
             </article>
-        </div>
-        <div id="fpUniAnexoModal" class="modal-overlay" style="display:none;z-index:2100;" onclick="if(event.target===this)fpCloseUniAnexoViewer()">
-            <div class="modal-card">
-                <div class="modal-header">
-                    <h3 id="fpUniAnexoModalTitle">Documento</h3>
-                    <button type="button" class="modal-close" onclick="fpCloseUniAnexoViewer()">✕</button>
-                </div>
-                <div class="modal-body" id="fpUniAnexoModalBody"><div class="empty" style="padding:24px;">Carregando…</div></div>
-                <div class="modal-footer" style="display:flex;gap:8px;flex-wrap:wrap;">
-                    <button type="button" class="btn btn-info" id="fpUniAnexoModalNovaAba">Abrir em nova aba</button>
-                    <button type="button" class="btn btn-fp-gray" onclick="fpCloseUniAnexoViewer()">Fechar</button>
-                </div>
-            </div>
         </div>
         </div>
     </div>
@@ -3478,6 +3451,33 @@ td { color: var(--t); font-weight: 500;}
     </div>
     <div id="est-saida" class="tab-content fp-page-full">
         <div class="fp-placeholder-panel"><p>Registo de saídas de material do estoque.</p></div>
+    </div>
+</div>
+<div id="uniReajusteModal" class="modal-overlay" style="display:none;z-index:2200;" onclick="if(event.target===this)cancelUniReajusteModal()">
+    <div class="modal-card" style="width:420px;">
+        <div class="modal-header"><h3>Reajuste de tabela</h3><button type="button" class="modal-close" onclick="cancelUniReajusteModal()">✕</button></div>
+        <div class="modal-body">
+            <p style="margin:0 0 12px;font-size:12px;color:#555;">Informe o índice e o percentual aplicados nesta alteração de preços.</p>
+            <label style="display:block;margin-bottom:10px;font-size:12px;"><strong>Índice utilizado</strong><br><input id="uniReajusteIndice" type="text" placeholder="Ex.: IPCA, IGPM, contrato..." style="width:100%;margin-top:4px;padding:8px;"></label>
+            <label style="display:block;font-size:12px;"><strong>Percentual do reajuste (%)</strong><br><input id="uniReajustePct" type="number" step="0.01" placeholder="Ex.: 5.5" style="width:100%;margin-top:4px;padding:8px;"></label>
+        </div>
+        <div class="modal-footer">
+            <button type="button" onclick="cancelUniReajusteModal()">Cancelar</button>
+            <button type="button" class="btn-primary" onclick="confirmUniReajusteModal()">Confirmar e salvar</button>
+        </div>
+    </div>
+</div>
+<div id="fpUniAnexoModal" class="modal-overlay" style="display:none;z-index:2100;" onclick="if(event.target===this)fpCloseUniAnexoViewer()">
+    <div class="modal-card">
+        <div class="modal-header">
+            <h3 id="fpUniAnexoModalTitle">Documento</h3>
+            <button type="button" class="modal-close" onclick="fpCloseUniAnexoViewer()">✕</button>
+        </div>
+        <div class="modal-body" id="fpUniAnexoModalBody"><div class="empty" style="padding:24px;">Carregando…</div></div>
+        <div class="modal-footer" style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button type="button" class="btn btn-info" id="fpUniAnexoModalNovaAba">Abrir em nova aba</button>
+            <button type="button" class="btn btn-fp-gray" onclick="fpCloseUniAnexoViewer()">Fechar</button>
+        </div>
     </div>
 </div>
 <footer id="fpCloudNavBar" class="fp-cloud-nav-bar" aria-live="polite" title="Última gravação automática no Supabase">
@@ -8295,8 +8295,8 @@ async function visualizarUniContratoCadastro(){
         r.readAsDataURL(file);
         return;
     }
-    const editIdx = Number(getInputVal('uniEditIdx'));
-    if(Number.isInteger(editIdx) && editIdx >= 0){
+    const editIdx = parseUniEditIdx();
+    if(editIdx != null){
         const u = getUnidades()[editIdx];
         if(u && uniHasAnexo(u)){
             const url = await uniResolveAnexoDataUrlAsync(u);
@@ -8311,8 +8311,8 @@ async function visualizarUniAditivoCadastroTemp(i){
     fpShowUniAnexoViewer(a.anexoData, a.anexoNome || 'Aditivo');
 }
 async function visualizarUniAditivoAnexoCadastroEdit(i){
-    const editIdx = Number(getInputVal('uniEditIdx'));
-    if(!Number.isInteger(editIdx) || editIdx < 0){ alert('Salve a unidade antes ou use a aba Aditivos na visualização.'); return; }
+    const editIdx = parseUniEditIdx();
+    if(editIdx == null){ alert('Salve a unidade antes ou use a aba Aditivos na visualização.'); return; }
     const a = (getUnidades()[editIdx].aditivos || [])[i];
     if(!a){ return; }
     const url = await uniResolveAnexoDataUrlAsync(a);
@@ -8359,8 +8359,8 @@ function onUniContratoAnexoCadastroChange(){
     const file = document.getElementById('uniContratoAnexo')?.files?.[0];
     if(!file){
         unidadeContratoAnexoPending = null;
-        const idx = Number(getInputVal('uniEditIdx'));
-        const u = Number.isInteger(idx) && idx >= 0 ? getUnidades()[idx] : null;
+        const idx = parseUniEditIdx();
+        const u = idx != null ? getUnidades()[idx] : null;
         renderUniContratoAnexoCadastro(u);
         return;
     }
@@ -10549,6 +10549,13 @@ function getUnidades(){
         return [];
     }
 }
+/** Índice de edição no cadastro; vazio = novo cadastro (nunca usar Number('') === 0). */
+function parseUniEditIdx(){
+    const raw = String(getInputVal('uniEditIdx') ?? '').trim();
+    if(raw === '') return null;
+    const n = Number(raw);
+    return Number.isInteger(n) && n >= 0 ? n : null;
+}
 function uniHydrateUnidadeForDisplay(u){
     if(!u || typeof u !== 'object') return u;
     const o = { ...u };
@@ -11284,7 +11291,14 @@ function confirmUniReajusteModal(){
     if(modal) modal.style.display = 'none';
     const opts = { indice, percentualReajuste: pctRaw };
     if(uniReajusteResolve){ uniReajusteResolve(opts); uniReajusteResolve = null; }
-    if(uniReajustePendingSave){ const fn = uniReajustePendingSave; uniReajustePendingSave = null; fn(opts); }
+    if(uniReajustePendingSave){
+        const fn = uniReajustePendingSave;
+        uniReajustePendingSave = null;
+        try { fn(opts); } catch(e) {
+            console.error('[uni] confirmUniReajusteModal', e);
+            alert(e && e.message ? e.message : 'Erro ao guardar após o reajuste.');
+        }
+    }
 }
 function uniMergeHistoricoTabela(existente, novos, maxLen){
     maxLen = maxLen || 300;
@@ -11410,30 +11424,37 @@ function addAditivoUnidade(){
     }
 }
 function finalizarSalvarUnidadeCadastro(opts){
-    if(!opts || !uniReajustePendingData || uniReajustePendingData.type !== 'cadastro') return;
+    if(!opts || !uniReajustePendingData || uniReajustePendingData.type !== 'cadastro') return false;
     const { editIdx, item, atual, aditivos, venc } = uniReajustePendingData;
+    if(editIdx == null || editIdx < 0){ alert('Índice de edição inválido.'); return false; }
     const arr = getUnidades();
+    if(editIdx >= arr.length){ alert('Unidade não encontrada para guardar.'); return false; }
     const histNovos = uniBuildHistoricoTabelaDiff(atual, { ...atual, ...item }, opts);
     const historicoTabela = uniMergeHistoricoTabela(atual.historicoTabela, histNovos);
-        const merged = { ...atual, ...item, ...uniCollectContratoAnexoPayload(atual), indiceReajuste: opts.indice, aditivos, vencimentoContrato: venc, historicoTabela };
-        uniMergeTabelaIntoUnidade(merged, uniExtractTabelaFromUnidade(merged));
-        arr[editIdx] = merged;
-        try {
-            setUnidades(arr);
-        } catch(e){
-            console.error('[uni] finalizarSalvarUnidadeCadastro', e);
-            alert(e && e.message ? e.message : 'Erro ao guardar a unidade.');
-            return;
-        }
-        uniReajustePendingData = null;
-        unidadeContratoAnexoPending = null;
-        limparUnidadeForm();
+    const merged = { ...atual, ...item, ...uniCollectContratoAnexoPayload(atual), indiceReajuste: opts.indice, aditivos, vencimentoContrato: venc, historicoTabela };
+    uniMergeTabelaIntoUnidade(merged, uniExtractTabelaFromUnidade(merged));
+    arr[editIdx] = merged;
+    try {
+        setUnidades(arr);
+    } catch(e){
+        console.error('[uni] finalizarSalvarUnidadeCadastro', e);
+        if(!(e && (e.name === 'QuotaExceededError' || e.code === 22))) alert(e && e.message ? e.message : 'Erro ao guardar a unidade.');
+        return false;
+    }
+    uniReajustePendingData = null;
+    unidadeContratoAnexoPending = null;
+    limparUnidadeForm({ keepPanelOpen: true });
     renderUnidadesList();
+    refreshUnidadesViewSelect();
     populateCadastroDependentes();
     if(document.getElementById('uniViewShell')?.style.display !== 'none') renderUnidadeVisualizacao();
     alert('Unidade atualizada com sucesso.');
+    return true;
 }
-function limparUnidadeForm(){
+function limparUnidadeForm(opts){
+    opts = opts || {};
+    const editEl = document.getElementById('uniEditIdx');
+    if(editEl) editEl.value = '';
     ['uniEditIdx','uniCod','uniNome','uniEdificio','uniEndereco','uniHorario','uniSistema','uniPix','uniBandeira','uniEmpresa','uniCnpj','uniCcm','uniSerie',
     'uniMensalCarro','uniMensalCarroD10','uniMensalCarroD15','uniMensalCarroD20','uniMensalMoto','uniMensalMotoD10','uniMensalMotoD15','uniMensalMotoD20',
     'uniAvulso1h','uniAvulsoDemais','uniAvulso12h','uniAvulsoUnico','uniAvulsoMeia','uniAvulsoHospede24','uniAvulsoEvento12','uniAvulsoConvenio12','uniAvulsoDiferenciado',
@@ -11452,7 +11473,7 @@ function limparUnidadeForm(){
     uniBindDateBrInputs(document);
     applyUnidadeSectionMode();
     const panel = document.getElementById('unidadesCadastroFormPanel');
-    if(panel) panel.style.display = 'none';
+    if(panel && !opts.keepPanelOpen) panel.style.display = 'none';
 }
 function salvarUnidade(){
     const btn = document.querySelector('#uni-cadastro .btn-success[onclick*="salvarUnidade"]') ||
@@ -11469,11 +11490,20 @@ function salvarUnidade(){
         btn.disabled = false;
         btn.textContent = 'Salvar unidade';
     };
+    const isNovoCadastro = parseUniEditIdx() == null;
     ensureUniContratoAnexoReady((ok) => {
         if(!ok){ endBusy(); return; }
         try {
             const saved = salvarUnidadeCommit();
-            if(saved) alert('Unidade guardada com sucesso.');
+            if(saved) {
+                alert(isNovoCadastro
+                    ? 'Unidade criada com sucesso. Selecione-a em Unidades, Tabelas, Postos ou Contratos.'
+                    : 'Unidade guardada com sucesso.');
+            } else if(uniReajustePendingData) {
+                alert('Há alteração de preços: preencha índice e percentual na janela «Reajuste de tabela» e clique em Confirmar e salvar.');
+            } else {
+                alert('Não foi possível concluir o guardar. Verifique código, nome e os campos obrigatórios.');
+            }
         } catch(e){
             console.error('[uni] salvarUnidade', e);
             if(!(e && (e.name === 'QuotaExceededError' || e.code === 22))) alert('Não foi possível concluir o guardar. Verifique os dados e tente de novo.');
@@ -11540,8 +11570,14 @@ function salvarUnidadeCommit(){
         aditivos: [...unidadeAditivosTemp]
     };
     const arr = getUnidades();
-    const editIdx = Number(getInputVal('uniEditIdx'));
-    if(Number.isInteger(editIdx) && editIdx >= 0 && editIdx < arr.length){
+    const editIdx = parseUniEditIdx();
+    const dupIdx = arr.findIndex((u, i) => String(u.cod || '').trim().toLowerCase() === cod.toLowerCase() && i !== editIdx);
+    if(dupIdx >= 0){
+        alert('Já existe uma unidade com o código «' + cod + '». Altere o código ou edite a unidade existente.');
+        return false;
+    }
+    const isEdit = editIdx != null && editIdx < arr.length;
+    if(isEdit){
         const atual = arr[editIdx];
         const aditivos = [...(atual.aditivos || []), ...item.aditivos];
         const venc = aditivos.length ? aditivos[aditivos.length - 1].vencimento || item.vencimentoContrato : item.vencimentoContrato;
@@ -11558,6 +11594,7 @@ function salvarUnidadeCommit(){
             setUnidades(arr);
             unidadeContratoAnexoPending = null;
             limparUnidadeForm();
+            refreshUnidadesViewSelect();
             renderUnidadesList();
             populateCadastroDependentes();
             if(document.getElementById('uniViewShell')?.style.display !== 'none') renderUnidadeVisualizacao();
@@ -11581,9 +11618,15 @@ function salvarUnidadeCommit(){
         uniMergeTabelaIntoUnidade(novo, uniExtractTabelaFromUnidade(novo));
         arr.unshift(novo);
     }
-    setUnidades(arr);
+    try {
+        setUnidades(arr);
+    } catch(e){
+        console.error('[uni] salvarUnidadeCommit', e);
+        return false;
+    }
     unidadeContratoAnexoPending = null;
-    limparUnidadeForm();
+    limparUnidadeForm({ keepPanelOpen: !isEdit });
+    refreshUnidadesViewSelect();
     renderUnidadesList();
     populateCadastroDependentes();
     if(document.getElementById('uniViewShell')?.style.display !== 'none'){
@@ -11647,8 +11690,7 @@ function toggleUnidadesCadastroForm(){
     const nextOpen = panel.style.display === 'none';
     panel.style.display = nextOpen ? 'block' : 'none';
     if(nextOpen){
-        limparUnidadeForm();
-        panel.style.display = 'block';
+        limparUnidadeForm({ keepPanelOpen: true });
         uniWireTabelaAutoCalc();
     }
 }
@@ -12674,6 +12716,7 @@ function renderUnidadesList(){
     if(typeof refreshUnidadesPostosUnidadeSelect === 'function') refreshUnidadesPostosUnidadeSelect();
     const activeUni = document.querySelector('.uni-module.tab-content.active');
     const tabId = activeUni && activeUni.id;
+    if(tabId === 'uni-cadastro') return;
     if(tabId === 'uni-tabelas' && document.getElementById('uniTabelaShell')){
         onUnidadeTabelaViewSelectChange();
         return;
@@ -12686,7 +12729,7 @@ function renderUnidadesList(){
         onUnidadeContratosViewSelectChange();
         return;
     }
-    if(document.getElementById('uniViewShell')){
+    if(tabId === 'uni-unidade' && document.getElementById('uniViewShell')){
         onUnidadeViewSelectChange();
         return;
     }
