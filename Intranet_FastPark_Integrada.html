@@ -514,6 +514,14 @@ body {
 .uni-module .uni-view-subtabs { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
 .uni-module .uni-view-panel { display: none; }
 .uni-module .uni-view-panel.active { display: block; }
+.uni-module #uniViewPanelContratos .uni-contrato-subpanel { display: none; }
+.uni-module #uniViewPanelContratos .uni-contrato-subpanel.active { display: block; }
+.uni-module #uniContratoSubPanelAditivos .laudos-subpanel { display: none; flex: 1; flex-direction: column; min-height: 0; overflow: hidden; }
+.uni-module #uniContratoSubPanelAditivos .laudos-subpanel.active { display: flex; }
+.uni-module #uniContratoSubPanelAditivos .uni-aditivos-form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+.uni-module .uni-aditivos-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.uni-module .uni-aditivos-table th, .uni-module .uni-aditivos-table td { border: 1px solid #e5e7eb; padding: 8px 10px; text-align: left; vertical-align: middle; }
+.uni-module .uni-aditivos-table thead th { background: #f3f4f6; font-weight: 700; font-size: 11px; }
 .uni-module .uni-view-tabela-form { display: grid; grid-template-columns: repeat(4, minmax(160px, 1fr)); gap: 10px; }
 .uni-module .uni-view-edit-form { display: grid; grid-template-columns: repeat(4, minmax(160px, 1fr)); gap: 10px; }
 .uni-module .uni-view-edit-form .uni-section-title { grid-column: 1 / -1; font-weight: 800; font-size: 12px; color: var(--fp-orange); text-transform: uppercase; letter-spacing: .4px; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px; margin-top: 4px; }
@@ -2876,15 +2884,62 @@ td { color: var(--t); font-weight: 500;}
                     </div>
                 </div>
                 <div id="uniViewPanelContratos" class="uni-view-panel">
-                    <div id="uniViewContratosReadonly" class="uni-display-wrap"></div>
-                    <div id="uniViewContratosEdit" class="uni-view-edit-block">
-                        <div id="uniViewContratosBody" class="inner uni-view-edit-form"></div>
+                    <div class="uni-view-subtabs">
+                        <button type="button" class="btn btn-tab-active" id="btnUniContratoSubContrato" onclick="switchUniViewContratosSubtab('contrato')">Contrato</button>
+                        <button type="button" class="btn btn-tab" id="btnUniContratoSubAditivos" onclick="switchUniViewContratosSubtab('aditivos')">Aditivos</button>
                     </div>
-                    <div class="uni-view-toolbar">
-                        <button type="button" class="btn btn-fp-orange" id="btnUniEditContratos" onclick="uniViewStartEdit('contratos')">Editar contratos</button>
-                        <div id="uniViewContratosBar" class="uni-view-save-bar" style="display:none;">
-                            <button type="button" class="btn btn-fp-orange" onclick="salvarUnidadeViewContratos()">Salvar</button>
-                            <button type="button" class="btn btn-fp-gray" onclick="uniViewCancelEdit('contratos')">Cancelar</button>
+                    <div id="uniContratoSubPanelContrato" class="uni-contrato-subpanel active">
+                        <div id="uniViewContratosReadonly" class="uni-display-wrap"></div>
+                        <div id="uniViewContratosEdit" class="uni-view-edit-block">
+                            <div id="uniViewContratosBody" class="inner uni-view-edit-form"></div>
+                        </div>
+                        <div class="uni-view-toolbar" id="uniContratoToolbarWrap">
+                            <button type="button" class="btn btn-fp-orange" id="btnUniEditContratos" onclick="uniViewStartEdit('contratos')">Editar contratos</button>
+                            <div id="uniViewContratosBar" class="uni-view-save-bar" style="display:none;">
+                                <button type="button" class="btn btn-fp-orange" onclick="salvarUnidadeViewContratos()">Salvar</button>
+                                <button type="button" class="btn btn-fp-gray" onclick="uniViewCancelEdit('contratos')">Cancelar</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="uniContratoSubPanelAditivos" class="uni-contrato-subpanel">
+                        <div class="laudos-subnav" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+                            <button type="button" class="btn btn-info laudos-subtab active" id="uniAditivosSubBtnCad" onclick="switchUniAditivosSubtab('cadastro')">Cadastro</button>
+                            <button type="button" class="btn laudos-subtab" id="uniAditivosSubBtnHist" onclick="switchUniAditivosSubtab('historico')">Histórico</button>
+                        </div>
+                        <div id="uniAditivosPanelCadastro" class="laudos-subpanel active">
+                            <article class="panel" style="margin-bottom:12px;">
+                                <div class="head"><h3 id="uniAditivoFormTitle">Novo aditivo</h3></div>
+                                <div class="body uni-aditivos-form-grid" style="padding:12px;">
+                                    <input type="hidden" id="uniVaRenovacao" value="">
+                                    <div style="grid-column:1/-1;font-size:12px;color:#555;">Registe <strong>renovações</strong> do contrato com novo vencimento e anexe o documento (PDF ou imagem). O vencimento vigente da unidade é atualizado automaticamente.</div>
+                                    <div style="grid-column:1/-1;padding:10px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;font-size:12px;" id="uniVaResumoVigente">Selecione uma unidade.</div>
+                                    <div><label class="uni-field-label"><strong>Descrição / referência</strong></label><br><input id="uniVaDesc" type="text" placeholder="Ex.: 1º aditivo, renovação 2026…"></div>
+                                    <div><label class="uni-field-label"><strong>Novo vencimento</strong></label><br><input id="uniVaVencimento" type="date"></div>
+                                    <div><label class="uni-field-label"><strong>Documento</strong></label><br><input id="uniVaAnexo" type="file" accept=".pdf,.jpg,.jpeg,.png"></div>
+                                    <div style="grid-column:1/-1;"><label class="uni-field-label"><strong>Observações</strong></label><br><textarea id="uniVaObs" rows="2" placeholder="Notas sobre o aditivo ou a renovação"></textarea></div>
+                                    <div style="grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                                        <button type="button" class="btn btn-fp-orange" onclick="salvarUniAditivoView()">Salvar aditivo</button>
+                                        <button type="button" class="btn btn-fp-gray" onclick="limparFormUniAditivo()">Novo registro</button>
+                                        <button type="button" class="btn btn-info" onclick="iniciarRenovacaoContratoUni()">Renovar contrato</button>
+                                        <span id="uniAditivoRenovarHint" style="font-size:12px;color:#0d6efd;display:none;font-weight:600;">Renovação — informe o novo vencimento e anexe o aditivo, depois Salvar.</span>
+                                    </div>
+                                </div>
+                            </article>
+                            <article class="panel list">
+                                <div class="head"><h3>Aditivos da unidade</h3></div>
+                                <div class="inner" id="uniAditivosListaBody" style="max-height:min(50vh,480px);overflow-y:auto;"><div class="empty">Selecione uma unidade.</div></div>
+                            </article>
+                        </div>
+                        <div id="uniAditivosPanelHistorico" class="laudos-subpanel">
+                            <article class="panel">
+                                <div class="head"><h3>Histórico de aditivos</h3><p style="margin:6px 0 0;font-size:12px;opacity:.9;">Renovações e aditivos registados nesta unidade.</p></div>
+                                <div class="body" style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;padding:12px;">
+                                    <div><label><strong>De</strong></label><br><input type="date" id="uniVaHistIni" onchange="renderUniAditivosHistorico()"></div>
+                                    <div><label><strong>Até</strong></label><br><input type="date" id="uniVaHistFim" onchange="renderUniAditivosHistorico()"></div>
+                                    <button type="button" class="btn btn-fp-gray" onclick="uniAditivoHistLimparFiltros()">Limpar filtros</button>
+                                </div>
+                                <div class="inner" id="uniAditivosHistBody" style="max-height:min(55vh,520px);overflow-y:auto;padding:10px;"></div>
+                            </article>
                         </div>
                     </div>
                 </div>
@@ -10598,9 +10653,16 @@ function addAditivoUnidade(){
     const file = document.getElementById('uniAditivoAnexo')?.files?.[0];
     const pushAditivo = (anexoNome='', anexoData='') => {
         if(!desc && !vencimento) return;
-        unidadeAditivosTemp.push({ desc, vencimento, anexoNome, anexoData, createdAt: new Date().toISOString() });
+        const vencAnt = unidadeAditivosTemp.length
+            ? (unidadeAditivosTemp[unidadeAditivosTemp.length - 1].vencimento || getInputVal('uniVencimentoContrato'))
+            : getInputVal('uniVencimentoContrato');
+        unidadeAditivosTemp.push({ desc, vencimento, vencimentoAnterior: vencAnt, anexoNome, anexoData, createdAt: new Date().toISOString() });
         const el = document.getElementById('uniAditivosTemp');
         if(el) el.innerHTML = unidadeAditivosTemp.map((a,i)=>`<div>${i+1}. ${esc(a.desc)} | venc: ${esc(a.vencimento || '—')} ${a.anexoData ? `<a href="${a.anexoData}" target="_blank">ver anexo</a>` : ''}</div>`).join('');
+        if(vencimento){
+            const vc = document.getElementById('uniVencimentoContrato');
+            if(vc) vc.value = vencimento;
+        }
     };
     if(file){
         const r = new FileReader();
@@ -11044,21 +11106,17 @@ function renderUniViewDadosReadonly(u){
 function renderUniViewContratosReadonly(u){
     const el = document.getElementById('uniViewContratosReadonly');
     if(!el) return;
-    let aditivosBlock = '';
-    if((u.aditivos || []).length){
-        const adRows = (u.aditivos || []).map((a, i) => '<tr class="uni-ficha-row-full">' + uniFichaCellPair('Aditivo ' + (i + 1),
-            esc(a.desc || '—') + (a.vencimento ? ' — venc. ' + esc(a.vencimento) : '') + (a.anexoData ? ' <a href="' + a.anexoData + '" target="_blank">anexo</a>' : '')) +
-            '<th class="uni-ficha-lbl"></th><td class="uni-ficha-val"></td></tr>').join('');
-        aditivosBlock = '<section class="uni-ficha-block"><h4 class="uni-ficha-block-title">Aditivos</h4><table class="uni-ficha-table"><tbody>' + adRows + '</tbody></table></section>';
-    }
+    const nAd = (u.aditivos || []).length;
+    const vigNote = nAd
+        ? '<p style="margin:8px 0 0;font-size:12px;color:#555;">' + nAd + ' aditivo(s) registado(s). Consulte a subaba <strong>Aditivos</strong>.</p>'
+        : '';
     el.innerHTML = uniFichaWrap([
         uniFichaBlock('Contrato', [
             { label: 'Data contrato', key: 'dataContrato' }, { label: 'Tipo contrato', key: 'tipoContrato' },
             { label: 'Aluguel', key: 'aluguel' }, { label: 'Índice reajuste', key: 'indiceReajuste' },
             { label: 'Faixa faturamento', key: 'faixaFaturamento' }, { label: 'Contratante pagamento', key: 'contratantePagamento' },
             { label: 'Vencimento contrato', key: 'vencimentoContrato' }
-        ], u),
-        aditivosBlock
+        ], u) + vigNote
     ].join(''));
 }
 function renderUniViewTabelaAlterarReadonly(u){
@@ -11200,17 +11258,13 @@ function uniCollectDadosPayloadView(){
 function buildUniViewContratosForm(u){
     const el = document.getElementById('uniViewContratosBody');
     if(!el) return;
-    const aditivosHtml = (u.aditivos || []).length
-        ? (u.aditivos || []).map((a,i) => '<div style="font-size:12px;margin:4px 0;">' + (i+1) + ') ' + esc(a.desc || '') + (a.vencimento ? ' — ' + esc(a.vencimento) : '') + (a.anexoData ? ' <a href="' + a.anexoData + '" target="_blank">anexo</a>' : '') + '</div>').join('')
-        : '<div style="font-size:12px;color:#888;">Nenhum aditivo registado.</div>';
     el.innerHTML = [
         '<div class="uni-section-title">Contrato</div>',
         uniViewFld('Data contrato', 'uniVcDataContrato', false, 'date'), uniViewFld('Tipo contrato', 'uniVcTipoContrato'),
         uniViewFld('Aluguel', 'uniVcAluguel', false, 'text'), uniViewFld('Índice reajuste', 'uniVcIndiceReajuste'),
         uniViewFld('Faixa faturamento', 'uniVcFaixaFaturamento'), uniViewFld('Contratante pagamento', 'uniVcContratantePagamento'),
         uniViewFld('Vencimento contrato', 'uniVcVencimentoContrato', false, 'date'),
-        '<div class="uni-section-title" style="grid-column:1/-1;">Aditivos (consulta)</div>',
-        '<div style="grid-column:1/-1;padding:8px;background:#fff;border:1px solid #e5e7eb;border-radius:6px;">' + aditivosHtml + '<p style="margin:8px 0 0;font-size:11px;color:#888;">Para incluir aditivos com anexo, use o cadastro completo.</p></div>'
+        '<p style="grid-column:1/-1;font-size:11px;color:#888;margin:0;">Aditivos e renovações: use a subaba <strong>Aditivos</strong> nesta mesma área.</p>'
     ].join('');
     uniSetViewFields({
         uniVcDataContrato: u.dataContrato, uniVcTipoContrato: u.tipoContrato, uniVcAluguel: u.aluguel,
@@ -11281,8 +11335,204 @@ function onUnidadeViewSelectChange(){
     if(empty) empty.style.display = 'none';
     if(shell) shell.style.display = '';
     uniViewResetEditModes();
+    if(typeof limparFormUniAditivo === 'function') limparFormUniAditivo();
     switchUniViewMainTab('dados');
     renderUnidadeVisualizacao();
+}
+let uniContratosViewSubtab = 'contrato';
+let uniAditivosViewSubtab = 'cadastro';
+function uniFmtDataIso(d){
+    if(!d) return '—';
+    if(typeof fdate === 'function') return fdate(d);
+    return esc(String(d));
+}
+function uniAditivoAnexoHtml(a){
+    if(!a || !a.anexoData) return '—';
+    const nome = esc(a.anexoNome || 'Ver documento');
+    return '<a href="' + a.anexoData + '" target="_blank" rel="noopener">' + nome + '</a>';
+}
+function uniGetVencimentoVigenteUnidade(u){
+    if(!u) return '';
+    const ads = u.aditivos || [];
+    if(ads.length){
+        const last = ads[ads.length - 1];
+        return last.vencimento || u.vencimentoContrato || '';
+    }
+    return u.vencimentoContrato || '';
+}
+function switchUniViewContratosSubtab(sub){
+    uniContratosViewSubtab = sub || 'contrato';
+    const isAd = uniContratosViewSubtab === 'aditivos';
+    const panContrato = document.getElementById('uniContratoSubPanelContrato');
+    const panAditivos = document.getElementById('uniContratoSubPanelAditivos');
+    const btnC = document.getElementById('btnUniContratoSubContrato');
+    const btnA = document.getElementById('btnUniContratoSubAditivos');
+    const toolbar = document.getElementById('uniContratoToolbarWrap');
+    if(panContrato){ panContrato.classList.toggle('active', !isAd); panContrato.style.display = isAd ? 'none' : ''; }
+    if(panAditivos){ panAditivos.classList.toggle('active', isAd); panAditivos.style.display = isAd ? '' : 'none'; }
+    if(btnC){ btnC.classList.toggle('btn-tab-active', !isAd); btnC.classList.toggle('btn-tab', isAd); }
+    if(btnA){ btnA.classList.toggle('btn-tab-active', isAd); btnA.classList.toggle('btn-tab', !isAd); }
+    if(toolbar) toolbar.style.display = isAd ? 'none' : '';
+    if(isAd){
+        if(uniViewEditing.contratos){
+            uniViewEditing.contratos = false;
+            uniViewApplyEditModes();
+        }
+        switchUniAditivosSubtab(uniAditivosViewSubtab || 'cadastro');
+    }
+}
+function switchUniAditivosSubtab(tab){
+    uniAditivosViewSubtab = tab || 'cadastro';
+    const isHist = uniAditivosViewSubtab === 'historico';
+    const cad = document.getElementById('uniAditivosPanelCadastro');
+    const hist = document.getElementById('uniAditivosPanelHistorico');
+    const btnCad = document.getElementById('uniAditivosSubBtnCad');
+    const btnHist = document.getElementById('uniAditivosSubBtnHist');
+    if(cad){ cad.classList.toggle('active', !isHist); cad.style.display = ''; }
+    if(hist){ hist.classList.toggle('active', isHist); hist.style.display = ''; }
+    [btnCad, btnHist].forEach(b => { if(b) b.classList.remove('active', 'btn-info'); });
+    const activeBtn = isHist ? btnHist : btnCad;
+    if(activeBtn){ activeBtn.classList.add('active', 'btn-info'); }
+    if(isHist) renderUniAditivosHistorico();
+    else renderUniAditivosLista();
+    renderUniAditivoResumoVigente();
+}
+function limparFormUniAditivo(){
+    ['uniVaRenovacao', 'uniVaDesc', 'uniVaVencimento', 'uniVaObs'].forEach(id => {
+        const x = document.getElementById(id); if(x) x.value = '';
+    });
+    const f = document.getElementById('uniVaAnexo'); if(f) f.value = '';
+    const t = document.getElementById('uniAditivoFormTitle'); if(t) t.textContent = 'Novo aditivo';
+    const h = document.getElementById('uniAditivoRenovarHint'); if(h) h.style.display = 'none';
+}
+function iniciarRenovacaoContratoUni(){
+    const idx = uniViewSelectedIdx ?? getUniViewSelectedIdx();
+    if(idx == null){ alert('Selecione uma unidade.'); return; }
+    switchUniViewContratosSubtab('aditivos');
+    switchUniAditivosSubtab('cadastro');
+    limparFormUniAditivo();
+    const r = document.getElementById('uniVaRenovacao'); if(r) r.value = '1';
+    const h = document.getElementById('uniAditivoRenovarHint'); if(h) h.style.display = '';
+    const t = document.getElementById('uniAditivoFormTitle'); if(t) t.textContent = 'Renovar contrato';
+    const d = document.getElementById('uniVaDesc'); if(d) d.value = 'Renovação de contrato';
+    renderUniAditivoResumoVigente();
+}
+function renderUniAditivoResumoVigente(){
+    const el = document.getElementById('uniVaResumoVigente');
+    if(!el) return;
+    const idx = uniViewSelectedIdx ?? getUniViewSelectedIdx();
+    if(idx == null){ el.innerHTML = 'Selecione uma unidade.'; return; }
+    const u = getUnidades()[idx];
+    if(!u){ el.innerHTML = 'Unidade não encontrada.'; return; }
+    const vig = uniGetVencimentoVigenteUnidade(u);
+    const n = (u.aditivos || []).length;
+    el.innerHTML = '<strong>Vencimento vigente:</strong> ' + uniFmtDataIso(vig) +
+        ' &nbsp;|&nbsp; <strong>Aditivos:</strong> ' + n +
+        (u.vencimentoContrato && vig !== u.vencimentoContrato ? ' &nbsp;|&nbsp; <span style="color:#6b7280;">Campo contrato: ' + uniFmtDataIso(u.vencimentoContrato) + '</span>' : '');
+}
+function renderUniAditivosLista(){
+    const el = document.getElementById('uniAditivosListaBody');
+    if(!el) return;
+    const idx = uniViewSelectedIdx ?? getUniViewSelectedIdx();
+    if(idx == null){ el.innerHTML = '<div class="empty">Selecione uma unidade.</div>'; return; }
+    const u = getUnidades()[idx];
+    const ads = [...(u.aditivos || [])].reverse();
+    if(!ads.length){ el.innerHTML = '<div class="empty">Nenhum aditivo. Use <strong>Renovar contrato</strong> ou preencha o formulário acima.</div>'; return; }
+    const rows = ads.map((a, revIdx) => {
+        const i = (u.aditivos || []).length - 1 - revIdx;
+        const dt = a.createdAt ? uniFmtDataIso(String(a.createdAt).slice(0, 10)) : '—';
+        return '<tr><td>' + (revIdx + 1) + '</td><td>' + dt + '</td><td>' + esc(a.desc || '—') + '</td><td>' + uniFmtDataIso(a.vencimento) + '</td><td>' + uniFmtDataIso(a.vencimentoAnterior) + '</td><td>' + uniAditivoAnexoHtml(a) + '</td><td style="white-space:nowrap;"><button type="button" class="btn btn-danger" style="padding:4px 8px;font-size:11px;" onclick="excluirUniAditivoView(' + i + ')">Excluir</button></td></tr>';
+    }).join('');
+    el.innerHTML = '<table class="uni-aditivos-table"><thead><tr><th>#</th><th>Registo</th><th>Descrição</th><th>Vencimento</th><th>Venc. anterior</th><th>Documento</th><th></th></tr></thead><tbody>' + rows + '</tbody></table>';
+}
+function renderUniAditivosHistorico(){
+    const el = document.getElementById('uniAditivosHistBody');
+    if(!el) return;
+    const idx = uniViewSelectedIdx ?? getUniViewSelectedIdx();
+    if(idx == null){ el.innerHTML = '<div class="empty">Selecione uma unidade.</div>'; return; }
+    const u = getUnidades()[idx];
+    const ini = document.getElementById('uniVaHistIni')?.value || '';
+    const fim = document.getElementById('uniVaHistFim')?.value || '';
+    let ads = [...(u.aditivos || [])].map((a, i) => ({ ...a, _idx: i }));
+    ads.sort((a, b) => String(b.createdAt || b.vencimento || '').localeCompare(String(a.createdAt || a.vencimento || '')));
+    ads = ads.filter(a => {
+        const ref = String(a.vencimento || a.createdAt || '').slice(0, 10);
+        if(ini && ref && ref < ini) return false;
+        if(fim && ref && ref > fim) return false;
+        return true;
+    });
+    if(!ads.length){ el.innerHTML = '<div class="empty">Nenhum registo no período.</div>'; return; }
+    const rows = ads.map(a => {
+        const dt = a.createdAt ? uniFmtDataIso(String(a.createdAt).slice(0, 10)) : '—';
+        const obs = a.obs ? '<br><span style="font-size:11px;color:#6b7280;">' + esc(a.obs) + '</span>' : '';
+        return '<tr><td>' + dt + '</td><td>' + esc(a.desc || '—') + obs + '</td><td>' + uniFmtDataIso(a.vencimentoAnterior) + '</td><td>' + uniFmtDataIso(a.vencimento) + '</td><td>' + uniAditivoAnexoHtml(a) + '</td></tr>';
+    }).join('');
+    el.innerHTML = '<table class="uni-aditivos-table"><thead><tr><th>Data</th><th>Descrição</th><th>Venc. anterior</th><th>Novo vencimento</th><th>Documento</th></tr></thead><tbody>' + rows + '</tbody></table>';
+}
+function uniAditivoHistLimparFiltros(){
+    ['uniVaHistIni', 'uniVaHistFim'].forEach(id => { const x = document.getElementById(id); if(x) x.value = ''; });
+    renderUniAditivosHistorico();
+}
+function renderUniAditivosTab(){
+    renderUniAditivoResumoVigente();
+    if(uniAditivosViewSubtab === 'historico') renderUniAditivosHistorico();
+    else renderUniAditivosLista();
+}
+function salvarUniAditivoView(){
+    const idx = uniViewSelectedIdx ?? getUniViewSelectedIdx();
+    if(idx == null){ alert('Selecione uma unidade.'); return; }
+    const desc = getInputVal('uniVaDesc').trim();
+    const vencimento = getInputVal('uniVaVencimento');
+    const obs = getInputVal('uniVaObs').trim();
+    const isRenov = getInputVal('uniVaRenovacao') === '1';
+    if(!vencimento){ alert('Informe o novo vencimento do contrato.'); return; }
+    const arr = getUnidades();
+    const u = arr[idx];
+    if(!u) return;
+    const ads = [...(u.aditivos || [])];
+    const vencAnt = uniGetVencimentoVigenteUnidade(u);
+    const pushAditivo = (anexoNome, anexoData) => {
+        const item = {
+            desc: desc || (isRenov ? 'Renovação de contrato' : 'Aditivo contratual'),
+            vencimento,
+            vencimentoAnterior: vencAnt,
+            obs,
+            anexoNome: anexoNome || '',
+            anexoData: anexoData || '',
+            createdAt: new Date().toISOString()
+        };
+        ads.push(item);
+        arr[idx] = { ...u, aditivos: ads, vencimentoContrato: vencimento };
+        setUnidades(arr);
+        limparFormUniAditivo();
+        renderUniViewContratosReadonly(arr[idx]);
+        renderUniAditivosTab();
+        if(typeof addAudit === 'function') addAudit('Aditivo contrato: ' + (u.nome || u.cod) + ' — venc. ' + vencimento, 'action');
+        alert(isRenov ? 'Renovação registada. Novo vencimento: ' + uniFmtDataIso(vencimento) : 'Aditivo salvo.');
+    };
+    const file = document.getElementById('uniVaAnexo')?.files?.[0];
+    if(file){
+        const r = new FileReader();
+        r.onload = ev => pushAditivo(file.name, String(ev.target?.result || ''));
+        r.readAsDataURL(file);
+    } else {
+        pushAditivo();
+    }
+}
+function excluirUniAditivoView(adIdx){
+    const idx = uniViewSelectedIdx ?? getUniViewSelectedIdx();
+    if(idx == null) return;
+    if(!confirm('Excluir este aditivo? O vencimento vigente será recalculado.')) return;
+    const arr = getUnidades();
+    const u = arr[idx];
+    const ads = [...(u.aditivos || [])];
+    if(adIdx < 0 || adIdx >= ads.length) return;
+    ads.splice(adIdx, 1);
+    const venc = ads.length ? (ads[ads.length - 1].vencimento || u.vencimentoContrato) : u.vencimentoContrato;
+    arr[idx] = { ...u, aditivos: ads, vencimentoContrato: venc };
+    setUnidades(arr);
+    renderUniViewContratosReadonly(arr[idx]);
+    renderUniAditivosTab();
 }
 function switchUniViewMainTab(tab){
     const map = { dados: 'uniViewPanelDados', postos: 'uniViewPanelPostos', tabela: 'uniViewPanelTabela', contratos: 'uniViewPanelContratos' };
@@ -11294,6 +11544,7 @@ function switchUniViewMainTab(tab){
     });
     if(tab === 'tabela') switchUniViewTabelaSubtab('valores');
     if(tab === 'postos') renderUnidadesPostosList();
+    if(tab === 'contratos') switchUniViewContratosSubtab(uniContratosViewSubtab || 'contrato');
 }
 function switchUniViewTabelaSubtab(sub){
     const panels = {
@@ -11362,6 +11613,7 @@ function renderUnidadeVisualizacao(){
     if(nomeEl) nomeEl.textContent = v(u.nome);
     renderUniViewDadosReadonly(u);
     renderUniViewContratosReadonly(u);
+    if(uniContratosViewSubtab === 'aditivos') renderUniAditivosTab();
     renderUniViewTabelaAlterarReadonly(u);
     buildUniViewTabelaValoresReadonly(u);
     uniViewClearEditForms();
