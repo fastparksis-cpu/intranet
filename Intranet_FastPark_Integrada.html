@@ -2404,7 +2404,9 @@ td { color: var(--t); font-weight: 500;}
                 <input id="novoNome" placeholder="Nome completo">
                 <input id="novoEmpresa" placeholder="Empresa">
                 <input id="novoCargo" placeholder="Cargo">
-                <input id="novoUnidade" placeholder="Unidade">
+                <input id="novoUnidade" placeholder="Unidade (Atuando)" list="novoUnidadeList" oninput="onNovoUnidadeCadastroChange()" onchange="onNovoUnidadeCadastroChange()">
+                <datalist id="novoUnidadeList"></datalist>
+                <select id="novoCodPosto" title="Postos cadastrados em Unidades → Postos"><option value="">Código do posto</option></select>
                 <input id="novoAdmissao" type="date">
                 <input id="novoVr" type="number" step="0.01" placeholder="VR (R$)">
                 <select id="novoVt"><option value="">VT?</option><option>SIM</option><option>NÃO</option></select>
@@ -5558,6 +5560,7 @@ const F = {
     admissao: ['DATA ADMISSÃO','DATA ADMISSAO','DATA DE ADMISSÃO','DATA DE ADMISSAO','DATA_ADMISSÃO','DATA_ADMISSAO','ADMISSÃO','ADMISSAO','DT ADMISSÃO','DT ADMISSAO','DT. ADMISSÃO','DT. ADMISSAO','DATA ADMISSÃO COLABORADOR','DATA ADMISSAO COLABORADOR','DT ADMISSÃO COLABORADOR','DT ADMISSAO COLABORADOR'],
     demissao: ['DATA DEMISSÃO','DATA_DEMISSÃO'], aso: ['VENCIMENTO ASO','VENCIMENTO_ASO'],
     cargo: ['DESCRIÇÃO CARGO','CARGO'], nivel: ['NÍVEL'], atuando: ['ATUANDO','UNIDADE'],
+    codPosto: ['CÓD POSTO','COD POSTO','CÓDIGO POSTO','CODIGO POSTO','COD. POSTO','CÓD. POSTO','COD POSTO','CODIGO DO POSTO'],
     salario: ['SALÁRIO BASE','SALARIO BASE','SAL BASE','REMUNERAÇÃO','REMUNERACAO','SALÁRIO BRUTO','SALARIO BRUTO','SAL BRUTO','VENCIMENTO BASE','SALÁRIO NOMINAL','SALARIO NOMINAL','SALÁRIO MENSAL','SALARIO MENSAL','SAL MENSAL','SALÁRIO','SALARIO'],
     ajuda: ['AJUDA DE CUSTOS'],
     vr: ['VR','VALE REFEIÇÃO','VALE REFEICAO','VALE_REFEICAO','VR R$','VR UNITÁRIO','VR UNITARIO','VALOR VR'],
@@ -6246,7 +6249,8 @@ function build(r) {
         sexo: one(r, F.sexo), estadoCivil: one(r, F.estadoCivil), raca: one(r, F.raca), jornada: one(r, F.jornada),
         carga: one(r, F.carga), instrucao: one(r, F.instrucao), deficiencia: one(r, F.deficiencia),
         camisa: one(r, F.camisa), calca: one(r, F.calca), sapato: one(r, F.sapato),
-        codigoRH: one(r, F.codigoRH), codigoESocial: one(r, F.codigoESocial)
+        codigoRH: one(r, F.codigoRH), codigoESocial: one(r, F.codigoESocial),
+        codPosto: String(one(r, F.codPosto) || '').trim()
     };
 }
 
@@ -7611,6 +7615,16 @@ function renderProfile() {
                 <div class="cell lab"><div class="q">Data limite férias</div><div class="v">${fdate(e.dataLimiteFerias)}</div></div>
                 <div class="cell lab"><div class="q">Jornada</div><div class="v">${esc(e.jornada)}</div></div>
                 <div class="cell lab"><div class="q">Atuando (Unidade)</div><div class="v">${esc(atuandoExibicao || '—')}${atuandoQuadro !== null ? ' <span style="font-size:10px;opacity:.75;">conforme Postos/Quadro</span>' : ''}</div></div>
+                <div class="sec">Vínculo com posto (Quadro atual)</div>
+                <div class="cell lab" style="grid-column:1 / -1;">
+                    <div class="q">Código do posto</div>
+                    <div class="v" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                        <select id="cadEmpCodPosto" style="min-width:220px;max-width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;"></select>
+                        <button type="button" class="btn btn-fp-orange" onclick="salvarVinculoCodPostoCadastro()">Guardar vínculo</button>
+                    </div>
+                    <p style="margin:6px 0 0;font-size:11px;color:#6b7280;">Lista os postos de <strong>Unidades → Postos</strong> da unidade em <strong>Atuando</strong>. Não preencha colaborador na aba Postos.</p>
+                </div>
+                <div class="cell lab"><div class="q">Código do posto (vigente)</div><div class="v">${esc(employeeCodigoPostoCadastro(e) || getCodigoPostoByColaboradorNome(e.nome, e.atuando) || '—')}</div></div>
                 <div class="cell lab"><div class="q">Carga Horária</div><div class="v">${esc(e.carga)}</div></div>
                 <div class="cell lab"><div class="q">Instrução</div><div class="v">${esc(e.instrucao)}</div></div>
                 <div class="cell lab"><div class="q">Deficiência</div><div class="v">${esc(e.deficiencia)}</div></div>
@@ -7620,6 +7634,7 @@ function renderProfile() {
             </div>
         </div>
     `;
+    refreshCadastroVinculoPostoUi();
 }
 
 function renderAlerts() {
@@ -7681,6 +7696,11 @@ function movimentacaoRefersToEmployee(m, emp){
 function getCodigoPostoByColaboradorNome(nome, unidadePreferida){
     const nk = normText(nome || '');
     if(!nk) return '';
+    const emp = findEmployeeForPostoNome(nome);
+    if(emp){
+        const codCad = employeeCodigoPostoCadastro(emp);
+        if(codCad) return codCad;
+    }
     const uk = normText(unidadePreferida || '');
     const pickCodigo = (row) => String(
         row?.codigo || row?.posto || row?.idRh || row?.id_rh || row?.codPosto || row?.cod_posto || ''
@@ -9927,6 +9947,7 @@ function fpExportEmployeeRowToSheet(e){
         'SAPATO': fpFmtCellForXlsxSync(e.sapato),
         'CÓD RH': fpFmtCellForXlsxSync(e.codigoRH),
         'CÓD E-SOCIAL': fpFmtCellForXlsxSync(e.codigoESocial),
+        'CÓD POSTO': fpFmtCellForXlsxSync(e.codPosto || employeeCodigoPostoCadastro(e)),
         'INICIO FERIAS': fpFmtCellForXlsxSync(e.inicioFerias),
         'FIM FERIAS': fpFmtCellForXlsxSync(e.fimFerias)
     };
@@ -10240,7 +10261,12 @@ function fpInitAutosaveSystem(){
 function toggleNovoFuncionario(){
     const p = document.getElementById('novoFuncionarioPanel');
     if(!p) return;
-    p.style.display = p.style.display === 'none' ? 'block' : 'none';
+    const open = p.style.display === 'none';
+    p.style.display = open ? 'block' : 'none';
+    if(open){
+        refreshNovoUnidadeDatalist();
+        onNovoUnidadeCadastroChange();
+    }
 }
 
 function salvarNovoFuncionario(){
@@ -10257,6 +10283,7 @@ function salvarNovoFuncionario(){
         cargo: document.getElementById('novoCargo')?.value?.trim() || '',
         nivel: '',
         atuando: document.getElementById('novoUnidade')?.value?.trim() || '',
+        codPosto: (document.getElementById('novoCodPosto')?.value || '').trim(),
         status: 'Funcionário Ativo',
         admissao: document.getElementById('novoAdmissao')?.value || '',
         vr: Number(document.getElementById('novoVr')?.value || 0),
@@ -13534,6 +13561,82 @@ function employeeAtuandoMatchesUnidade(emp, unidadeNome, unidadeCod){
 function employeeCodigoPostoCadastro(emp){
     return String(emp?.codPosto || emp?.codigoPosto || emp?.codigo_posto || '').trim().toUpperCase();
 }
+/** Códigos de posto cadastrados em Unidades → Postos para a unidade informada. */
+function getCodigosPostoPorUnidade(unidadeNome, unidadeCod){
+    const uKey = _normUniPostoUnidadeKey(unidadeCod, unidadeNome);
+    const seen = new Set();
+    const out = [];
+    (getUnidadesPostosCatalog() || []).forEach(p => {
+        if(_normUniPostoUnidadeKey(p.unidadeCod, p.unidadeNome) !== uKey) return;
+        const c = String(p.codigo || '').trim();
+        if(!c) return;
+        const k = c.toUpperCase();
+        if(seen.has(k)) return;
+        seen.add(k);
+        out.push(c);
+    });
+    return out.sort((a, b) => a.localeCompare(b, 'pt-BR'));
+}
+if(typeof window !== 'undefined'){
+    window.getCodigosPostoPorUnidade = getCodigosPostoPorUnidade;
+    window.employeeCodigoPostoCadastro = employeeCodigoPostoCadastro;
+}
+function resolveUnidadeRefFromAtuando(atuando){
+    const a = String(atuando || '').trim();
+    if(!a) return { nome: '', cod: '' };
+    const arr = getUnidades();
+    const hit = arr.find(u => normText(u.nome) === normText(a) || normText(u.cod) === normText(a));
+    return hit ? { nome: String(hit.nome || '').trim(), cod: String(hit.cod || '').trim() } : { nome: a, cod: '' };
+}
+function fillCodPostoSelect(elId, unidadeNome, unidadeCod, selectedCod){
+    const sel = document.getElementById(elId);
+    if(!sel) return;
+    const cur = selectedCod !== undefined ? String(selectedCod || '').trim() : String(sel.value || '').trim();
+    const codes = getCodigosPostoPorUnidade(unidadeNome, unidadeCod);
+    let html = '<option value="">— Sem vínculo —</option>';
+    codes.forEach(c => { html += `<option value="${esc(c)}">${esc(c)}</option>`; });
+    if(cur && !codes.some(c => c.toUpperCase() === cur.toUpperCase())){
+        html += `<option value="${esc(cur)}">${esc(cur)} (manual)</option>`;
+    }
+    sel.innerHTML = html;
+    if(cur && [...sel.options].some(o => o.value === cur)) sel.value = cur;
+    else if(!cur) sel.value = '';
+}
+function refreshNovoUnidadeDatalist(){
+    const dl = document.getElementById('novoUnidadeList');
+    if(!dl) return;
+    const nomes = getUnidades().map(u => String(u.nome || '').trim()).filter(Boolean)
+        .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    const fromEmp = (state.employees || []).map(e => String(e.atuando || '').trim()).filter(Boolean);
+    const all = [...new Set([...nomes, ...fromEmp])].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    dl.innerHTML = all.map(n => `<option value="${esc(n)}"></option>`).join('');
+}
+function onNovoUnidadeCadastroChange(){
+    const u = document.getElementById('novoUnidade')?.value?.trim() || '';
+    const ref = resolveUnidadeRefFromAtuando(u);
+    fillCodPostoSelect('novoCodPosto', ref.nome, ref.cod, document.getElementById('novoCodPosto')?.value);
+}
+function refreshCadastroVinculoPostoUi(){
+    if(!state.selected) return;
+    const ref = resolveUnidadeRefFromAtuando(state.selected.atuando);
+    fillCodPostoSelect('cadEmpCodPosto', ref.nome, ref.cod, employeeCodigoPostoCadastro(state.selected));
+}
+function salvarVinculoCodPostoCadastro(){
+    if(!state.selected){ alert('Selecione um funcionário na lista.'); return; }
+    const cod = (document.getElementById('cadEmpCodPosto')?.value || '').trim();
+    const idx = state.employees.findIndex(e => e === state.selected || normText(e.nome) === normText(state.selected.nome));
+    if(idx < 0){ alert('Funcionário não encontrado no cadastro.'); return; }
+    state.employees[idx].codPosto = cod;
+    if(state.selected === state.employees[idx] || normText(state.selected.nome) === normText(state.employees[idx].nome)){
+        state.selected = state.employees[idx];
+    }
+    fpSaveEmployeesToLocalStorage();
+    if(typeof renderPostosPanorama === 'function') renderPostosPanorama();
+    renderProfile();
+    fpNotifyIntranetChanged();
+    if(typeof propagateStateToDashboardIframes === 'function') propagateStateToDashboardIframes();
+    alert(cod ? ('Vínculo guardado: posto «' + cod + '».') : 'Vínculo de posto removido.');
+}
 function fillUniPostoEscalaSelect(selected){
     const sel = document.getElementById('uniPostoEscala');
     if(!sel) return;
@@ -15361,6 +15464,7 @@ function populateCadastroDependentes(){
     if(typeof refreshPostoDiasPresetOptions === 'function') refreshPostoDiasPresetOptions();
     if(typeof refreshSinistrosFormSelects === 'function') refreshSinistrosFormSelects();
     if(typeof refreshLaudosFormSelects === 'function') refreshLaudosFormSelects();
+    if(typeof refreshNovoUnidadeDatalist === 'function') refreshNovoUnidadeDatalist();
     movCadOnFuncionarioChange(true);
 }
 

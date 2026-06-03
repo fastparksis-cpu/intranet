@@ -480,6 +480,7 @@
       <div class="f"><label for="empCargo">Cargo</label><input id="empCargo" placeholder="Cargo"><div id="errEmpCargo" class="field-error"></div></div>
       <div class="f"><label for="empNivel">Nível</label><input id="empNivel" placeholder="Nível"></div>
       <div class="f"><label for="empUnidade">Unidade / Atuando</label><select id="empUnidade"><option value="">Selecione</option></select></div>
+      <div class="f"><label for="empCodPosto">Código do posto</label><select id="empCodPosto" title="Postos de Unidades → Postos (intranet)"><option value="">— Sem vínculo —</option></select></div>
       <div class="f"><label for="empEscala">Escala</label><select id="empEscala"><option value="">Selecione</option></select></div>
       <div class="f"><label for="empCarga">Carga horária</label><input id="empCarga" placeholder="Ex: 44h"></div>
       <div class="f"><label for="empJornada">Jornada</label><input id="empJornada" placeholder="Jornada"></div>
@@ -796,6 +797,7 @@ const F = {
     admissao: ['DATA ADMISSÃO','DATA ADMISSAO','DATA DE ADMISSÃO','DATA DE ADMISSAO','DATA_ADMISSÃO','DATA_ADMISSAO','ADMISSÃO','ADMISSAO','DT ADMISSÃO','DT ADMISSAO','DT. ADMISSÃO','DT. ADMISSAO','DATA ADMISSÃO COLABORADOR','DATA ADMISSAO COLABORADOR','DT ADMISSÃO COLABORADOR','DT ADMISSAO COLABORADOR'],
     demissao: ['DATA DEMISSÃO','DATA_DEMISSÃO'], aso: ['VENCIMENTO ASO','VENCIMENTO_ASO'],
     cargo: ['DESCRIÇÃO CARGO','CARGO'], nivel: ['NÍVEL'], atuando: ['ATUANDO','UNIDADE'],
+    codPosto: ['CÓD POSTO','COD POSTO','CÓDIGO POSTO','CODIGO POSTO','COD. POSTO','CÓD. POSTO','COD POSTO','CODIGO DO POSTO'],
     salario: ['SALÁRIO BASE','SALARIO BASE','SAL BASE','REMUNERAÇÃO','REMUNERACAO','SALÁRIO BRUTO','SALARIO BRUTO','SAL BRUTO','VENCIMENTO BASE','SALÁRIO NOMINAL','SALARIO NOMINAL','SALÁRIO MENSAL','SALARIO MENSAL','SAL MENSAL','SALÁRIO','SALARIO'],
     ajuda: ['AJUDA DE CUSTOS'], vr: ['VR'], cestas: ['CESTA','CESTAS','RECEBE CESTA'],
     plano: ['PLANO DE SÁUDE','PLANO DE SAÚDE'], valorPlano: ['VALOR'], descontoPlano: ['DESCONTO PLANO DE SAÚDE'],
@@ -861,6 +863,7 @@ const EF = {
     cargo: document.getElementById('empCargo'),
     nivel: document.getElementById('empNivel'),
     unidade: document.getElementById('empUnidade'),
+    codPosto: document.getElementById('empCodPosto'),
     salario: document.getElementById('empSalario'),
     ajuda: document.getElementById('empAjuda'),
     vr: document.getElementById('empVr'),
@@ -1902,6 +1905,7 @@ function build(r) {
         carga: one(r, F.carga), instrucao: one(r, F.instrucao), deficiencia: one(r, F.deficiencia),
         camisa: one(r, F.camisa), calca: one(r, F.calca), sapato: one(r, F.sapato),
         codigoRH: one(r, F.codigoRH), codigoESocial: one(r, F.codigoESocial),
+        codPosto: String(one(r, F.codPosto) || '').trim(),
         escala: one(r, ['ESCALA','JORNADA ESCALA']) || one(r, F.jornada),
         dataLimiteFerias: one(r, ['DATA LIMITE','DATA_LIMITE','DATA LIMITE FERIAS','DATA LIMITE FÉRIAS'])
     };
@@ -2594,6 +2598,8 @@ function fpReadLocalArray(key){
 function fpGetCodigoPostoByEmployeeName(nome, empCtx){
     const nm = fpNormTextBasic(nome);
     if(!nm) return '';
+    const codCad = String(empCtx?.codPosto || empCtx?.codigoPosto || empCtx?.codigo_posto || '').trim();
+    if(codCad) return codCad;
     const empUnidade = fpNormTextBasic(empCtx?.atuando || empCtx?.unidade || '');
     const fontes = [
         ...fpReadLocalArray(FP_UNIDADES_POSTOS_KEY),
@@ -2648,7 +2654,7 @@ function renderProfile(e, qtd) {
     const stRaw = String(e.status || '');
     const st = stRaw.includes('Deslig') ? 'd' : stRaw.includes('FÉR') ? 'w' : 'ok';
     const vtIv = Number(e.vtIdaVolta) > 0 ? e.vtIdaVolta : (Number(e.vtValor) > 0 ? Number(e.vtValor) * 2 : 0);
-    const codPosto = fpGetCodigoPostoByEmployeeName(e.nome, e);
+    const codPosto = String(e.codPosto || e.codigoPosto || '').trim() || fpGetCodigoPostoByEmployeeName(e.nome, e);
     const part1 = [
         ['Registro', e.empresa], ['Status', e.status], ['Admissão', fdate(e.admissao)],
         ...(ehDesligado(e) ? [['Data de desligamento', fdate(e.demissao) || '—']] : []),
@@ -3882,6 +3888,60 @@ function populateCadastroUnitOptions(){
     const current = EF.unidade.value || '';
     EF.unidade.innerHTML = '<option value="">Selecione</option>' + units.map(u => `<option value="${esc(u)}">${esc(u)}</option>`).join('');
     if(current && units.includes(current)) EF.unidade.value = current;
+    fillEmpCodPostoSelect();
+}
+function getCodigosPostoPorUnidadeDash(unidadeNome){
+    const u = String(unidadeNome || '').trim();
+    if(!u) return [];
+    const fontes = [];
+    try {
+        if(window.parent && window.parent !== window){
+            if(typeof window.parent.getUnidadesPostosCatalog === 'function'){
+                fontes.push(...(window.parent.getUnidadesPostosCatalog() || []));
+            } else if(typeof window.parent.getCodigosPostoPorUnidade === 'function'){
+                return window.parent.getCodigosPostoPorUnidade(u, '');
+            }
+        }
+    } catch(_){}
+    fontes.push(...fpReadLocalArray(FP_UNIDADES_POSTOS_KEY));
+    let uCod = '';
+    try {
+        const arr = JSON.parse(localStorage.getItem('fp_unidades') || '[]');
+        const hit = (Array.isArray(arr) ? arr : []).find(x =>
+            fpNormTextBasic(x.nome) === fpNormTextBasic(u) || fpNormTextBasic(x.cod) === fpNormTextBasic(u)
+        );
+        if(hit) uCod = String(hit.cod || '').trim();
+    } catch(_){}
+    const uKey = (uCod || u).toUpperCase();
+    const seen = new Set();
+    const out = [];
+    fontes.forEach(p => {
+        const pn = fpNormTextBasic(p.unidadeNome || p.unidade || '');
+        const pc = fpNormTextBasic(p.unidadeCod || '');
+        const match = pn === fpNormTextBasic(u) || pc === fpNormTextBasic(u) ||
+            (uCod && (pn === fpNormTextBasic(uCod) || pc === fpNormTextBasic(uCod)));
+        if(!match) return;
+        const c = String(p.codigo || p.posto || '').trim();
+        if(!c) return;
+        const k = c.toUpperCase();
+        if(seen.has(k)) return;
+        seen.add(k);
+        out.push(c);
+    });
+    return out.sort((a, b) => a.localeCompare(b, 'pt-BR'));
+}
+function fillEmpCodPostoSelect(selectedCod){
+    if(!EF.codPosto) return;
+    const cur = selectedCod !== undefined ? String(selectedCod || '').trim() : String(EF.codPosto.value || '').trim();
+    const codes = getCodigosPostoPorUnidadeDash(EF.unidade?.value || '');
+    let html = '<option value="">— Sem vínculo —</option>';
+    codes.forEach(c => { html += `<option value="${esc(c)}">${esc(c)}</option>`; });
+    if(cur && !codes.some(c => c.toUpperCase() === cur.toUpperCase())){
+        html += `<option value="${esc(cur)}">${esc(cur)} (manual)</option>`;
+    }
+    EF.codPosto.innerHTML = html;
+    if(cur && [...EF.codPosto.options].some(o => o.value === cur)) EF.codPosto.value = cur;
+    else if(!cur) EF.codPosto.value = '';
 }
 function openEmployeeForm(emp = null){
     employeeEditIndex = emp ? state.employees.indexOf(emp) : -1;
@@ -3895,6 +3955,7 @@ function openEmployeeForm(emp = null){
         EF.cargo.value = emp.cargo || '';
         EF.nivel.value = emp.nivel || '';
         EF.unidade.value = emp.atuando || '';
+        fillEmpCodPostoSelect(emp.codPosto || emp.codigoPosto || '');
         EF.salario.value = Number(emp.salario || 0);
         EF.ajuda.value = Number(emp.ajuda || 0);
         EF.vr.value = Number(emp.vr || 0);
@@ -3980,6 +4041,7 @@ function fpBuildFormDraftPayload(){
         cargo: EF.cargo.value.trim(),
         nivel: EF.nivel.value.trim(),
         atuando: EF.unidade.value.trim(),
+        codPosto: (EF.codPosto?.value || '').trim(),
         salario: Number(EF.salario.value || 0),
         ajuda: Number(EF.ajuda.value || 0),
         vr: Number(EF.vr.value || 0),
@@ -4139,6 +4201,7 @@ function saveEmployeeForm(){
         cargo: EF.cargo.value.trim(),
         nivel: EF.nivel.value.trim(),
         atuando: EF.unidade.value.trim(),
+        codPosto: (EF.codPosto?.value || '').trim(),
         salario: Number(EF.salario.value || 0),
         ajuda: Number(EF.ajuda.value || 0),
         vr: Number(EF.vr.value || 0),
@@ -4251,6 +4314,7 @@ EF.cep.addEventListener('input', () => {
 EF.cep.addEventListener('blur', () => { void fpBuscarEnderecoPorCep(); });
 EF.nome.addEventListener('input', () => clearFieldError(EF.nome, 'errEmpNome'));
 if(EF.empresa) EF.empresa.addEventListener('change', () => clearFieldError(EF.empresa, 'errEmpEmpresa'));
+if(EF.unidade) EF.unidade.addEventListener('change', () => fillEmpCodPostoSelect());
 EF.cargo.addEventListener('input', () => clearFieldError(EF.cargo, 'errEmpCargo'));
 if(EF.docs) EF.docs.addEventListener('change', handleEmployeeDocsSelected);
 if(EF.foto) EF.foto.addEventListener('change', handleEmployeePhotoSelected);
@@ -4609,7 +4673,7 @@ const FICHA_REL_FIELDS = [
     { id: 'cargo', label: 'Cargo', group: 'contratual', get: e => e.cargo },
     { id: 'nivel', label: 'Nível', group: 'contratual', get: e => e.nivel },
     { id: 'unidade', label: 'Unidade / Atuando', group: 'contratual', get: e => e.atuando },
-    { id: 'codigoPosto', label: 'Cód. de posto', group: 'contratual', get: e => fpGetCodigoPostoByEmployeeName(e.nome, e) || '—' },
+    { id: 'codigoPosto', label: 'Cód. de posto', group: 'contratual', get: e => String(e.codPosto || e.codigoPosto || '').trim() || fpGetCodigoPostoByEmployeeName(e.nome, e) || '—' },
     { id: 'escala', label: 'Escala', group: 'contratual', get: e => e.escala },
     { id: 'carga', label: 'Carga horária', group: 'contratual', get: e => e.carga },
     { id: 'jornada', label: 'Jornada', group: 'contratual', get: e => e.jornada },
