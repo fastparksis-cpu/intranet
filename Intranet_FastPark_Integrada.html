@@ -6920,6 +6920,10 @@ window.fpOnCloudDataReady = async function () {
     try { renderAll(); } catch(e) { console.warn('[FP] renderAll pós-nuvem', e); }
     if(typeof refreshDashboardFilters === 'function') refreshDashboardFilters();
     if(typeof renderBeneficiosCestas === 'function') renderBeneficiosCestas();
+    try {
+        if(typeof renderUnidadesList === 'function') renderUnidadesList();
+        else if(typeof refreshUnidadesViewSelect === 'function') refreshUnidadesViewSelect();
+    } catch(uniUiErr) { console.warn('[FP] UI unidades pós-nuvem', uniUiErr); }
     fpPushDashboardWithRetry();
 };
 async function fpWaitForAuthSession(maxMs){
@@ -9211,6 +9215,11 @@ async function collectFpIntranetSnapshot(){
             ls[FP_QUADRO_GERAL_KEY] = JSON.stringify(state.quadroGeral || []);
             ls[FP_PAGAS_LANCAMENTOS_KEY] = JSON.stringify(state.pagas || []);
             ls.fastparkHistorico = JSON.stringify(Array.isArray(historico) ? historico : []);
+            try { ls[UNI_KEY] = JSON.stringify(uIn); } catch(eUniLs) { console.warn('[FP] snapshot fp_unidades', eUniLs); }
+            try {
+                const uniBag = uniAttBagGet();
+                ls[FP_UNIDADES_ATT_BAG_KEY] = JSON.stringify(uniBag && typeof uniBag === 'object' ? uniBag : {});
+            } catch(eUniBag) { console.warn('[FP] snapshot uni bag', eUniBag); }
             return ls;
         })(),
         modulesIncluded: (FP_SNAPSHOT_STORAGE_REGISTRY || []).map(function(x){ return x.area; }),
@@ -9276,17 +9285,38 @@ async function applyFpEmbeddedIntranetDb(db, opts){
         historico = db.historico;
         try { localStorage.setItem('fastparkHistorico', JSON.stringify(historico)); } catch(e1) { console.warn(e1); }
     }
-    const uExp = (db.unidadesResolved || []).map(u => expandUnidadeContratoAnexo(u, att));
-    if(uExp.length){
-        try { uniPersistUnidadesRaw(uExp); }
-        catch(eUni) { console.error('[FP] unidades cloud/localStorage', eUni); }
-    }
     setFaltasCad(expandAnexoRefsInFaltas(db.faltasResolved || [], att));
     setSignedDocsMap(expandPagasSignedSlim(db.pagasSignedSlim || {}, att));
     const ls = db.localStrings || {};
+    const uniLsDefer = new Set([UNI_KEY, FP_UNIDADES_ATT_BAG_KEY]);
     Object.keys(ls).forEach(k => {
+        if(uniLsDefer.has(k)) return;
         if(ls[k] !== undefined && ls[k] !== null) try { localStorage.setItem(k, ls[k]); } catch(e2) { console.warn('localStorage', k, e2); }
     });
+    let uExp = (db.unidadesResolved || []).map(u => expandUnidadeContratoAnexo(u, att));
+    if(!uExp.length && ls[UNI_KEY]){
+        try {
+            const parsedUni = JSON.parse(ls[UNI_KEY]);
+            if(Array.isArray(parsedUni) && parsedUni.length){
+                uExp = parsedUni.map(u => expandUnidadeContratoAnexo(u, att));
+            }
+        } catch(eUniLs) { console.warn('[FP] unidades localStrings', eUniLs); }
+    }
+    if(uExp.length){
+        try {
+            uniPersistUnidadesRaw(uExp);
+            console.log('[FP] unidades aplicadas ao localStorage:', uExp.length);
+        } catch(eUni) { console.error('[FP] unidades cloud/localStorage', eUni); }
+    } else {
+        const localN = (function(){
+            try { return JSON.parse(localStorage.getItem(UNI_KEY) || '[]').length; } catch(_){ return 0; }
+        })();
+        if(localN) console.log('[FP] snapshot sem unidadesResolved; mantidas', localN, 'unidade(s) locais.');
+        else console.warn('[FP] snapshot sem unidades (unidadesResolved e fp_unidades vazios).');
+    }
+    if(ls[FP_UNIDADES_ATT_BAG_KEY] != null){
+        try { fpLsSetItem(FP_UNIDADES_ATT_BAG_KEY, ls[FP_UNIDADES_ATT_BAG_KEY]); } catch(eBag) { console.warn('[FP] uni att bag', eBag); }
+    }
     if(ls[FP_EMPLOYEES_ATTACHMENTS_IDB_KEY]){
         try {
             const bagParsed = JSON.parse(ls[FP_EMPLOYEES_ATTACHMENTS_IDB_KEY]);
@@ -9363,6 +9393,10 @@ async function applyFpEmbeddedIntranetDb(db, opts){
     fpSavePagasToLocalStorage();
     fpSaveQuadroGeralToLocalStorage();
     if(typeof propagateStateToDashboardIframes === 'function') propagateStateToDashboardIframes();
+    try {
+        if(typeof renderUnidadesList === 'function') renderUnidadesList();
+        else if(typeof refreshUnidadesViewSelect === 'function') refreshUnidadesViewSelect();
+    } catch(uniUiErr) { console.warn('[FP] UI unidades pós-snapshot', uniUiErr); }
     } finally {
         window.__fpLsHookPause = false;
     }
