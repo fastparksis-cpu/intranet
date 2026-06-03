@@ -1913,6 +1913,98 @@ body.dark .fp-cloud-nav-bar {
 .lists { grid-template-columns: repeat(4, 1fr); }
 .list h3 { margin: 0; padding: 8px 12px; font-size: 11px; font-weight: 700; color: #fff; background: var(--fp-dark); border-bottom: 2px solid var(--fp-orange); border-radius: var(--radius) var(--radius) 0 0; text-transform: uppercase; letter-spacing: 0.5px;}
 .inner { max-height: 250px; overflow: auto; background: var(--p);}
+/* Laudos — override global .inner (deve vir depois da regra acima) */
+.tab-container > .tab-content.active#laudos {
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    min-height: 0 !important;
+    padding: 8px 12px 12px !important;
+    box-sizing: border-box !important;
+}
+#laudos .inner,
+#laudos #laudosList,
+#laudos #laudosHistTableWrap {
+    max-height: none !important;
+    background: var(--p);
+}
+#laudos #laudosPanelCadastro.active {
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1 1 0 !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+}
+#laudos .laudos-form-panel {
+    flex: 0 0 auto !important;
+    flex-shrink: 0 !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+}
+#laudos .laudos-form-body {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)) !important;
+    gap: 8px !important;
+    padding: 8px 10px !important;
+}
+#laudos .laudos-form-span { grid-column: 1 / -1; }
+#laudos .laudos-form-span textarea {
+    width: 100%;
+    min-height: 40px;
+    max-height: 56px;
+    box-sizing: border-box;
+    padding: 6px 8px;
+    font-size: 12px;
+    border: 1px solid var(--l);
+    border-radius: 6px;
+    resize: none;
+    font-family: inherit;
+}
+#laudos .laudos-list-panel {
+    flex: 1 1 0 !important;
+    min-height: 0 !important;
+    margin-top: 8px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+}
+#laudos .laudos-list-head {
+    flex-shrink: 0 !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 10px !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+}
+#laudos #laudosList {
+    flex: 1 1 0 !important;
+    min-height: 0 !important;
+    overflow-x: auto !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+}
+#laudos #laudosPanelHistorico.active {
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1 1 0 !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+}
+#laudos #laudosPanelHistorico > .panel {
+    flex: 1 1 0 !important;
+    min-height: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    margin: 0 !important;
+}
+#laudos #laudosHistTableWrap {
+    flex: 1 1 0 !important;
+    min-height: 0 !important;
+    overflow: auto !important;
+}
 .names { list-style: none; margin: 0; padding: 0; }
 .names li { padding: 6px 10px; border-bottom: 1px solid var(--l); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .names li:last-child { border-bottom: 0; }
@@ -3055,9 +3147,9 @@ td { color: var(--t); font-weight: 500;}
             <button type="button" class="btn laudos-subtab" id="laudosSubBtnHist" onclick="switchLaudosSubtab('historico')">Histórico</button>
         </div>
         <div id="laudosPanelCadastro" class="laudos-subpanel active">
-            <article class="panel">
+            <article class="panel laudos-form-panel">
                 <div class="head"><h2 id="laudosFormTitle">Novo laudo</h2></div>
-                <div class="body" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;">
+                <div class="body laudos-form-body">
                     <input type="hidden" id="laudoEditId" value="">
                     <input type="hidden" id="laudoRenovarId" value="">
                     <div style="grid-column:1/-1;font-size:12px;color:#555;">Cadastre por <strong>unidade</strong> e <strong>tipo de laudo</strong>. Ao <strong>renovar</strong>, informe a nova data de vencimento — o vencimento anterior fica no histórico.</div>
@@ -3073,7 +3165,7 @@ td { color: var(--t); font-weight: 500;}
                         <option value="Licença ambiental"></option>
                     </datalist>
                     <div><label><strong>Vencimento</strong></label><br><input id="laudoVencimento" type="date"></div>
-                    <div style="grid-column:1/-1;"><label><strong>Observações</strong></label><br><textarea id="laudoObs" rows="2" placeholder="Notas sobre o laudo ou a renovação" style="width:100%;min-height:56px;box-sizing:border-box;padding:8px;font-size:12px;border:1px solid var(--l);border-radius:6px;resize:vertical;font-family:inherit;"></textarea></div>
+                    <div class="laudos-form-span"><label><strong>Observações</strong></label><br><textarea id="laudoObs" rows="1" placeholder="Notas sobre o laudo ou a renovação"></textarea></div>
                     <div style="grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
                         <button type="button" class="btn btn-success" onclick="salvarLaudo()">Salvar</button>
                         <button type="button" class="btn" onclick="limparFormLaudo()">Novo registro</button>
@@ -3082,8 +3174,8 @@ td { color: var(--t); font-weight: 500;}
                     </div>
                 </div>
             </article>
-            <article class="panel list" style="margin-top:12px;">
-                <div class="head" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;">
+            <article class="panel list laudos-list-panel">
+                <div class="head laudos-list-head">
                     <h3>Laudos por unidade</h3>
                     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
                         <select id="laudoFiltroUnidade" onchange="renderLaudosList()"><option value="">Todas as unidades</option></select>
@@ -3542,7 +3634,10 @@ function switchTab(tab) {
         if(typeof fpPushDashboardWithRetry === 'function') fpPushDashboardWithRetry();
     }
     if(tab === 'movimentos' && typeof refreshMovGestaoPagamentosUi === 'function') refreshMovGestaoPagamentosUi();
-    if(tab === 'vt' && typeof renderVtReport === 'function') renderVtReport();
+    if(tab === 'vt'){
+        if(typeof sincronizarTodosPostosComCadastro === 'function') sincronizarTodosPostosComCadastro();
+        if(typeof renderVtReport === 'function') renderVtReport();
+    }
     if(tab === 'uni-cadastro' && typeof uniInitCadastroTab === 'function') uniInitCadastroTab();
     if(tab === 'uni-unidade' && typeof uniInitUnidadeTab === 'function') uniInitUnidadeTab();
     if(tab === 'dprefbeneficios' && typeof refInitBeneficiosTab === 'function') refInitBeneficiosTab();
@@ -11777,6 +11872,13 @@ function switchLaudosSubtab(tab){
     } else if(typeof renderLaudosList === 'function') renderLaudosList();
 }
 function laudosInitTab(){
+    const laudosTab = document.getElementById('laudos');
+    if(laudosTab && laudosTab.classList.contains('active')){
+        laudosTab.style.display = 'flex';
+        laudosTab.style.flexDirection = 'column';
+        laudosTab.style.overflow = 'hidden';
+        laudosTab.style.height = '100%';
+    }
     switchLaudosSubtab(
         document.getElementById('laudosPanelHistorico')?.classList.contains('active') ? 'historico' : 'cadastro'
     );
@@ -11817,7 +11919,6 @@ function iniciarRenovacaoLaudo(encId){
     document.getElementById('laudoTipo').disabled = true;
     document.getElementById('laudoObs').value = '';
     document.getElementById('laudoVencimento').value = '';
-    document.getElementById('laudosPanelCadastro')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 function editarLaudo(encId){
     const id = decodeURIComponent(String(encId || ''));
@@ -12086,8 +12187,9 @@ function localizarPostoPorCodigo(){
 }
 function catalogPostoToQuadroRow(p, catalogIdx){
     const d = lookupDadosUnidadeParaQuadro(p.unidadeNome || p.unidadeCod || '');
-    return {
+    const row = {
         posto: p.codigo || '',
+        codigo: p.codigo || '',
         status: p.status || 'ATIVO',
         unidade: p.unidadeNome || '',
         enderecoUnidade: d.enderecoUnidade || '',
@@ -12112,6 +12214,20 @@ function catalogPostoToQuadroRow(p, catalogIdx){
         __idx: catalogIdx,
         __catalogId: p.id
     };
+    const emp = typeof findColaboradorParaPostoCatalog === 'function' ? findColaboradorParaPostoCatalog(p, row) : null;
+    if(emp){
+        if(!String(row.nome || '').trim()) row.nome = String(emp.nome || '').trim();
+        if(!String(row.registro2 || '').trim()){
+            const reg = String(emp.empresa || '').trim();
+            if(reg && reg !== 'Sem empresa') row.registro2 = reg;
+        }
+        if(!String(row.funcao || '').trim()) row.funcao = String(emp.cargo || '').trim();
+        if(!String(row.escala || '').trim()){
+            row.escala = String(emp.escala || emp.jornada || '').trim();
+            row.jornada = row.escala;
+        }
+    }
+    return row;
 }
 function refreshUnidadesPostosUnidadeSelect(){
     fillUniPostoDiasSelect();
@@ -13389,78 +13505,125 @@ function getQuadroRowsForLookup(){
         ...getPostosExtras().map((r, idx) => ({ ...r, __source: 'extra', __idx: idx }))
     ];
 }
-/** Localiza linha do panorama Postos/Quadro pelo nome (e unidade do cadastro, se houver). */
-function findPostoQuadroRowForEmployee(emp){
+function vtPickCodigoPostoRow(row){
+    return String(row?.codigo || row?.posto || row?.idRh || row?.id_rh || row?.codPosto || row?.cod_posto || '').trim().toUpperCase();
+}
+function vtNomeKeysOnQuadroRow(r){
+    return [
+        r?.nome, r?.funcionario, r?.colaborador, r?.nomeColaborador,
+        r?.nome_colaborador, r?.nomeFuncionario
+    ].map(normVtNomeKey).filter(Boolean);
+}
+/** Linha do Quadro de Postos (catálogo Unidades + planilha + extras) para o colaborador. */
+function resolveQuadroRowForVt(emp){
     if(!emp) return null;
     const nomeK = normVtNomeKey(emp.nome);
+    if(!nomeK) return null;
     const uniK = normText(String(emp.atuando || ''));
     const rows = getQuadroRowsForLookup();
+
+    const byName = rows.filter(r => vtNomeKeysOnQuadroRow(r).some(n => n === nomeK));
+    if(byName.length){
+        if(uniK){
+            const exactUni = byName.find(r => normText(String(r.unidade || '')) === uniK);
+            if(exactUni) return exactUni;
+        }
+        const catalog = byName.find(r => r.__source === 'catalog');
+        if(catalog) return catalog;
+        return byName[0];
+    }
+
+    const codEmp = String(
+        emp?.codPosto || emp?.codigoPosto || emp?.codigo_posto || emp?.posto || ''
+    ).trim();
+    const codByNome = getCodigoPostoByColaboradorNome(emp?.nome || '', emp?.atuando || '');
+    const codPosto = codEmp || codByNome;
+    if(codPosto){
+        const byCod = findPostoRowByCodigo(codPosto, emp?.atuando || '');
+        if(byCod) return byCod;
+    }
+
     const scored = rows.map(r => {
-        const nomes = [
-            r?.nome, r?.funcionario, r?.colaborador, r?.nomeColaborador,
-            r?.nome_colaborador, r?.nomeFuncionario
-        ].map(normVtNomeKey).filter(Boolean);
+        const nomes = vtNomeKeysOnQuadroRow(r);
         let score = 0;
         for(const n of nomes){
             if(n === nomeK) score = Math.max(score, 100);
             else if(n && nomeK && (n.includes(nomeK) || nomeK.includes(n))) score = Math.max(score, 70);
         }
         if(score > 0 && uniK && normText(String(r.unidade || '')) === uniK) score += 25;
-        if(score > 0 && r.__source === 'catalog') score += 8;
-        if(score > 0 && String(r.escala || r.jornada || '').trim()) score += 3;
+        if(score > 0 && r.__source === 'catalog') score += 12;
+        if(score > 0 && String(r.escala || r.jornada || r.diasSemana || '').trim()) score += 5;
+        if(score > 0 && String(r.registro2 || '').trim()) score += 2;
         return { r, score };
     });
     scored.sort((a, b) => b.score - a.score);
-    if(!scored.length || scored[0].score <= 0) return null;
-    return scored[0].r;
+    if(scored.length && scored[0].score > 0) return scored[0].r;
+    return null;
+}
+/** Localiza linha do panorama Postos/Quadro pelo nome (e unidade do cadastro, se houver). */
+function findPostoQuadroRowForEmployee(emp){
+    return resolveQuadroRowForVt(emp);
 }
 function findPostoRowByCodigo(codigoPosto, unidadePreferida){
     const cod = String(codigoPosto || '').trim().toUpperCase();
     if(!cod) return null;
     const uk = normText(String(unidadePreferida || ''));
-    const fontes = [
-        ...(state.quadroGeral || []).map((r, idx) => ({ ...r, __source: 'base', __idx: idx })),
-        ...getPostosExtras().map((r, idx) => ({ ...r, __source: 'extra', __idx: idx })),
-        ...(getUnidadesPostosCatalog() || []).map((r, idx) => ({ ...r, __source: 'catalog', __idx: idx }))
-    ];
-    const pickCod = (row) => String(row?.codigo || row?.posto || row?.idRh || row?.id_rh || row?.codPosto || row?.cod_posto || '').trim().toUpperCase();
-    const byCod = fontes.filter(r => pickCod(r) === cod);
+    const byCod = getQuadroRowsForLookup().filter(r => vtPickCodigoPostoRow(r) === cod);
     if(!byCod.length) return null;
     if(uk){
         const byUni = byCod.find(r => normText(String(r.unidade || r.unidadeNome || r.unidadeCod || '')) === uk);
         if(byUni) return byUni;
     }
-    return byCod[0];
+    const catalog = byCod.find(r => r.__source === 'catalog');
+    return catalog || byCod[0];
+}
+function getVtRegistroFromQuadroRow(row, emp){
+    if(row){
+        const r2 = String(row.registro2 || '').trim();
+        if(r2) return r2;
+        const re = String(row.empresa || row.empresaUnidade || '').trim();
+        if(re) return re;
+    }
+    const e = String(emp?.empresa || '').trim();
+    return e && e !== 'Sem empresa' ? e : '';
+}
+function getVtUnidadeFromQuadroRow(row, emp){
+    if(row && String(row.unidade || '').trim()) return String(row.unidade).trim();
+    const auth = typeof getPostoUnidadeAutoritativaParaColaborador === 'function'
+        ? getPostoUnidadeAutoritativaParaColaborador(emp?.nome)
+        : null;
+    if(auth) return auth;
+    return String(emp?.atuando || '').trim();
+}
+function getVtEscalaFromQuadroRow(row){
+    if(!row) return '';
+    const escalaFonte = String(row.escala || row.jornada || row.diasSemana || '').trim();
+    const escalaBase = vtEscalaCanonicalFromQuadro(escalaFonte);
+    const parRaw = String(row.paridade12x36 || row.paridade || '').trim();
+    const parNorm = normText(parRaw);
+    const parLabel = parNorm.includes('PARES') ? 'pares' : ((parNorm.includes('IMPARES') || parNorm.includes('ÍMPARES')) ? 'ímpares' : '');
+    return (normText(escalaBase) === '12X36' && parLabel) ? `${escalaBase} (${parLabel})` : escalaBase;
 }
 function getQuadroEscalaForEmployee(emp){
-    const row = findPostoQuadroRowForEmployee(emp);
-    if(!row) return '';
-    return String(row.escala || row.jornada || row.diasSemana || '').trim();
+    return getVtEscalaFromQuadroRow(resolveQuadroRowForVt(emp));
 }
 function getQuadroJornadaForEmployee(emp){
     return getQuadroEscalaForEmployee(emp);
 }
 function getVtDisplayDataForEmployee(emp, cfg){
+    const row = resolveQuadroRowForVt(emp);
     const codEmp = String(
         emp?.codPosto || emp?.codigoPosto || emp?.codigo_posto || emp?.posto || ''
     ).trim();
     const codByNome = getCodigoPostoByColaboradorNome(emp?.nome || '', emp?.atuando || '');
-    const codPosto = codEmp || codByNome;
-    const rowByCod = findPostoRowByCodigo(codPosto, emp?.atuando || '');
-    const row = rowByCod || findPostoQuadroRowForEmployee(emp);
-    const escalaFonte = row ? String(row.escala || row.jornada || row.diasSemana || '').trim() : '';
-    const escalaBase = row ? vtEscalaCanonicalFromQuadro(escalaFonte) : '';
-    const parRaw = String((row && (row.paridade12x36 || row.paridade)) || '').trim();
-    const parNorm = normText(parRaw);
-    const parLabel = parNorm.includes('PARES') ? 'pares' : ((parNorm.includes('IMPARES') || parNorm.includes('ÍMPARES')) ? 'ímpares' : '');
-    const escalaQuadro = (normText(escalaBase) === '12X36' && parLabel) ? `${escalaBase} (${parLabel})` : escalaBase;
+    const codPosto = codEmp || codByNome || (row ? vtPickCodigoPostoRow(row) : '');
     return {
         funcionario: (row && String(row.nome || '').trim()) || String(emp.nome || '').trim(),
-        registro: (row && String(row.registro2 || row.registro || row.empresa || '').trim()) || String(emp.empresa || '').trim(),
-        unidade: (row && String(row.unidade || '').trim()) || String(emp.atuando || '').trim(),
-        // Regra solicitada: escala deve vir do Quadro de Postos pelo nome/unidade em atuação.
-        escala: escalaQuadro || '',
-        codPosto: codPosto || ''
+        registro: getVtRegistroFromQuadroRow(row, emp),
+        unidade: getVtUnidadeFromQuadroRow(row, emp),
+        escala: getVtEscalaFromQuadroRow(row),
+        codPosto: codPosto || '',
+        quadroFonte: row ? (row.__source || 'quadro') : ''
     };
 }
 function jornadaStringToVtCfg(jornadaStr){
@@ -13579,6 +13742,7 @@ function renderVtReport(){
         ? 'Faltas injustificadas: mês civil anterior ao início do período (regra 21→20).'
         : 'Faltas injustificadas: intervalo de igual duração imediatamente anterior ao início.';
     el.innerHTML = `<div style="margin-bottom:10px;"><strong>Período:</strong> ${ini.toLocaleDateString('pt-BR')} a ${fim.toLocaleDateString('pt-BR')}</div>
+    <div style="margin-bottom:8px;font-size:12px;color:#555;">Registro, Unidade e Escala são obtidos do <strong>Quadro de Postos</strong> (Unidades → Postos e panorama de postos). VT unitário e conta vêm da ficha cadastral.</div>
     <div style="margin-bottom:8px;font-size:12px;color:#555;">${notaFaltas}</div>
     <div style="margin-bottom:10px;"><strong>Dias úteis:</strong> ${diasUteis} | <strong>Total previsto:</strong> ${fmoney(totalGeral)} 
     <button class="btn btn-success" onclick="exportVtExcel()" style="margin-left:8px;">Excel</button><button class="btn btn-danger" onclick="exportVtPDF()" style="margin-left:6px;">PDF</button><button class="btn btn-info" onclick="exportVtBancoExcel()" style="margin-left:6px;">Exportar arquivo banco</button></div>
