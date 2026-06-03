@@ -2707,15 +2707,17 @@ td { color: var(--t); font-weight: 500;}
                 <div id="uniTaxaGrafico" style="grid-column:1 / -1; background:#eee; height:16px; border-radius:8px; overflow:hidden;"><div style="height:100%;width:0;background:#0f8a57;"></div></div>
 
                 <div class="uni-section-title" style="grid-column:1 / -1; font-weight:800; font-size:12px; color:var(--fp-orange); text-transform:uppercase; letter-spacing:.6px; border-bottom:1px solid #e5e7eb; padding-bottom:4px;">Contrato e Aditivos</div>
-                <input id="uniDataContrato" type="date" placeholder="Data de contrato">
+                <input id="uniDataContrato" type="text" placeholder="dd/mm/aaaa" inputmode="numeric" autocomplete="off">
                 <input id="uniTipoContrato" placeholder="Tipo de contrato">
                 <input id="uniAluguel" placeholder="Aluguel">
                 <input id="uniIndiceReajuste" placeholder="Índice de reajuste">
                 <input id="uniFaixaFaturamento" placeholder="Faixa de faturamento">
                 <input id="uniContratantePagamento" placeholder="Contratante pagamento">
-                <input id="uniVencimentoContrato" type="date" placeholder="Vencimento do contrato">
+                <input id="uniVencimentoContrato" type="text" placeholder="dd/mm/aaaa" inputmode="numeric" autocomplete="off">
+                <div style="grid-column:1 / -1;"><label style="font-size:11px;font-weight:700;">Contrato (documento)</label><br><input id="uniContratoAnexo" type="file" accept=".pdf,.jpg,.jpeg,.png" onchange="onUniContratoAnexoCadastroChange()"></div>
+                <div id="uniContratoAnexoAtual" style="grid-column:1 / -1; font-size:12px;"></div>
                 <input id="uniAditivoDesc" placeholder="Aditivo (descrição)">
-                <input id="uniAditivoVencimento" type="date" placeholder="Novo vencimento (aditivo)">
+                <input id="uniAditivoVencimento" type="text" placeholder="dd/mm/aaaa" inputmode="numeric" autocomplete="off">
                 <input id="uniAditivoAnexo" type="file" accept=".pdf,.jpg,.jpeg,.png">
                 <button class="btn" onclick="addAditivoUnidade()">➕ Adicionar aditivo</button>
                 <div id="uniAditivosTemp" style="grid-column:1 / -1; font-size:12px;"></div>
@@ -2914,7 +2916,7 @@ td { color: var(--t); font-weight: 500;}
                                     <div style="grid-column:1/-1;font-size:12px;color:#555;">Registe <strong>renovações</strong> do contrato com novo vencimento e anexe o documento (PDF ou imagem). O vencimento vigente da unidade é atualizado automaticamente.</div>
                                     <div style="grid-column:1/-1;padding:10px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;font-size:12px;" id="uniVaResumoVigente">Selecione uma unidade.</div>
                                     <div><label class="uni-field-label"><strong>Descrição / referência</strong></label><br><input id="uniVaDesc" type="text" placeholder="Ex.: 1º aditivo, renovação 2026…"></div>
-                                    <div><label class="uni-field-label"><strong>Novo vencimento</strong></label><br><input id="uniVaVencimento" type="date"></div>
+                                    <div><label class="uni-field-label"><strong>Novo vencimento</strong></label><br><input id="uniVaVencimento" type="text" placeholder="dd/mm/aaaa" inputmode="numeric" autocomplete="off"></div>
                                     <div><label class="uni-field-label"><strong>Documento</strong></label><br><input id="uniVaAnexo" type="file" accept=".pdf,.jpg,.jpeg,.png"></div>
                                     <div style="grid-column:1/-1;"><label class="uni-field-label"><strong>Observações</strong></label><br><textarea id="uniVaObs" rows="2" placeholder="Notas sobre o aditivo ou a renovação"></textarea></div>
                                     <div style="grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
@@ -2934,8 +2936,8 @@ td { color: var(--t); font-weight: 500;}
                             <article class="panel">
                                 <div class="head"><h3>Histórico de aditivos</h3><p style="margin:6px 0 0;font-size:12px;opacity:.9;">Renovações e aditivos registados nesta unidade.</p></div>
                                 <div class="body" style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;padding:12px;">
-                                    <div><label><strong>De</strong></label><br><input type="date" id="uniVaHistIni" onchange="renderUniAditivosHistorico()"></div>
-                                    <div><label><strong>Até</strong></label><br><input type="date" id="uniVaHistFim" onchange="renderUniAditivosHistorico()"></div>
+                                    <div><label><strong>De</strong></label><br><input type="text" id="uniVaHistIni" placeholder="dd/mm/aaaa" inputmode="numeric" onchange="renderUniAditivosHistorico()"></div>
+                                    <div><label><strong>Até</strong></label><br><input type="text" id="uniVaHistFim" placeholder="dd/mm/aaaa" inputmode="numeric" onchange="renderUniAditivosHistorico()"></div>
                                     <button type="button" class="btn btn-fp-gray" onclick="uniAditivoHistLimparFiltros()">Limpar filtros</button>
                                 </div>
                                 <div class="inner" id="uniAditivosHistBody" style="max-height:min(55vh,520px);overflow-y:auto;padding:10px;"></div>
@@ -7969,6 +7971,93 @@ function fpCollectAllIntranetLocalStorage(){
 }
 window.fpCollectAllIntranetLocalStorage = fpCollectAllIntranetLocalStorage;
 let unidadeAditivosTemp = [];
+let unidadeContratoAnexoPending = null;
+function uniDateBrFromStore(v){
+    if(v === undefined || v === null || String(v).trim() === '') return '';
+    if(typeof fdate === 'function'){
+        const fd = fdate(v);
+        return fd === '—' ? '' : fd;
+    }
+    return String(v).trim();
+}
+function uniDateStoreFromInput(v){
+    const s = String(v || '').trim();
+    if(!s) return '';
+    if(typeof toIsoDateOnlyFromParsed === 'function'){
+        const iso = toIsoDateOnlyFromParsed(s);
+        if(iso) return iso;
+    }
+    if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    return s;
+}
+function uniBindDateBrInputs(root){
+    const scope = root && root.querySelectorAll ? root : document;
+    const ids = ['uniDataContrato', 'uniVencimentoContrato', 'uniAditivoVencimento', 'uniVaVencimento', 'uniVaHistIni', 'uniVaHistFim', 'uniVcDataContrato', 'uniVcVencimentoContrato'];
+    ids.forEach(id => {
+        const el = scope.getElementById ? scope.getElementById(id) : document.getElementById(id);
+        if(!el || el.dataset.uniDateBrBound === '1') return;
+        el.dataset.uniDateBrBound = '1';
+        el.addEventListener('blur', () => {
+            const iso = uniDateStoreFromInput(el.value);
+            if(iso) el.value = uniDateBrFromStore(iso);
+        });
+    });
+}
+function uniContratoAnexoHtml(u){
+    if(!u) return '—';
+    if(u.contratoAnexoData) return '<a href="' + u.contratoAnexoData + '" target="_blank" rel="noopener">' + esc(u.contratoAnexoNome || 'Ver contrato') + '</a>';
+    return '—';
+}
+function renderUniContratoAnexoCadastro(u){
+    const el = document.getElementById('uniContratoAnexoAtual');
+    if(!el) return;
+    const pending = unidadeContratoAnexoPending;
+    if(pending && pending.anexoData){
+        el.innerHTML = 'Novo arquivo: <a href="' + pending.anexoData + '" target="_blank">' + esc(pending.anexoNome || 'documento') + '</a>';
+        return;
+    }
+    if(u && u.contratoAnexoData){
+        el.innerHTML = 'Arquivo atual: ' + uniContratoAnexoHtml(u);
+        return;
+    }
+    el.innerHTML = '<span style="color:#888;">Nenhum contrato anexado.</span>';
+}
+function onUniContratoAnexoCadastroChange(){
+    const file = document.getElementById('uniContratoAnexo')?.files?.[0];
+    if(!file){
+        unidadeContratoAnexoPending = null;
+        const idx = Number(getInputVal('uniEditIdx'));
+        const u = Number.isInteger(idx) && idx >= 0 ? getUnidades()[idx] : null;
+        renderUniContratoAnexoCadastro(u);
+        return;
+    }
+    const r = new FileReader();
+    r.onload = ev => {
+        unidadeContratoAnexoPending = { anexoNome: file.name, anexoData: String(ev.target?.result || '') };
+        renderUniContratoAnexoCadastro(null);
+    };
+    r.readAsDataURL(file);
+}
+function uniCollectContratoAnexoPayload(atual){
+    if(unidadeContratoAnexoPending){
+        return { contratoAnexoNome: unidadeContratoAnexoPending.anexoNome, contratoAnexoData: unidadeContratoAnexoPending.anexoData, contratoAnexoRef: '' };
+    }
+    if(atual){
+        return {
+            contratoAnexoNome: atual.contratoAnexoNome || '',
+            contratoAnexoData: atual.contratoAnexoData || '',
+            contratoAnexoRef: atual.contratoAnexoRef || ''
+        };
+    }
+    return { contratoAnexoNome: '', contratoAnexoData: '', contratoAnexoRef: '' };
+}
+function readUniContratoAnexoFileInput(inputId, cb){
+    const file = document.getElementById(inputId)?.files?.[0];
+    if(!file){ cb(null); return; }
+    const r = new FileReader();
+    r.onload = ev => cb({ anexoNome: file.name, anexoData: String(ev.target?.result || '') });
+    r.readAsDataURL(file);
+}
 let unidadeCompactMode = false;
 
 /** Só true se este HTML foi aberto já com banco embutido no ficheiro (não por autosave). */
@@ -8408,6 +8497,15 @@ function expandAnexoRefsInAditivos(aditivos, att){
         return o;
     });
 }
+function expandUnidadeContratoAnexo(u, att){
+    if(!u) return u;
+    const o = { ...u, aditivos: expandAnexoRefsInAditivos(u.aditivos, att) };
+    if(o.contratoAnexoRef && att && att[o.contratoAnexoRef]){
+        o.contratoAnexoData = att[o.contratoAnexoRef];
+        delete o.contratoAnexoRef;
+    }
+    return o;
+}
 function expandAnexoRefsInFaltas(arr, att){
     return (arr || []).map(f => {
         const o = { ...f };
@@ -8663,7 +8761,14 @@ async function collectFpIntranetSnapshot(){
                 aditivos.push({ ...a });
             }
         }
-        unidadesResolved.push({ ...u, aditivos });
+        let contratoAnexoRef = u.contratoAnexoRef;
+        let contratoAnexoNome = u.contratoAnexoNome;
+        let contratoAnexoData = u.contratoAnexoData;
+        if(contratoAnexoData && String(contratoAnexoData).startsWith('data:')){
+            contratoAnexoRef = await putAtt('unidades/contrato/u' + ui + '_' + fpSlugAttSeg(u.nome || u.cod, 32), contratoAnexoData);
+            contratoAnexoData = '';
+        }
+        unidadesResolved.push({ ...u, aditivos, contratoAnexoNome, contratoAnexoRef, contratoAnexoData });
     }
     const faltasArr = JSON.parse(localStorage.getItem(FALTAS_KEY) || '[]');
     const faltasResolved = [];
@@ -8869,7 +8974,7 @@ async function applyFpEmbeddedIntranetDb(db, opts){
         historico = db.historico;
         try { localStorage.setItem('fastparkHistorico', JSON.stringify(historico)); } catch(e1) { console.warn(e1); }
     }
-    const uExp = (db.unidadesResolved || []).map(u => ({ ...u, aditivos: expandAnexoRefsInAditivos(u.aditivos, att) }));
+    const uExp = (db.unidadesResolved || []).map(u => expandUnidadeContratoAnexo(u, att));
     setUnidades(uExp);
     setFaltasCad(expandAnexoRefsInFaltas(db.faltasResolved || [], att));
     setSignedDocsMap(expandPagasSignedSlim(db.pagasSignedSlim || {}, att));
@@ -10649,19 +10754,20 @@ function updateTaxaGrafico(){
 }
 function addAditivoUnidade(){
     const desc = getInputVal('uniAditivoDesc').trim();
-    const vencimento = getInputVal('uniAditivoVencimento');
+    const vencimento = uniDateStoreFromInput(getInputVal('uniAditivoVencimento'));
     const file = document.getElementById('uniAditivoAnexo')?.files?.[0];
     const pushAditivo = (anexoNome='', anexoData='') => {
         if(!desc && !vencimento) return;
         const vencAnt = unidadeAditivosTemp.length
-            ? (unidadeAditivosTemp[unidadeAditivosTemp.length - 1].vencimento || getInputVal('uniVencimentoContrato'))
-            : getInputVal('uniVencimentoContrato');
+            ? (unidadeAditivosTemp[unidadeAditivosTemp.length - 1].vencimento || uniDateStoreFromInput(getInputVal('uniVencimentoContrato')))
+            : uniDateStoreFromInput(getInputVal('uniVencimentoContrato'));
         unidadeAditivosTemp.push({ desc, vencimento, vencimentoAnterior: vencAnt, anexoNome, anexoData, createdAt: new Date().toISOString() });
         const el = document.getElementById('uniAditivosTemp');
-        if(el) el.innerHTML = unidadeAditivosTemp.map((a,i)=>`<div>${i+1}. ${esc(a.desc)} | venc: ${esc(a.vencimento || '—')} ${a.anexoData ? `<a href="${a.anexoData}" target="_blank">ver anexo</a>` : ''}</div>`).join('');
+        const fv = (d) => (typeof fdate === 'function' ? fdate(d) : esc(d || '—'));
+        if(el) el.innerHTML = unidadeAditivosTemp.map((a,i)=>`<div>${i+1}. ${esc(a.desc)} | venc: ${fv(a.vencimento)} ${a.anexoData ? `<a href="${a.anexoData}" target="_blank">ver anexo</a>` : ''}</div>`).join('');
         if(vencimento){
             const vc = document.getElementById('uniVencimentoContrato');
-            if(vc) vc.value = vencimento;
+            if(vc) vc.value = uniDateBrFromStore(vencimento);
         }
     };
     if(file){
@@ -10678,12 +10784,13 @@ function finalizarSalvarUnidadeCadastro(opts){
     const arr = getUnidades();
     const histNovos = uniBuildHistoricoTabelaDiff(atual, { ...atual, ...item }, opts);
     const historicoTabela = uniMergeHistoricoTabela(atual.historicoTabela, histNovos);
-    const merged = { ...atual, ...item, indiceReajuste: opts.indice, aditivos, vencimentoContrato: venc, historicoTabela };
-    uniMergeTabelaIntoUnidade(merged, uniExtractTabelaFromUnidade(merged));
-    arr[editIdx] = merged;
-    setUnidades(arr);
-    uniReajustePendingData = null;
-    limparUnidadeForm();
+        const merged = { ...atual, ...item, ...uniCollectContratoAnexoPayload(atual), indiceReajuste: opts.indice, aditivos, vencimentoContrato: venc, historicoTabela };
+        uniMergeTabelaIntoUnidade(merged, uniExtractTabelaFromUnidade(merged));
+        arr[editIdx] = merged;
+        setUnidades(arr);
+        uniReajustePendingData = null;
+        unidadeContratoAnexoPending = null;
+        limparUnidadeForm();
     renderUnidadesList();
     populateCadastroDependentes();
     if(document.getElementById('uniViewShell')?.style.display !== 'none') renderUnidadeVisualizacao();
@@ -10700,8 +10807,12 @@ function limparUnidadeForm(){
     'uniDataContrato','uniTipoContrato','uniAluguel','uniIndiceReajuste','uniFaixaFaturamento','uniContratantePagamento','uniVencimentoContrato','uniAditivoDesc','uniAditivoVencimento']
     .forEach(id => { const el = document.getElementById(id); if(el) el.value=''; });
     unidadeAditivosTemp = [];
+    unidadeContratoAnexoPending = null;
     const ad = document.getElementById('uniAditivosTemp'); if(ad) ad.innerHTML = '';
+    const ca = document.getElementById('uniContratoAnexo'); if(ca) ca.value = '';
+    renderUniContratoAnexoCadastro(null);
     updateTaxaGrafico();
+    uniBindDateBrInputs(document);
     applyUnidadeSectionMode();
     const panel = document.getElementById('unidadesCadastroFormPanel');
     if(panel) panel.style.display = 'none';
@@ -10753,13 +10864,13 @@ function salvarUnidade(){
         acessoPor: getInputVal('uniAcessoPor'),
         acessosClientes: getInputVal('uniAcessosClientes'),
         taxaOcupacao: Number(getInputVal('uniTaxaOcupacao') || 0),
-        dataContrato: getInputVal('uniDataContrato'),
+        dataContrato: uniDateStoreFromInput(getInputVal('uniDataContrato')),
         tipoContrato: getInputVal('uniTipoContrato'),
         aluguel: getInputVal('uniAluguel'),
         indiceReajuste: getInputVal('uniIndiceReajuste'),
         faixaFaturamento: getInputVal('uniFaixaFaturamento'),
         contratantePagamento: getInputVal('uniContratantePagamento'),
-        vencimentoContrato: getInputVal('uniVencimentoContrato'),
+        vencimentoContrato: uniDateStoreFromInput(getInputVal('uniVencimentoContrato')),
         aditivos: [...unidadeAditivosTemp]
     };
     const arr = getUnidades();
@@ -10777,16 +10888,17 @@ function salvarUnidade(){
         }
         const histNovos = uniBuildHistoricoTabelaDiff(atual, { ...atual, ...item }, { indice: indiceReajuste, percentualReajuste: '' });
         const historicoTabela = uniMergeHistoricoTabela(atual.historicoTabela, histNovos);
-        const merged = { ...atual, ...item, indiceReajuste, aditivos, vencimentoContrato: venc, historicoTabela };
+        const merged = { ...atual, ...item, ...uniCollectContratoAnexoPayload(atual), indiceReajuste, aditivos, vencimentoContrato: venc, historicoTabela };
         uniMergeTabelaIntoUnidade(merged, uniExtractTabelaFromUnidade(merged));
         arr[editIdx] = merged;
     } else {
         const histNovos = uniBuildHistoricoTabelaDiff(null, { ...item, indiceReajuste }, indiceReajuste);
-        const novo = { ...item, indiceReajuste, historicoTabela: histNovos };
+        const novo = { ...item, ...uniCollectContratoAnexoPayload(null), indiceReajuste, historicoTabela: histNovos };
         uniMergeTabelaIntoUnidade(novo, uniExtractTabelaFromUnidade(novo));
         arr.unshift(novo);
     }
     setUnidades(arr);
+    unidadeContratoAnexoPending = null;
     limparUnidadeForm();
     renderUnidadesList();
     populateCadastroDependentes();
@@ -10823,13 +10935,18 @@ function editarUnidadeIndividual(idx){
         uniGuardaChaves: u.guardaChaves, uniCameras: u.cameras, uniAdmNome: u.admNome, uniAdmTelefone: u.admTelefone, uniAdmEmail: u.admEmail,
         uniSindicoNome: u.sindicoNome, uniSindicoTelefone: u.sindicoTelefone, uniSindicoEmail: u.sindicoEmail, uniQtdConjuntos: u.qtdConjuntos, uniQtdVagasDireito: u.qtdVagasDireito,
         uniCondominoQtdPlacas: u.condominoQtdPlacas, uniMensalQtdPlacas: u.mensalQtdPlacas, uniAcessoPor: u.acessoPor, uniAcessosClientes: u.acessosClientes,
-        uniTaxaOcupacao: u.taxaOcupacao, uniDataContrato: u.dataContrato, uniTipoContrato: u.tipoContrato, uniAluguel: u.aluguel, uniIndiceReajuste: u.indiceReajuste,
-        uniFaixaFaturamento: u.faixaFaturamento, uniContratantePagamento: u.contratantePagamento, uniVencimentoContrato: u.vencimentoContrato
+        uniTaxaOcupacao: u.taxaOcupacao, uniDataContrato: uniDateBrFromStore(u.dataContrato), uniTipoContrato: u.tipoContrato, uniAluguel: u.aluguel, uniIndiceReajuste: u.indiceReajuste,
+        uniFaixaFaturamento: u.faixaFaturamento, uniContratantePagamento: u.contratantePagamento, uniVencimentoContrato: uniDateBrFromStore(u.vencimentoContrato)
     };
     Object.entries(map).forEach(([id,val]) => { const el = document.getElementById(id); if(el) el.value = val || ''; });
     unidadeAditivosTemp = [];
+    unidadeContratoAnexoPending = null;
+    const ca = document.getElementById('uniContratoAnexo'); if(ca) ca.value = '';
+    renderUniContratoAnexoCadastro(u);
     const ad = document.getElementById('uniAditivosTemp');
-    if(ad) ad.innerHTML = (u.aditivos || []).map((a,i)=>`<div>${i+1}. ${esc(a.desc || '')} | venc: ${esc(a.vencimento || '—')} ${a.anexoData ? `<a href="${a.anexoData}" target="_blank">ver anexo</a>` : ''}</div>`).join('');
+    const fv = (d) => (typeof fdate === 'function' ? fdate(d) : esc(d || '—'));
+    if(ad) ad.innerHTML = (u.aditivos || []).map((a,i)=>`<div>${i+1}. ${esc(a.desc || '')} | venc: ${fv(a.vencimento)} ${a.anexoData ? `<a href="${a.anexoData}" target="_blank">ver anexo</a>` : ''}</div>`).join('');
+    uniBindDateBrInputs(document);
     uniApplyTabelaCalculosFromForm();
     updateTaxaGrafico();
     applyUnidadeSectionMode();
@@ -10958,6 +11075,7 @@ function uniViewFld(label, id, span, type){
     const gridSp = span ? ' style="grid-column:1 / -1;"' : '';
     let control;
     if(type === 'textarea') control = '<textarea id="' + id + '"' + gridSp + '></textarea>';
+    else if(type === 'datebr') control = '<input id="' + id + '" type="text" placeholder="dd/mm/aaaa" inputmode="numeric" autocomplete="off"' + gridSp + '>';
     else control = '<input id="' + id + '" type="' + (type || 'text') + '"' + gridSp + '>';
     return '<div class="' + wrapCls.trim() + '"><label class="uni-field-label" for="' + id + '">' + esc(label) + '</label>' + control + '</div>';
 }
@@ -10982,7 +11100,7 @@ function uniFichaTableFromFields(fields, u, pairsPerRow){
     const n = pairsPerRow || 2;
     const items = fields.map(f => ({
         label: f.label,
-        html: uniFichaVal(u[f.key], { money: f.money, percent: f.percent, multiline: f.multiline }),
+        html: uniFichaVal(u[f.key], { money: f.money, percent: f.percent, multiline: f.multiline, date: f.date }),
         full: !!f.spanAll
     }));
     const fullRows = items.filter(it => it.full);
@@ -11067,6 +11185,10 @@ function uniViewFormatDisplayValue(raw, opts){
         if(!t) return '';
         return esc(t).replace(/\n/g, '<br>');
     }
+    if(opts.date){
+        if(typeof fdate === 'function') return fdate(raw);
+        return esc(String(raw).trim());
+    }
     return esc(String(raw).trim());
 }
 function renderUniViewDadosReadonly(u){
@@ -11110,13 +11232,15 @@ function renderUniViewContratosReadonly(u){
     const vigNote = nAd
         ? '<p style="margin:8px 0 0;font-size:12px;color:#555;">' + nAd + ' aditivo(s) registado(s). Consulte a subaba <strong>Aditivos</strong>.</p>'
         : '';
+    const docRow = '<tr class="uni-ficha-row-full">' + uniFichaCellPair('Documento do contrato', uniContratoAnexoHtml(u)) +
+        '<th class="uni-ficha-lbl"></th><td class="uni-ficha-val"></td></tr>';
     el.innerHTML = uniFichaWrap([
         uniFichaBlock('Contrato', [
-            { label: 'Data contrato', key: 'dataContrato' }, { label: 'Tipo contrato', key: 'tipoContrato' },
+            { label: 'Data contrato', key: 'dataContrato', date: true }, { label: 'Tipo contrato', key: 'tipoContrato' },
             { label: 'Aluguel', key: 'aluguel' }, { label: 'Índice reajuste', key: 'indiceReajuste' },
             { label: 'Faixa faturamento', key: 'faixaFaturamento' }, { label: 'Contratante pagamento', key: 'contratantePagamento' },
-            { label: 'Vencimento contrato', key: 'vencimentoContrato' }
-        ], u) + vigNote
+            { label: 'Vencimento contrato', key: 'vencimentoContrato', date: true }
+        ], u).replace('</tbody></table></section>', docRow + '</tbody></table></section>') + vigNote
     ].join(''));
 }
 function renderUniViewTabelaAlterarReadonly(u){
@@ -11260,17 +11384,21 @@ function buildUniViewContratosForm(u){
     if(!el) return;
     el.innerHTML = [
         '<div class="uni-section-title">Contrato</div>',
-        uniViewFld('Data contrato', 'uniVcDataContrato', false, 'date'), uniViewFld('Tipo contrato', 'uniVcTipoContrato'),
+        uniViewFld('Data contrato', 'uniVcDataContrato', false, 'datebr'), uniViewFld('Tipo contrato', 'uniVcTipoContrato'),
         uniViewFld('Aluguel', 'uniVcAluguel', false, 'text'), uniViewFld('Índice reajuste', 'uniVcIndiceReajuste'),
         uniViewFld('Faixa faturamento', 'uniVcFaixaFaturamento'), uniViewFld('Contratante pagamento', 'uniVcContratantePagamento'),
-        uniViewFld('Vencimento contrato', 'uniVcVencimentoContrato', false, 'date'),
+        uniViewFld('Vencimento contrato', 'uniVcVencimentoContrato', false, 'datebr'),
+        '<div class="uni-field-wrap uni-span-all"><label class="uni-field-label">Documento do contrato</label><input id="uniVcContratoAnexo" type="file" accept=".pdf,.jpg,.jpeg,.png"><div id="uniVcContratoAnexoAtual" style="margin-top:6px;font-size:12px;"></div></div>',
         '<p style="grid-column:1/-1;font-size:11px;color:#888;margin:0;">Aditivos e renovações: use a subaba <strong>Aditivos</strong> nesta mesma área.</p>'
     ].join('');
     uniSetViewFields({
-        uniVcDataContrato: u.dataContrato, uniVcTipoContrato: u.tipoContrato, uniVcAluguel: u.aluguel,
+        uniVcDataContrato: uniDateBrFromStore(u.dataContrato), uniVcTipoContrato: u.tipoContrato, uniVcAluguel: u.aluguel,
         uniVcIndiceReajuste: u.indiceReajuste, uniVcFaixaFaturamento: u.faixaFaturamento,
-        uniVcContratantePagamento: u.contratantePagamento, uniVcVencimentoContrato: u.vencimentoContrato
+        uniVcContratantePagamento: u.contratantePagamento, uniVcVencimentoContrato: uniDateBrFromStore(u.vencimentoContrato)
     });
+    const vcA = document.getElementById('uniVcContratoAnexoAtual');
+    if(vcA) vcA.innerHTML = u.contratoAnexoData ? 'Atual: ' + uniContratoAnexoHtml(u) : '<span style="color:#888;">Nenhum arquivo.</span>';
+    uniBindDateBrInputs(el);
     uniMarkFilledInputs(el);
     el.querySelectorAll('input, textarea, select').forEach(inp => {
         inp.addEventListener('input', () => uniMarkFilledInputs(el));
@@ -11279,9 +11407,9 @@ function buildUniViewContratosForm(u){
 }
 function uniCollectContratosPayloadView(){
     return {
-        dataContrato: getInputVal('uniVcDataContrato'), tipoContrato: getInputVal('uniVcTipoContrato'), aluguel: getInputVal('uniVcAluguel'),
+        dataContrato: uniDateStoreFromInput(getInputVal('uniVcDataContrato')), tipoContrato: getInputVal('uniVcTipoContrato'), aluguel: getInputVal('uniVcAluguel'),
         indiceReajuste: getInputVal('uniVcIndiceReajuste'), faixaFaturamento: getInputVal('uniVcFaixaFaturamento'),
-        contratantePagamento: getInputVal('uniVcContratantePagamento'), vencimentoContrato: getInputVal('uniVcVencimentoContrato')
+        contratantePagamento: getInputVal('uniVcContratantePagamento'), vencimentoContrato: uniDateStoreFromInput(getInputVal('uniVcVencimentoContrato'))
     };
 }
 function salvarUnidadeViewDados(){
@@ -11303,11 +11431,21 @@ function salvarUnidadeViewContratos(){
     const idx = uniViewSelectedIdx ?? getUniViewSelectedIdx();
     if(idx == null){ alert('Selecione uma unidade.'); return; }
     const arr = getUnidades();
-    arr[idx] = { ...arr[idx], ...uniCollectContratosPayloadView() };
-    setUnidades(arr);
-    alert('Contratos salvos.');
-    uniViewEditing.contratos = false;
-    renderUnidadeVisualizacao();
+    const atual = arr[idx];
+    const finish = (anexoPatch) => {
+        arr[idx] = { ...atual, ...uniCollectContratosPayloadView(), ...anexoPatch };
+        setUnidades(arr);
+        alert('Contratos salvos.');
+        uniViewEditing.contratos = false;
+        renderUnidadeVisualizacao();
+    };
+    readUniContratoAnexoFileInput('uniVcContratoAnexo', pending => {
+        if(pending){
+            finish({ contratoAnexoNome: pending.anexoNome, contratoAnexoData: pending.anexoData, contratoAnexoRef: '' });
+        } else {
+            finish(uniCollectContratoAnexoPayload(atual));
+        }
+    });
 }
 function getUniViewSelectedIdx(){
     const nome = document.getElementById('unidadesViewSelect')?.value?.trim();
@@ -11396,6 +11534,7 @@ function switchUniAditivosSubtab(tab){
     if(isHist) renderUniAditivosHistorico();
     else renderUniAditivosLista();
     renderUniAditivoResumoVigente();
+    uniBindDateBrInputs(document.getElementById('uniContratoSubPanelAditivos') || document);
 }
 function limparFormUniAditivo(){
     ['uniVaRenovacao', 'uniVaDesc', 'uniVaVencimento', 'uniVaObs'].forEach(id => {
@@ -11451,12 +11590,12 @@ function renderUniAditivosHistorico(){
     const idx = uniViewSelectedIdx ?? getUniViewSelectedIdx();
     if(idx == null){ el.innerHTML = '<div class="empty">Selecione uma unidade.</div>'; return; }
     const u = getUnidades()[idx];
-    const ini = document.getElementById('uniVaHistIni')?.value || '';
-    const fim = document.getElementById('uniVaHistFim')?.value || '';
+    const ini = uniDateStoreFromInput(document.getElementById('uniVaHistIni')?.value || '');
+    const fim = uniDateStoreFromInput(document.getElementById('uniVaHistFim')?.value || '');
     let ads = [...(u.aditivos || [])].map((a, i) => ({ ...a, _idx: i }));
     ads.sort((a, b) => String(b.createdAt || b.vencimento || '').localeCompare(String(a.createdAt || a.vencimento || '')));
     ads = ads.filter(a => {
-        const ref = String(a.vencimento || a.createdAt || '').slice(0, 10);
+        const ref = uniDateStoreFromInput(a.vencimento) || String(a.createdAt || '').slice(0, 10);
         if(ini && ref && ref < ini) return false;
         if(fim && ref && ref > fim) return false;
         return true;
@@ -11482,10 +11621,10 @@ function salvarUniAditivoView(){
     const idx = uniViewSelectedIdx ?? getUniViewSelectedIdx();
     if(idx == null){ alert('Selecione uma unidade.'); return; }
     const desc = getInputVal('uniVaDesc').trim();
-    const vencimento = getInputVal('uniVaVencimento');
+    const vencimento = uniDateStoreFromInput(getInputVal('uniVaVencimento'));
     const obs = getInputVal('uniVaObs').trim();
     const isRenov = getInputVal('uniVaRenovacao') === '1';
-    if(!vencimento){ alert('Informe o novo vencimento do contrato.'); return; }
+    if(!vencimento){ alert('Informe o novo vencimento do contrato (dd/mm/aaaa).'); return; }
     const arr = getUnidades();
     const u = arr[idx];
     if(!u) return;
@@ -11738,9 +11877,11 @@ function renderUnidadesList(){
             const idx = arrBase.indexOf(u);
             const safeIdx = idx >= 0 ? idx : 0;
             const taxa = Math.max(0, Math.min(100, Number(u.taxaOcupacao || 0)));
+            const fvU = (d) => (typeof fdate === 'function' ? fdate(d) : esc(d || '—'));
             const aditivos = (u.aditivos || []).length
-                ? (u.aditivos || []).map((a,i)=>`<div>${i + 1}) ${esc(a.desc || '')} ${a.vencimento ? '- ' + esc(a.vencimento) : ''} ${a.anexoData ? ` <a href="${a.anexoData}" target="_blank">anexo</a>` : ''}</div>`).join('')
+                ? (u.aditivos || []).map((a,i)=>`<div>${i + 1}) ${esc(a.desc || '')} ${a.vencimento ? '- ' + fvU(a.vencimento) : ''} ${a.anexoData ? ` <a href="${a.anexoData}" target="_blank">anexo</a>` : ''}</div>`).join('')
                 : '—';
+            const docContrato = u.contratoAnexoData ? uniContratoAnexoHtml(u) : '—';
             return `<article style="border:1px solid #e5e7eb;border-radius:12px;padding:14px;background:#fff;">
                 <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;flex-wrap:wrap;">
                     <div>
@@ -11810,13 +11951,14 @@ function renderUnidadesList(){
                 ])}
 
                 ${bloco('Contratos e Contatos', [
-                    item('Data contrato', v(u.dataContrato)),
+                    item('Data contrato', fvU(u.dataContrato)),
                     item('Tipo contrato', v(u.tipoContrato)),
                     item('Aluguel', v(u.aluguel)),
                     item('Índice reajuste', v(u.indiceReajuste)),
                     item('Faixa faturamento', v(u.faixaFaturamento)),
                     item('Contratante pagamento', v(u.contratantePagamento)),
-                    item('Vencimento contrato', v(u.vencimentoContrato)),
+                    item('Vencimento contrato', fvU(u.vencimentoContrato)),
+                    item('Documento contrato', docContrato),
                     item('Adm predial', v(u.admNome)),
                     item('Adm telefone', v(u.admTelefone)),
                     item('Adm email', v(u.admEmail)),
@@ -11833,10 +11975,12 @@ function renderUnidadesList(){
 function uniInitCadastroTab(){
     const panel = document.getElementById('unidadesCadastroFormPanel');
     if(panel) panel.style.display = 'none';
+    uniBindDateBrInputs(document);
 }
 function uniInitUnidadeTab(){
     if(typeof refreshUnidadesViewSelect === 'function') refreshUnidadesViewSelect();
     if(typeof onUnidadeViewSelectChange === 'function') onUnidadeViewSelectChange();
+    uniBindDateBrInputs(document);
 }
 /** @deprecated use switchTab('uni-cadastro'|'uni-unidade') */
 function switchUnidadesSubtab(tab){

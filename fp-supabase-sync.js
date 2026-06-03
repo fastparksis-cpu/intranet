@@ -349,6 +349,7 @@
         });
         (snap.faltasResolved || []).forEach(function (f) { add(f.anexoRef); });
         (snap.unidadesResolved || []).forEach(function (u) {
+            add(u.contratoAnexoRef);
             (u.aditivos || []).forEach(function (a) { add(a.anexoRef); });
         });
         var slim = snap.pagasSignedSlim || {};
@@ -475,6 +476,7 @@
             if (f.anexoData) put('faltas/inline_' + i, f.anexoData);
         });
         (snap.unidadesResolved || []).forEach(function (u, ui) {
+            if (u.contratoAnexoData) put('unidades/contrato/inline_' + ui, u.contratoAnexoData);
             (u.aditivos || []).forEach(function (a, ai) {
                 if (a.anexoData) put('unidades/aditivos/inline_' + ui + '_' + ai, a.anexoData);
             });
