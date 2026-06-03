@@ -8303,13 +8303,13 @@ function uniValidateContratoFile(file){
     return true;
 }
 function readUniContratoAnexoFileInput(inputId, cb){
-    const file = document.getElementById(inputId)?.files?.[0];
-    if(!file){ cb(null); return; }
-    if(!uniValidateContratoFile(file)) return;
-    const r = new FileReader();
-    r.onload = ev => cb({ anexoNome: file.name, anexoData: String(ev.target?.result || '') });
-    r.onerror = () => { alert('Erro ao ler o arquivo do contrato.'); cb(null); };
-    r.readAsDataURL(file);
+    uniResolveContratoAnexoPatch(null, inputId, null).then(patch => {
+        if(patch && patch.contratoAnexoData){
+            cb({ anexoNome: patch.contratoAnexoNome, anexoData: patch.contratoAnexoData });
+        } else {
+            cb(null);
+        }
+    });
 }
 function ensureUniContratoAnexoReady(done){
     const finish = (ok) => { if(typeof done === 'function') done(ok !== false); };
@@ -9536,6 +9536,7 @@ async function fpFlushAllTabsToLocalStorage(){
         if(typeof fpPersistPostosQuadroState === 'function') fpPersistPostosQuadroState();
         try { localStorage.setItem('fastparkHistorico', JSON.stringify(historico)); } catch(e1) { console.warn(e1); }
         try { localStorage.setItem(UNI_KEY, JSON.stringify(getUnidades())); } catch(e2) { console.warn(e2); }
+        try { localStorage.setItem(FP_UNIDADES_ATT_BAG_KEY, JSON.stringify(uniAttBagGet())); } catch(e2b) { console.warn(e2b); }
         try { localStorage.setItem(FALTAS_KEY, JSON.stringify(getFaltasCad())); } catch(e3) { console.warn(e3); }
         try { localStorage.setItem(FP_SINISTROS_KEY, JSON.stringify(getSinistros())); } catch(e4) { console.warn(e4); }
         try { localStorage.setItem(FP_LAUDOS_KEY, JSON.stringify(getLaudosCad())); } catch(e4b) { console.warn(e4b); }
@@ -10020,7 +10021,7 @@ async function fpExecutePersistToDiskAndDom(){
 }
 function fpInstallAutosaveHooks(){
     if(Storage.prototype.__fpOrigSetItem) return;
-    const keys = new Set(['fastparkHistorico','fastparkPedidosCestas','fp_mov_cad','fp_unidades','fp_faltas_atestados','fp_pagas_signed_docs','fp_ferias_hist','fp_vt_cfg','fp_vt_monthly','pagasEmpresaPagadora','fp_postos_extras', FP_UNIDADES_POSTOS_KEY, 'fp_audit', FP_QUADRO_GERAL_KEY, FP_EMPLOYEES_STORE_KEY, FP_PAGAS_LANCAMENTOS_KEY, FP_SINISTROS_KEY, FP_LAUDOS_KEY, FP_GESTAO_PAGAMENTOS_KEY]);
+    const keys = new Set(['fastparkHistorico','fastparkPedidosCestas','fp_mov_cad','fp_unidades','fp_unidades_att_bag','fp_faltas_atestados','fp_pagas_signed_docs','fp_ferias_hist','fp_vt_cfg','fp_vt_monthly','pagasEmpresaPagadora','fp_postos_extras', FP_UNIDADES_POSTOS_KEY, 'fp_audit', FP_QUADRO_GERAL_KEY, FP_EMPLOYEES_STORE_KEY, FP_PAGAS_LANCAMENTOS_KEY, FP_SINISTROS_KEY, FP_LAUDOS_KEY, FP_GESTAO_PAGAMENTOS_KEY]);
     Storage.prototype.__fpOrigSetItem = Storage.prototype.setItem;
     Storage.prototype.setItem = function(k, v){
         Storage.prototype.__fpOrigSetItem.call(this, k, v);
@@ -10332,9 +10333,9 @@ function uniAttBagKey(cod, part){
     const c = String(cod || 'u').replace(/[^\w.-]/g, '_').slice(0, 40);
     return 'unidades/' + c + '/' + part;
 }
-function uniOffloadAnexoToBag(cod, part, nome, dataUrl){
+function uniOffloadAnexoToBag(cod, part, nome, dataUrl, forceBag){
     if(!dataUrl || typeof dataUrl !== 'string') return { anexoNome: nome || '', anexoData: '', anexoRef: '' };
-    if(dataUrl.length <= UNI_ANEXO_INLINE_MAX) return { anexoNome: nome || '', anexoData: dataUrl, anexoRef: '' };
+    if(!forceBag && dataUrl.length <= UNI_ANEXO_INLINE_MAX) return { anexoNome: nome || '', anexoData: dataUrl, anexoRef: '' };
     const key = uniAttBagKey(cod, part);
     const bag = uniAttBagGet();
     bag[key] = dataUrl;
@@ -10346,7 +10347,7 @@ function uniPrepareUnidadeForStorage(u){
     const o = { ...u };
     const cod = o.cod || o.nome || 'u';
     if(o.contratoAnexoData){
-        const off = uniOffloadAnexoToBag(cod, 'contrato', o.contratoAnexoNome, o.contratoAnexoData);
+        const off = uniOffloadAnexoToBag(cod, 'contrato', o.contratoAnexoNome, o.contratoAnexoData, true);
         o.contratoAnexoNome = off.anexoNome;
         o.contratoAnexoData = off.anexoData;
         o.contratoAnexoRef = off.anexoRef || o.contratoAnexoRef || '';
@@ -10362,18 +10363,73 @@ function uniPrepareUnidadeForStorage(u){
 }
 function getUnidades(){ return JSON.parse(localStorage.getItem(UNI_KEY) || '[]'); }
 function setUnidades(v){
-    const prepared = Array.isArray(v) ? v.map(u => uniPrepareUnidadeForStorage(u)) : v;
+    const prevPause = window.__fpLsHookPause;
+    window.__fpLsHookPause = true;
+    let prepared = v;
     try {
-        localStorage.setItem(UNI_KEY, JSON.stringify(prepared));
+        prepared = Array.isArray(v) ? v.map(u => {
+            try { return uniPrepareUnidadeForStorage(u); }
+            catch(e){ console.warn('[uni] prepare', e); return u; }
+        }) : v;
+        const json = JSON.stringify(prepared);
+        const setItem = Storage.prototype.__fpOrigSetItem || Storage.prototype.setItem.bind(localStorage);
+        setItem(UNI_KEY, json);
     } catch(e){
         const msg = (e && (e.name === 'QuotaExceededError' || e.code === 22))
             ? 'Não foi possível guardar: o anexo ou os dados da unidade excedem o espaço do navegador. Reduza o PDF, ligue a pasta de anexos ou sincronize com a nuvem.'
             : ('Erro ao guardar unidades: ' + (e && e.message ? e.message : String(e)));
         alert(msg);
         throw e;
+    } finally {
+        window.__fpLsHookPause = prevPause;
     }
     fpAfterPersistentStorageWrite();
     if(typeof refreshUnidadesPostosUnidadeSelect === 'function') refreshUnidadesPostosUnidadeSelect();
+}
+function uniHasNovoContratoAnexoCadastro(){
+    return !!(unidadeContratoAnexoPending?.anexoData || document.getElementById('uniContratoAnexo')?.files?.[0]);
+}
+function uniHasNovoContratoAnexoView(){
+    return !!document.getElementById('uniVcContratoAnexo')?.files?.[0];
+}
+function uniCollectContratoFieldsPayload(item){
+    return {
+        dataContrato: item.dataContrato,
+        tipoContrato: item.tipoContrato,
+        aluguel: item.aluguel,
+        indiceReajuste: item.indiceReajuste,
+        faixaFaturamento: item.faixaFaturamento,
+        contratantePagamento: item.contratantePagamento,
+        vencimentoContrato: item.vencimentoContrato
+    };
+}
+function uniResolveContratoAnexoPatch(atual, fileInputId, pendingOverride){
+    return new Promise(resolve => {
+        if(pendingOverride && pendingOverride.anexoData){
+            resolve({ contratoAnexoNome: pendingOverride.anexoNome, contratoAnexoData: pendingOverride.anexoData, contratoAnexoRef: '' });
+            return;
+        }
+        const file = document.getElementById(fileInputId)?.files?.[0];
+        if(!file){
+            resolve(uniCollectContratoAnexoPayload(atual));
+            return;
+        }
+        if(!uniValidateContratoFile(file)){
+            resolve(null);
+            return;
+        }
+        const r = new FileReader();
+        r.onload = ev => resolve({
+            contratoAnexoNome: file.name,
+            contratoAnexoData: String(ev.target?.result || ''),
+            contratoAnexoRef: ''
+        });
+        r.onerror = () => {
+            alert('Erro ao ler o arquivo do contrato.');
+            resolve(null);
+        };
+        r.readAsDataURL(file);
+    });
 }
 function getUnidadesOrcamentos(){
     try {
@@ -11272,6 +11328,24 @@ function salvarUnidadeCommit(){
         const atual = arr[editIdx];
         const aditivos = [...(atual.aditivos || []), ...item.aditivos];
         const venc = aditivos.length ? aditivos[aditivos.length - 1].vencimento || item.vencimentoContrato : item.vencimentoContrato;
+        if(uniHasNovoContratoAnexoCadastro()){
+            const merged = {
+                ...atual,
+                ...uniCollectContratoFieldsPayload(item),
+                ...uniCollectContratoAnexoPayload(atual),
+                aditivos,
+                vencimentoContrato: venc
+            };
+            uniMergeTabelaIntoUnidade(merged, uniGetTabelaVigente(atual));
+            arr[editIdx] = merged;
+            setUnidades(arr);
+            unidadeContratoAnexoPending = null;
+            limparUnidadeForm();
+            renderUnidadesList();
+            populateCadastroDependentes();
+            if(document.getElementById('uniViewShell')?.style.display !== 'none') renderUnidadeVisualizacao();
+            return true;
+        }
         const previewHist = uniBuildHistoricoTabelaDiff(atual, { ...atual, ...item }, {});
         if(previewHist.length){
             uniReajustePendingData = { type: 'cadastro', editIdx, item, atual, aditivos, venc };
@@ -11830,26 +11904,26 @@ function salvarUnidadeViewContratos(){
     const endBusy = () => { if(btn){ btn.disabled = false; btn.textContent = 'Salvar'; } };
     const arr = getUnidades();
     const atual = arr[idx];
-    const finish = (anexoPatch) => {
+    uniResolveContratoAnexoPatch(atual, 'uniVcContratoAnexo', null).then(anexoPatch => {
+        if(anexoPatch === null){
+            endBusy();
+            return;
+        }
         try {
             arr[idx] = { ...atual, ...uniCollectContratosPayloadView(), ...anexoPatch };
             setUnidades(arr);
             alert('Contratos salvos.');
             uniViewEditing.contratos = false;
+            const f = document.getElementById('uniVcContratoAnexo');
+            if(f) f.value = '';
             renderUnidadeVisualizacao();
         } catch(e){
             console.error('[uni] salvar contratos', e);
+            if(!(e && (e.name === 'QuotaExceededError' || e.code === 22))){
+                alert('Não foi possível guardar. Tente um PDF menor ou ligue a pasta de anexos.');
+            }
         } finally {
             endBusy();
-        }
-    };
-    const file = document.getElementById('uniVcContratoAnexo')?.files?.[0];
-    if(file && !uniValidateContratoFile(file)) { endBusy(); return; }
-    readUniContratoAnexoFileInput('uniVcContratoAnexo', pending => {
-        if(pending){
-            finish({ contratoAnexoNome: pending.anexoNome, contratoAnexoData: pending.anexoData, contratoAnexoRef: '' });
-        } else {
-            finish(uniCollectContratoAnexoPayload(atual));
         }
     });
 }
