@@ -233,6 +233,30 @@
     }
     .toolbar button:hover { border-color: var(--fp-orange); color: var(--fp-orange); }
     .toolbar button.active { background: var(--fp-orange); color: #fff; border-color: var(--fp-orange); }
+    .btn-ficha-olho {
+        flex-shrink: 0;
+        width: 36px;
+        height: 36px;
+        padding: 0;
+        border: 1px solid var(--l);
+        border-radius: 8px;
+        background: #fff;
+        color: var(--fp-dark);
+        font-size: 18px;
+        line-height: 1;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transition: border-color 0.15s, background 0.15s;
+    }
+    .btn-ficha-olho:hover { border-color: var(--fp-orange); background: #fff7ed; }
+    .btn-ficha-olho[aria-pressed="true"] {
+        background: var(--fp-orange);
+        border-color: var(--fp-orange);
+        color: #fff;
+    }
+    .fp-valor-mascarado { letter-spacing: 0.12em; color: var(--fp-mid-gray); user-select: none; }
     #employeeFormPanel .field-error { color:#c53030; font-size:11px; margin-top:4px; min-height:14px; }
     #employeeFormPanel .invalid { border-color:#c53030 !important; box-shadow:0 0 0 2px rgba(197,48,48,0.1); }
 
@@ -552,6 +576,7 @@
             <button type="button" class="btn-cad-ficha-tab btn-tab" data-cad-tab="aso" id="btnCadFichaTabAso" onclick="switchCadastroFichaTab('aso')">Renovação ASO</button>
             <button type="button" class="btn-cad-ficha-tab btn-tab" data-cad-tab="salario" id="btnCadFichaTabSalario" onclick="switchCadastroFichaTab('salario')">Alterações salariais</button>
           </div>
+          <button type="button" id="btnFichaToggleValores" class="btn-ficha-olho" onclick="fpToggleFichaValoresVisiveis()" aria-pressed="false" title="Exibir valores (salário, benefícios…)" aria-label="Alternar exibição de valores sensíveis">👁‍🗨</button>
           <span id="selectionInfo" class="tag n">Aguardando planilha</span>
         </div>
         <div id="cadTabPanelFicha" class="cad-ficha-tab-panel body">
@@ -2517,6 +2542,39 @@ function renderMetrics(list) {
 }
 
 function field(k, v, lab = false) { return `<div class="cell ${lab ? 'lab' : ''}"><div class="q">${esc(k)}</div><div class="v">${esc(String(v || '—'))}</div></div>`; }
+const FP_FICHA_VALORES_KEY = 'fp_ficha_valores_visiveis';
+const FP_FICHA_SENSIVEL_RX = /sal[aá]rio|ajuda de custo|vale refei|\bvr\b|vt unit|vt ida|valor titular|valor dependente|desconto plano|cargo de confian|periculosidade|total folha|remunera/i;
+function fpFichaValoresVisiveis(){
+    try { return localStorage.getItem(FP_FICHA_VALORES_KEY) === '1'; } catch(e) { return false; }
+}
+function fpSetFichaValoresVisiveis(visivel){
+    try { localStorage.setItem(FP_FICHA_VALORES_KEY, visivel ? '1' : '0'); } catch(e) {}
+}
+function fpFmtFichaSensivel(label, valorExibicao){
+    const s = valorExibicao === null || valorExibicao === undefined || valorExibicao === '' ? '—' : String(valorExibicao);
+    if(fpFichaValoresVisiveis()) return s;
+    if(s === '—') return '—';
+    if(FP_FICHA_SENSIVEL_RX.test(String(label || ''))) return '••••••';
+    return s;
+}
+function fpFmtFichaMoney(label, n){
+    return fpFmtFichaSensivel(label, fmoney(n));
+}
+function fpSyncFichaOlhoBtn(){
+    const btn = document.getElementById('btnFichaToggleValores');
+    if(!btn) return;
+    const show = fpFichaValoresVisiveis();
+    btn.setAttribute('aria-pressed', show ? 'true' : 'false');
+    btn.title = show ? 'Ocultar valores (salário, benefícios…)' : 'Exibir valores (salário, benefícios…)';
+    btn.textContent = show ? '👁' : '👁‍🗨';
+}
+function fpToggleFichaValoresVisiveis(){
+    fpSetFichaValoresVisiveis(!fpFichaValoresVisiveis());
+    fpSyncFichaOlhoBtn();
+    const list = typeof listagemParaPainel === 'function' ? listagemParaPainel() : (state.employees || []);
+    if(state.selected) renderProfile(state.selected, list.length);
+    if(typeof refreshCadastroFichaTabs === 'function') refreshCadastroFichaTabs();
+}
 function statusDoc(label, d) {
     if(d === null) return pill('n', label + ': sem data');
     if(d < 0) return pill('d', `${label}: vencido há ${Math.abs(d)} dia(s)`);
@@ -2598,16 +2656,16 @@ function renderProfile(e, qtd) {
         ['Cargo', e.cargo], ['Nível', e.nivel], ['Atuando (Unidade)', e.atuando], ['Escala', e.escala || '—'],
         ['Cód. de posto', codPosto || '—'],
         ['Carga horária', e.carga || '—'], ['Jornada', e.jornada || '—'],
-        ['Salário Base', fmoney(e.salario)], ['Ajuda de custos', fmoney(e.ajuda)], ['Vale Refeição', fmoney(e.vr)], ['Cesta', e.cestas || 'NÃO'],
-        ['Vale transporte', e.vt || '—'], ['Tipo VT', e.vtTipo || '—'], ['VT unitário', Number(e.vtValor) > 0 ? fmoney(e.vtValor) : '—'],
-        ['VT ida + volta', vtIv > 0 ? fmoney(vtIv) : '—'],
-        ['Plano de saúde (titular)', e.plano], ['Saúde — valor titular', fmoney(e.valorPlano)], ['Saúde — valor dependente', fmoney(e.saudeDepValor || 0)],
+        ['Salário Base', fpFmtFichaMoney('Salário Base', e.salario)], ['Ajuda de custos', fpFmtFichaMoney('Ajuda de custos', e.ajuda)], ['Vale Refeição', fpFmtFichaMoney('Vale Refeição', e.vr)], ['Cesta', e.cestas || 'NÃO'],
+        ['Vale transporte', e.vt || '—'], ['Tipo VT', e.vtTipo || '—'], ['VT unitário', fpFmtFichaMoney('VT unitário', Number(e.vtValor) > 0 ? e.vtValor : null)],
+        ['VT ida + volta', fpFmtFichaMoney('VT ida + volta', vtIv > 0 ? vtIv : null)],
+        ['Plano de saúde (titular)', e.plano], ['Saúde — valor titular', fpFmtFichaMoney('Saúde — valor titular', e.valorPlano)], ['Saúde — valor dependente', fpFmtFichaMoney('Saúde — valor dependente', e.saudeDepValor || 0)],
         ['Dependentes no plano', e.depPlano || 0], ['Dependentes p/ benefícios', e.depBeneficios || 0],
-        ['Desconto plano', fmoney(e.descontoPlano)], ['Odonto (titular)', e.odonto],
-        ['Odonto — valor titular', fmoney(e.odontoTitularValor || 0)], ['Odonto — valor dependente', fmoney(e.odontoDepValor || 0)],
+        ['Desconto plano', fpFmtFichaMoney('Desconto plano', e.descontoPlano)], ['Odonto (titular)', e.odonto],
+        ['Odonto — valor titular', fpFmtFichaMoney('Odonto — valor titular', e.odontoTitularValor || 0)], ['Odonto — valor dependente', fpFmtFichaMoney('Odonto — valor dependente', e.odontoDepValor || 0)],
         ['Data limite férias', fdate(e.dataLimiteFerias)],
-        ['Cargo de confiança', fmoney(e.cargoConfianca || 0)], ['Periculosidade', fmoney(e.periculosidade || 0)],
-        ['Total folha (remuneração)', fmoney(folhaRemuneracao(e))]
+        ['Cargo de confiança', fpFmtFichaMoney('Cargo de confiança', e.cargoConfianca || 0)], ['Periculosidade', fpFmtFichaMoney('Periculosidade', e.periculosidade || 0)],
+        ['Total folha (remuneração)', fpFmtFichaMoney('Total folha (remuneração)', folhaRemuneracao(e))]
     ];
     const feriasStore = JSON.parse(localStorage.getItem(FERIAS_HIST_KEY) || '{}');
     const feriasStoreRows = Array.isArray(feriasStore[e.nome]) ? feriasStore[e.nome] : [];
@@ -2655,7 +2713,7 @@ function renderProfile(e, qtd) {
                         ${pill('n', `Registro: ${e.empresa || '—'}`)}
                     </div>
                     <div class="mini">
-                        <div class="mk"><div class="x">Salário</div><div class="y">${esc(fmoney(e.salario))}</div></div>
+                        <div class="mk"><div class="x">Salário</div><div class="y ${fpFichaValoresVisiveis() ? '' : 'fp-valor-mascarado'}">${esc(fpFmtFichaMoney('Salário', e.salario))}</div></div>
                         <div class="mk"><div class="x">Admissão</div><div class="y">${esc(fdate(e.admissao) || '—')}</div></div>
                         ${ehDesligado(e) ? `<div class="mk"><div class="x">Desligamento</div><div class="y">${esc(fdate(e.demissao) || '—')}</div></div>` : ''}
                         <div class="mk"><div class="x">Tempo de casa</div><div class="y" title="${esc(tc.titleAttr)}">${esc(tc.titulo)}${tc.subtitulo ? ` <span style="font-size:11px;opacity:.82;white-space:nowrap;">(${esc(tc.subtitulo)})</span>` : ''}${tc.encerrado ? ' <span style="font-size:11px;opacity:.75;">· congelado</span>' : ''}</div></div>
@@ -4436,7 +4494,19 @@ function refreshCadastroFichaTabs(){
     const vencAtual = document.getElementById('asoRenVencAtual');
     if(vencAtual) vencAtual.value = emp?.aso ? toInputDate(emp.aso) : '';
     const salAtual = document.getElementById('salAltAtual');
-    if(salAtual) salAtual.value = emp ? Number(emp.salario || 0) : '';
+    if(salAtual){
+        const salNum = emp ? Number(emp.salario || 0) : 0;
+        salAtual.dataset.fpReal = String(salNum);
+        if(fpFichaValoresVisiveis()){
+            salAtual.value = salNum;
+            salAtual.placeholder = '';
+        } else {
+            salAtual.value = '';
+            salAtual.placeholder = '••••••';
+        }
+    }
+    const salPct = document.getElementById('salAltPct');
+    if(salPct && !fpFichaValoresVisiveis()) salPct.value = salPct.value ? '••••••' : '';
     if(cadastroFichaTabAtivo === 'aso') renderAsoRenHist();
     if(cadastroFichaTabAtivo === 'salario'){ salAltCalcPct(); renderSalAltHist(); }
 }
@@ -4478,13 +4548,14 @@ function renderAsoRenHist(){
 function getSalarioHist(){ try { return JSON.parse(localStorage.getItem(FP_SALARIO_HIST_KEY) || '[]'); } catch(e) { return []; } }
 function setSalarioHist(arr){ localStorage.setItem(FP_SALARIO_HIST_KEY, JSON.stringify(Array.isArray(arr) ? arr : [])); }
 function salAltCalcPct(){
-    const atual = Number(document.getElementById('salAltAtual')?.value || 0);
+    const salAtualEl = document.getElementById('salAltAtual');
+    const atual = Number(salAtualEl?.dataset?.fpReal || salAtualEl?.value || 0);
     const novo = Number(document.getElementById('salAltNovo')?.value || 0);
     const pctEl = document.getElementById('salAltPct');
     if(!pctEl) return;
     if(!atual || !novo){ pctEl.value = ''; return; }
     const pct = ((novo - atual) / atual) * 100;
-    pctEl.value = pct.toFixed(2) + '%';
+    pctEl.value = fpFichaValoresVisiveis() ? (pct.toFixed(2) + '%') : '••••••';
 }
 function salvarAlteracaoSalarial(){
     const empSel = getCadastroFuncionarioSelecionado();
@@ -4516,8 +4587,9 @@ function renderSalAltHist(){
     if(!nome){ el.innerHTML = '<div class="empty">Selecione um funcionário no filtro.</div>'; return; }
     const hist = getSalarioHist().filter(h => String(h.nome || '').trim() === nome);
     if(!hist.length){ el.innerHTML = '<div class="empty">Nenhuma alteração para este funcionário.</div>'; return; }
+    const vis = fpFichaValoresVisiveis();
     el.innerHTML = `<table><thead><tr><th>Anterior</th><th>Novo</th><th>%</th><th>Data</th><th>Motivo</th></tr></thead><tbody>${
-        hist.slice(0, 40).map(h => `<tr><td>${esc(fmoney(h.salarioAnterior))}</td><td>${esc(fmoney(h.salarioNovo))}</td><td>${esc(String(h.pctReajuste))}%</td><td>${esc(fdate(h.dataReajuste))}</td><td>${esc(h.motivo || '—')}</td></tr>`).join('')
+        hist.slice(0, 40).map(h => `<tr><td>${esc(vis ? fmoney(h.salarioAnterior) : '••••••')}</td><td>${esc(vis ? fmoney(h.salarioNovo) : '••••••')}</td><td>${esc(vis ? String(h.pctReajuste) + '%' : '••••••')}</td><td>${esc(fdate(h.dataReajuste))}</td><td>${esc(h.motivo || '—')}</td></tr>`).join('')
     }</tbody></table>`;
 }
 function fpFichaRelValor(e, f){
@@ -4778,7 +4850,10 @@ renderEmployeeDocsList();
 renderEmployeePhotoPreview();
 bindProfilePhotoInteractions();
 populateCadastroUnitOptions();
-if(IS_CADASTRO_VIEW) switchCadastroFichaTab('ficha');
+if(IS_CADASTRO_VIEW){
+    switchCadastroFichaTab('ficha');
+    fpSyncFichaOlhoBtn();
+}
 applyFilters();
 </script>
 </body>
