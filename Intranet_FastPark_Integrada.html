@@ -485,7 +485,8 @@ body {
     width: 100%;
 }
 .uni-module #unidadesCadastroTab,
-.uni-module #unidadesVisualizacaoTab { width: 100%; min-height: 0; box-sizing: border-box; }
+.uni-module #unidadesVisualizacaoTab,
+.uni-module #unidadesTabelasTab { width: 100%; min-height: 0; box-sizing: border-box; }
 .uni-module #uniViewShell.panel { width: 100%; max-width: 100%; }
 #cestas .panel,
 #cestas .filters,
@@ -1049,7 +1050,8 @@ body {
     -webkit-overflow-scrolling: touch;
 }
 .uni-module #unidadesCadastroTab,
-.uni-module #unidadesVisualizacaoTab { min-height: 0; }
+.uni-module #unidadesVisualizacaoTab,
+.uni-module #unidadesTabelasTab { min-height: 0; }
 .uni-module .uni-orc-hist-report { overflow-x: auto; }
 .uni-module .uni-orc-hist-report table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .uni-module .uni-orc-hist-report th, .uni-module .uni-orc-hist-report td { border: 1px solid #e5e7eb; padding: 8px; }
@@ -2165,7 +2167,8 @@ td { color: var(--t); font-weight: 500;}
             </button>
             <div class="fp-menu-sub">
                 <button type="button" class="fp-menu-item" data-tab="uni-cadastro" onclick="fpMenuSwitchTab('uni-cadastro', 'uni')">Cadastro</button>
-                <button type="button" class="fp-menu-item" data-tab="uni-unidade" onclick="fpMenuSwitchTab('uni-unidade', 'uni')">Unidade</button>
+                <button type="button" class="fp-menu-item" data-tab="uni-unidade" onclick="fpMenuSwitchTab('uni-unidade', 'uni')">Unidades</button>
+                <button type="button" class="fp-menu-item" data-tab="uni-tabelas" onclick="fpMenuSwitchTab('uni-tabelas', 'uni')">Tabelas</button>
             </div>
         </div>
         <div class="fp-menu-group" data-fp-group="sin">
@@ -2753,7 +2756,6 @@ td { color: var(--t); font-weight: 500;}
                 <div class="uni-view-tabs">
                     <button type="button" class="btn btn-tab-active" id="btnUniViewDados" onclick="switchUniViewMainTab('dados')">Dados / Contatos / Vagas</button>
                     <button type="button" class="btn btn-tab" id="btnUniViewPostos" onclick="switchUniViewMainTab('postos')">Postos</button>
-                    <button type="button" class="btn btn-tab" id="btnUniViewTabela" onclick="switchUniViewMainTab('tabela')">Tabela</button>
                     <button type="button" class="btn btn-tab" id="btnUniViewContratos" onclick="switchUniViewMainTab('contratos')">Contratos</button>
                 </div>
                 <div id="uniViewPanelDados" class="uni-view-panel active">
@@ -2805,7 +2807,117 @@ td { color: var(--t); font-weight: 500;}
                         </div>
                     </div>
                 </div>
-                <div id="uniViewPanelTabela" class="uni-view-panel">
+                <div id="uniViewPanelContratos" class="uni-view-panel">
+                    <div class="uni-view-subtabs">
+                        <button type="button" class="btn btn-tab-active" id="btnUniContratoSubContrato" onclick="switchUniViewContratosSubtab('contrato')">Contrato</button>
+                        <button type="button" class="btn btn-tab" id="btnUniContratoSubAditivos" onclick="switchUniViewContratosSubtab('aditivos')">Aditivos</button>
+                    </div>
+                    <div id="uniContratoSubPanelContrato" class="uni-contrato-subpanel active">
+                        <div id="uniViewContratosReadonly" class="uni-display-wrap"></div>
+                        <div id="uniViewContratosEdit" class="uni-view-edit-block">
+                            <div id="uniViewContratosBody" class="inner uni-view-edit-form"></div>
+                        </div>
+                        <div class="uni-view-toolbar" id="uniContratoToolbarWrap">
+                            <button type="button" class="btn btn-fp-orange" id="btnUniEditContratos" onclick="uniViewStartEdit('contratos')">Editar contratos</button>
+                            <div id="uniViewContratosBar" class="uni-view-save-bar" style="display:none;">
+                                <button type="button" class="btn btn-fp-orange" onclick="salvarUnidadeViewContratos()">Salvar</button>
+                                <button type="button" class="btn btn-fp-gray" onclick="uniViewCancelEdit('contratos')">Cancelar</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="uniContratoSubPanelAditivos" class="uni-contrato-subpanel">
+                        <div class="laudos-subnav" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+                            <button type="button" class="btn btn-info laudos-subtab active" id="uniAditivosSubBtnCad" onclick="switchUniAditivosSubtab('cadastro')">Cadastro</button>
+                            <button type="button" class="btn laudos-subtab" id="uniAditivosSubBtnHist" onclick="switchUniAditivosSubtab('historico')">Histórico</button>
+                        </div>
+                        <div id="uniAditivosPanelCadastro" class="laudos-subpanel active">
+                            <article class="panel" style="margin-bottom:12px;">
+                                <div class="head"><h3 id="uniAditivoFormTitle">Novo aditivo</h3></div>
+                                <div class="body uni-aditivos-form-grid" style="padding:12px;">
+                                    <input type="hidden" id="uniVaRenovacao" value="">
+                                    <div style="grid-column:1/-1;font-size:12px;color:#555;">Registe <strong>renovações</strong> do contrato com novo vencimento e anexe o documento (PDF ou imagem). O vencimento vigente da unidade é atualizado automaticamente.</div>
+                                    <div style="grid-column:1/-1;padding:10px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;font-size:12px;" id="uniVaResumoVigente">Selecione uma unidade.</div>
+                                    <div><label class="uni-field-label"><strong>Descrição / referência</strong></label><br><input id="uniVaDesc" type="text" placeholder="Ex.: 1º aditivo, renovação 2026…"></div>
+                                    <div><label class="uni-field-label"><strong>Novo vencimento</strong></label><br><input id="uniVaVencimento" type="text" placeholder="dd/mm/aaaa" inputmode="numeric" autocomplete="off"></div>
+                                    <div><label class="uni-field-label"><strong>Documento</strong></label><br><input id="uniVaAnexo" type="file" accept=".pdf,.jpg,.jpeg,.png" onchange="renderUniAditivoVaAnexoHint()"><div id="uniVaAnexoHint" style="margin-top:6px;"></div></div>
+                                    <div style="grid-column:1/-1;"><label class="uni-field-label"><strong>Observações</strong></label><br><textarea id="uniVaObs" rows="2" placeholder="Notas sobre o aditivo ou a renovação"></textarea></div>
+                                    <div style="grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                                        <button type="button" class="btn btn-fp-orange" onclick="salvarUniAditivoView()">Salvar aditivo</button>
+                                        <button type="button" class="btn btn-fp-gray" onclick="limparFormUniAditivo()">Novo registro</button>
+                                        <button type="button" class="btn btn-info" onclick="iniciarRenovacaoContratoUni()">Renovar contrato</button>
+                                        <span id="uniAditivoRenovarHint" style="font-size:12px;color:#0d6efd;display:none;font-weight:600;">Renovação — informe o novo vencimento e anexe o aditivo, depois Salvar.</span>
+                                    </div>
+                                </div>
+                            </article>
+                            <article class="panel list">
+                                <div class="head"><h3>Aditivos da unidade</h3></div>
+                                <div class="inner" id="uniAditivosListaBody" style="max-height:min(50vh,480px);overflow-y:auto;"><div class="empty">Selecione uma unidade.</div></div>
+                            </article>
+                        </div>
+                        <div id="uniAditivosPanelHistorico" class="laudos-subpanel">
+                            <article class="panel">
+                                <div class="head"><h3>Histórico de aditivos</h3><p style="margin:6px 0 0;font-size:12px;opacity:.9;">Renovações e aditivos registados nesta unidade.</p></div>
+                                <div class="body" style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;padding:12px;">
+                                    <div><label><strong>De</strong></label><br><input type="text" id="uniVaHistIni" placeholder="dd/mm/aaaa" inputmode="numeric" onchange="renderUniAditivosHistorico()"></div>
+                                    <div><label><strong>Até</strong></label><br><input type="text" id="uniVaHistFim" placeholder="dd/mm/aaaa" inputmode="numeric" onchange="renderUniAditivosHistorico()"></div>
+                                    <button type="button" class="btn btn-fp-gray" onclick="uniAditivoHistLimparFiltros()">Limpar filtros</button>
+                                </div>
+                                <div class="inner" id="uniAditivosHistBody" style="max-height:min(55vh,520px);overflow-y:auto;padding:10px;"></div>
+                            </article>
+                        </div>
+                    </div>
+                </div>
+            </article>
+        </div>
+        </div>
+        <div id="fpUniAnexoModal" class="modal-overlay" style="display:none;z-index:2100;" onclick="if(event.target===this)fpCloseUniAnexoViewer()">
+            <div class="modal-card">
+                <div class="modal-header">
+                    <h3 id="fpUniAnexoModalTitle">Documento</h3>
+                    <button type="button" class="modal-close" onclick="fpCloseUniAnexoViewer()">✕</button>
+                </div>
+                <div class="modal-body" id="fpUniAnexoModalBody"><div class="empty" style="padding:24px;">Carregando…</div></div>
+                <div class="modal-footer" style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <button type="button" class="btn btn-info" id="fpUniAnexoModalNovaAba">Abrir em nova aba</button>
+                    <button type="button" class="btn btn-fp-gray" onclick="fpCloseUniAnexoViewer()">Fechar</button>
+                </div>
+            </div>
+        </div>
+        <!-- historico global removido: ver subaba Tabela na Visualização -->
+        <div id="unidadesHistoricoTab_removed" style="display:none !important;">
+            <section class="filters" style="margin-bottom:12px;flex-wrap:wrap;gap:12px;align-items:flex-end;">
+                <div><label><strong>Unidade</strong></label><br><select id="uniHistUnidade" style="min-width:200px;" onchange="renderUniTabelaHistoricoAba()"><option value="">Todas</option></select></div>
+                <div><label><strong>Tabela</strong></label><br><select id="uniHistTabela" style="min-width:180px;" onchange="renderUniTabelaHistoricoAba()">
+                    <option value="">Todas as tabelas</option>
+                    <option value="mensal_carro">Mensal carro</option>
+                    <option value="mensal_moto">Mensal moto</option>
+                    <option value="avulso">Avulso</option>
+                    <option value="selos">Selos</option>
+                </select></div>
+                <div><label><strong>Data alteração (de)</strong></label><br><input type="date" id="uniHistDataIni" onchange="renderUniTabelaHistoricoAba()"></div>
+                <div><label><strong>Data alteração (até)</strong></label><br><input type="date" id="uniHistDataFim" onchange="renderUniTabelaHistoricoAba()"></div>
+                <div><button type="button" class="btn btn-info" onclick="renderUniTabelaHistoricoAba()">Filtrar</button>
+                <button type="button" class="btn" onclick="limparFiltrosUniHistorico()">Limpar filtros</button></div>
+            </section>
+            <article class="panel list"><h3>Histórico de alterações de preços</h3><div class="inner" id="uniTabelaHistoricoGlobal" style="max-height:min(75vh,900px);overflow-y:auto;"><div class="empty">Nenhum registo de alteração de tabela.</div></div></article>
+        </div>
+        </div>
+    </div>
+    <div id="uni-tabelas" class="tab-content uni-module fp-page-full">
+        <div class="uni-page-root">
+        <div id="unidadesTabelasTab">
+            <section class="filters" style="margin-bottom:10px;">
+                <div><label><strong>Selecionar unidade</strong></label><br><select id="unidadesTabelaViewSelect" style="min-width:280px;" onchange="onUnidadeTabelaViewSelectChange()"><option value="">— Selecione uma unidade —</option></select></div>
+            </section>
+            <div id="uniTabelaEmpty" class="panel" style="padding:24px;text-align:center;"><div class="empty">Selecione uma unidade acima para consultar e alterar a tabela de preços.</div></div>
+            <article id="uniTabelaShell" class="panel" style="display:none;">
+                <div class="uni-view-header">
+                    <div><div id="uniTabelaViewCod" style="font-size:11px;color:#6b7280;">—</div><div id="uniTabelaViewNome" style="font-size:20px;font-weight:800;">—</div></div>
+                    <div>
+                        <button type="button" class="btn btn-fp-orange" onclick="editarUnidadeVisualizacaoAtual()">Editar cadastro completo</button>
+                    </div>
+                </div>
+                <div id="uniViewPanelTabela" class="uni-view-panel active">
                     <div class="uni-view-subtabs">
                         <button type="button" class="btn btn-tab-active" id="btnUniViewTabValores" onclick="switchUniViewTabelaSubtab('valores')">Valores atuais</button>
                         <button type="button" class="btn btn-tab" id="btnUniViewTabAlterar" onclick="switchUniViewTabelaSubtab('alterar')">Alterar tabela</button>
@@ -2891,68 +3003,7 @@ td { color: var(--t); font-weight: 500;}
                         <div id="uniViewHistBody" class="inner" style="max-height:min(60vh,700px);overflow-y:auto;"></div>
                     </div>
                 </div>
-                <div id="uniViewPanelContratos" class="uni-view-panel">
-                    <div class="uni-view-subtabs">
-                        <button type="button" class="btn btn-tab-active" id="btnUniContratoSubContrato" onclick="switchUniViewContratosSubtab('contrato')">Contrato</button>
-                        <button type="button" class="btn btn-tab" id="btnUniContratoSubAditivos" onclick="switchUniViewContratosSubtab('aditivos')">Aditivos</button>
-                    </div>
-                    <div id="uniContratoSubPanelContrato" class="uni-contrato-subpanel active">
-                        <div id="uniViewContratosReadonly" class="uni-display-wrap"></div>
-                        <div id="uniViewContratosEdit" class="uni-view-edit-block">
-                            <div id="uniViewContratosBody" class="inner uni-view-edit-form"></div>
-                        </div>
-                        <div class="uni-view-toolbar" id="uniContratoToolbarWrap">
-                            <button type="button" class="btn btn-fp-orange" id="btnUniEditContratos" onclick="uniViewStartEdit('contratos')">Editar contratos</button>
-                            <div id="uniViewContratosBar" class="uni-view-save-bar" style="display:none;">
-                                <button type="button" class="btn btn-fp-orange" onclick="salvarUnidadeViewContratos()">Salvar</button>
-                                <button type="button" class="btn btn-fp-gray" onclick="uniViewCancelEdit('contratos')">Cancelar</button>
-                            </div>
-                        </div>
-                    </div>
-                    <div id="uniContratoSubPanelAditivos" class="uni-contrato-subpanel">
-                        <div class="laudos-subnav" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
-                            <button type="button" class="btn btn-info laudos-subtab active" id="uniAditivosSubBtnCad" onclick="switchUniAditivosSubtab('cadastro')">Cadastro</button>
-                            <button type="button" class="btn laudos-subtab" id="uniAditivosSubBtnHist" onclick="switchUniAditivosSubtab('historico')">Histórico</button>
-                        </div>
-                        <div id="uniAditivosPanelCadastro" class="laudos-subpanel active">
-                            <article class="panel" style="margin-bottom:12px;">
-                                <div class="head"><h3 id="uniAditivoFormTitle">Novo aditivo</h3></div>
-                                <div class="body uni-aditivos-form-grid" style="padding:12px;">
-                                    <input type="hidden" id="uniVaRenovacao" value="">
-                                    <div style="grid-column:1/-1;font-size:12px;color:#555;">Registe <strong>renovações</strong> do contrato com novo vencimento e anexe o documento (PDF ou imagem). O vencimento vigente da unidade é atualizado automaticamente.</div>
-                                    <div style="grid-column:1/-1;padding:10px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;font-size:12px;" id="uniVaResumoVigente">Selecione uma unidade.</div>
-                                    <div><label class="uni-field-label"><strong>Descrição / referência</strong></label><br><input id="uniVaDesc" type="text" placeholder="Ex.: 1º aditivo, renovação 2026…"></div>
-                                    <div><label class="uni-field-label"><strong>Novo vencimento</strong></label><br><input id="uniVaVencimento" type="text" placeholder="dd/mm/aaaa" inputmode="numeric" autocomplete="off"></div>
-                                    <div><label class="uni-field-label"><strong>Documento</strong></label><br><input id="uniVaAnexo" type="file" accept=".pdf,.jpg,.jpeg,.png" onchange="renderUniAditivoVaAnexoHint()"><div id="uniVaAnexoHint" style="margin-top:6px;"></div></div>
-                                    <div style="grid-column:1/-1;"><label class="uni-field-label"><strong>Observações</strong></label><br><textarea id="uniVaObs" rows="2" placeholder="Notas sobre o aditivo ou a renovação"></textarea></div>
-                                    <div style="grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-                                        <button type="button" class="btn btn-fp-orange" onclick="salvarUniAditivoView()">Salvar aditivo</button>
-                                        <button type="button" class="btn btn-fp-gray" onclick="limparFormUniAditivo()">Novo registro</button>
-                                        <button type="button" class="btn btn-info" onclick="iniciarRenovacaoContratoUni()">Renovar contrato</button>
-                                        <span id="uniAditivoRenovarHint" style="font-size:12px;color:#0d6efd;display:none;font-weight:600;">Renovação — informe o novo vencimento e anexe o aditivo, depois Salvar.</span>
-                                    </div>
-                                </div>
-                            </article>
-                            <article class="panel list">
-                                <div class="head"><h3>Aditivos da unidade</h3></div>
-                                <div class="inner" id="uniAditivosListaBody" style="max-height:min(50vh,480px);overflow-y:auto;"><div class="empty">Selecione uma unidade.</div></div>
-                            </article>
-                        </div>
-                        <div id="uniAditivosPanelHistorico" class="laudos-subpanel">
-                            <article class="panel">
-                                <div class="head"><h3>Histórico de aditivos</h3><p style="margin:6px 0 0;font-size:12px;opacity:.9;">Renovações e aditivos registados nesta unidade.</p></div>
-                                <div class="body" style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;padding:12px;">
-                                    <div><label><strong>De</strong></label><br><input type="text" id="uniVaHistIni" placeholder="dd/mm/aaaa" inputmode="numeric" onchange="renderUniAditivosHistorico()"></div>
-                                    <div><label><strong>Até</strong></label><br><input type="text" id="uniVaHistFim" placeholder="dd/mm/aaaa" inputmode="numeric" onchange="renderUniAditivosHistorico()"></div>
-                                    <button type="button" class="btn btn-fp-gray" onclick="uniAditivoHistLimparFiltros()">Limpar filtros</button>
-                                </div>
-                                <div class="inner" id="uniAditivosHistBody" style="max-height:min(55vh,520px);overflow-y:auto;padding:10px;"></div>
-                            </article>
-                        </div>
-                    </div>
-                </div>
             </article>
-        </div>
         </div>
         <div id="uniReajusteModal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)cancelUniReajusteModal()">
             <div class="modal-card" style="width:420px;">
@@ -2968,37 +3019,6 @@ td { color: var(--t); font-weight: 500;}
                 </div>
             </div>
         </div>
-        <div id="fpUniAnexoModal" class="modal-overlay" style="display:none;z-index:2100;" onclick="if(event.target===this)fpCloseUniAnexoViewer()">
-            <div class="modal-card">
-                <div class="modal-header">
-                    <h3 id="fpUniAnexoModalTitle">Documento</h3>
-                    <button type="button" class="modal-close" onclick="fpCloseUniAnexoViewer()">✕</button>
-                </div>
-                <div class="modal-body" id="fpUniAnexoModalBody"><div class="empty" style="padding:24px;">Carregando…</div></div>
-                <div class="modal-footer" style="display:flex;gap:8px;flex-wrap:wrap;">
-                    <button type="button" class="btn btn-info" id="fpUniAnexoModalNovaAba">Abrir em nova aba</button>
-                    <button type="button" class="btn btn-fp-gray" onclick="fpCloseUniAnexoViewer()">Fechar</button>
-                </div>
-            </div>
-        </div>
-        <!-- historico global removido: ver subaba Tabela na Visualização -->
-        <div id="unidadesHistoricoTab_removed" style="display:none !important;">
-            <section class="filters" style="margin-bottom:12px;flex-wrap:wrap;gap:12px;align-items:flex-end;">
-                <div><label><strong>Unidade</strong></label><br><select id="uniHistUnidade" style="min-width:200px;" onchange="renderUniTabelaHistoricoAba()"><option value="">Todas</option></select></div>
-                <div><label><strong>Tabela</strong></label><br><select id="uniHistTabela" style="min-width:180px;" onchange="renderUniTabelaHistoricoAba()">
-                    <option value="">Todas as tabelas</option>
-                    <option value="mensal_carro">Mensal carro</option>
-                    <option value="mensal_moto">Mensal moto</option>
-                    <option value="avulso">Avulso</option>
-                    <option value="selos">Selos</option>
-                </select></div>
-                <div><label><strong>Data alteração (de)</strong></label><br><input type="date" id="uniHistDataIni" onchange="renderUniTabelaHistoricoAba()"></div>
-                <div><label><strong>Data alteração (até)</strong></label><br><input type="date" id="uniHistDataFim" onchange="renderUniTabelaHistoricoAba()"></div>
-                <div><button type="button" class="btn btn-info" onclick="renderUniTabelaHistoricoAba()">Filtrar</button>
-                <button type="button" class="btn" onclick="limparFiltrosUniHistorico()">Limpar filtros</button></div>
-            </section>
-            <article class="panel list"><h3>Histórico de alterações de preços</h3><div class="inner" id="uniTabelaHistoricoGlobal" style="max-height:min(75vh,900px);overflow-y:auto;"><div class="empty">Nenhum registo de alteração de tabela.</div></div></article>
-        </div>
         </div>
     </div>
     <div id="cadpostos" class="tab-content ref-module fp-page-full">
@@ -3006,7 +3026,7 @@ td { color: var(--t); font-weight: 500;}
             <article class="panel list ref-report quadro-atual-report">
                 <div class="head">
                     <h2>Quadro atual</h2>
-                    <p class="ref-report-sub">Relatório de postos cadastrados em <strong>Unidades → Unidade → Postos</strong>. Colaborador e função do cadastro de funcionários; <strong>Registro</strong> = empresa em que o colaborador está registrado.</p>
+                    <p class="ref-report-sub">Relatório de postos cadastrados em <strong>Unidades → Unidades → Postos</strong>. Colaborador e função do cadastro de funcionários; <strong>Registro</strong> = empresa em que o colaborador está registrado.</p>
                 </div>
                 <div class="ref-report-actions">
                     <button type="button" class="btn btn-info" onclick="switchTab('uni-unidade');switchUniViewMainTab('postos');">Abrir cadastro de postos (Unidades)</button>
@@ -3716,6 +3736,7 @@ function switchTab(tab) {
     }
     if(tab === 'uni-cadastro' && typeof uniInitCadastroTab === 'function') uniInitCadastroTab();
     if(tab === 'uni-unidade' && typeof uniInitUnidadeTab === 'function') uniInitUnidadeTab();
+    if(tab === 'uni-tabelas' && typeof uniInitTabelasTab === 'function') uniInitTabelasTab();
     if(tab === 'dprefbeneficios' && typeof refInitBeneficiosTab === 'function') refInitBeneficiosTab();
     if(tab === 'dprefvt' && typeof refInitVtRefTab === 'function') refInitVtRefTab();
     if(tab === 'referencias' && typeof refInitEmpresasTab === 'function') refInitEmpresasTab();
@@ -6793,7 +6814,7 @@ function fpConsolidateFullPageTab(tab) {
 function fpInitTabPageLayout() {
     var fullPageIds = [
         'dprefbeneficios', 'dprefvt', 'vt', 'faltas', 'laudos', 'referencias',
-        'uni-cadastro', 'uni-unidade', 'fin-pagar', 'fin-receber', 'fin-relatorios',
+        'uni-cadastro', 'uni-unidade', 'uni-tabelas', 'fin-pagar', 'fin-receber', 'fin-relatorios',
         'sinistros', 'est-fornecedores', 'est-estoque', 'est-saida', 'cadpostos', 'pagas'
     ];
     fullPageIds.forEach(function (id) {
@@ -11592,17 +11613,32 @@ function toggleUnidadesCadastroForm(){
         uniWireTabelaAutoCalc();
     }
 }
+function syncUniViewSelects(fromEl){
+    if(!fromEl) return;
+    const v = fromEl.value || '';
+    ['unidadesViewSelect', 'unidadesTabelaViewSelect'].forEach(function(id){
+        const s = document.getElementById(id);
+        if(s && s !== fromEl){
+            if([...s.options].some(o => o.value === v)) s.value = v;
+            else if(!v) s.value = '';
+        }
+    });
+}
 function refreshUnidadesViewSelect(){
-    const sel = document.getElementById('unidadesViewSelect');
-    if(!sel) return;
     const arr = getUnidades();
-    const current = sel.value || '';
-    sel.innerHTML = '<option value="">— Selecione uma unidade —</option>' + arr
+    const current = document.getElementById('unidadesViewSelect')?.value
+        || document.getElementById('unidadesTabelaViewSelect')?.value || '';
+    const opts = '<option value="">— Selecione uma unidade —</option>' + arr
         .map(u => String(u.nome || '').trim())
         .filter(Boolean)
         .sort((a,b)=>a.localeCompare(b,'pt-BR'))
         .map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
-    if(current && [...sel.options].some(o => o.value === current)) sel.value = current;
+    ['unidadesViewSelect', 'unidadesTabelaViewSelect'].forEach(function(id){
+        const sel = document.getElementById(id);
+        if(!sel) return;
+        sel.innerHTML = opts;
+        if(current && [...sel.options].some(o => o.value === current)) sel.value = current;
+    });
 }
 let uniViewSelectedIdx = null;
 let uniViewTabelaBound = false;
@@ -11775,7 +11811,7 @@ function uniSetViewFields(map){
     Object.entries(map).forEach(([id, val]) => { const el = document.getElementById(id); if(el) el.value = val == null ? '' : val; });
 }
 function uniMarkFilledInputs(root){
-    const scope = root || document.querySelector('.uni-module.tab-content.active') || document.getElementById('uni-unidade') || document.getElementById('uni-cadastro');
+    const scope = root || document.querySelector('.uni-module.tab-content.active') || document.getElementById('uni-unidade') || document.getElementById('uni-tabelas') || document.getElementById('uni-cadastro');
     if(!scope) return;
     scope.querySelectorAll('input:not([type="hidden"]), textarea, select').forEach(el => {
         const v = el.tagName === 'SELECT' ? el.value : String(el.value || '').trim();
@@ -12084,7 +12120,11 @@ function salvarUnidadeViewContratos(){
     });
 }
 function getUniViewSelectedIdx(){
-    const nome = document.getElementById('unidadesViewSelect')?.value?.trim();
+    const tabelasAtiva = document.getElementById('uni-tabelas')?.classList.contains('active');
+    const sel = document.getElementById(tabelasAtiva ? 'unidadesTabelaViewSelect' : 'unidadesViewSelect')
+        || document.getElementById('unidadesViewSelect')
+        || document.getElementById('unidadesTabelaViewSelect');
+    const nome = sel?.value?.trim();
     if(!nome) return null;
     const idx = getUnidades().findIndex(u => String(u.nome || '').trim() === nome);
     return idx >= 0 ? idx : null;
@@ -12096,6 +12136,7 @@ function uniViewItem(label, value, spanAll){
     return '<div style="' + (spanAll ? 'grid-column:1 / -1;' : '') + '"><strong>' + label + ':</strong> ' + value + '</div>';
 }
 function onUnidadeViewSelectChange(){
+    syncUniViewSelects(document.getElementById('unidadesViewSelect'));
     const empty = document.getElementById('uniViewEmpty');
     const shell = document.getElementById('uniViewShell');
     try {
@@ -12104,6 +12145,10 @@ function onUnidadeViewSelectChange(){
             uniViewSelectedIdx = null;
             if(empty) empty.style.display = '';
             if(shell) shell.style.display = 'none';
+            const tEmpty = document.getElementById('uniTabelaEmpty');
+            const tShell = document.getElementById('uniTabelaShell');
+            if(tEmpty) tEmpty.style.display = '';
+            if(tShell) tShell.style.display = 'none';
             return;
         }
         uniViewSelectedIdx = idx;
@@ -12111,11 +12156,40 @@ function onUnidadeViewSelectChange(){
         if(shell) shell.style.display = 'block';
         uniViewResetEditModes();
         if(typeof limparFormUniAditivo === 'function') limparFormUniAditivo();
-        switchUniViewMainTab('dados');
+        if(document.getElementById('uni-unidade')?.classList.contains('active')){
+            switchUniViewMainTab('dados');
+        }
         renderUnidadeVisualizacao();
     } catch(e){
         console.error('[uni] onUnidadeViewSelectChange', e);
         alert('Não foi possível abrir esta unidade. Atualize a página (Ctrl+F5). Se persistir, os dados locais podem estar corrompidos.');
+    }
+}
+function onUnidadeTabelaViewSelectChange(){
+    syncUniViewSelects(document.getElementById('unidadesTabelaViewSelect'));
+    const empty = document.getElementById('uniTabelaEmpty');
+    const shell = document.getElementById('uniTabelaShell');
+    try {
+        const idx = getUniViewSelectedIdx();
+        if(idx == null){
+            uniViewSelectedIdx = null;
+            if(empty) empty.style.display = '';
+            if(shell) shell.style.display = 'none';
+            const uEmpty = document.getElementById('uniViewEmpty');
+            const uShell = document.getElementById('uniViewShell');
+            if(uEmpty) uEmpty.style.display = '';
+            if(uShell) uShell.style.display = 'none';
+            return;
+        }
+        uniViewSelectedIdx = idx;
+        if(empty) empty.style.display = 'none';
+        if(shell) shell.style.display = 'block';
+        uniViewEditing.tabelaAlterar = false;
+        switchUniViewTabelaSubtab('valores');
+        renderUnidadeVisualizacao();
+    } catch(e){
+        console.error('[uni] onUnidadeTabelaViewSelectChange', e);
+        alert('Não foi possível abrir a tabela desta unidade. Atualize a página (Ctrl+F5).');
     }
 }
 let uniContratosViewSubtab = 'contrato';
@@ -12310,14 +12384,18 @@ function excluirUniAditivoView(adIdx){
     renderUniAditivosTab();
 }
 function switchUniViewMainTab(tab){
-    const map = { dados: 'uniViewPanelDados', postos: 'uniViewPanelPostos', tabela: 'uniViewPanelTabela', contratos: 'uniViewPanelContratos' };
-    const btnMap = { dados: 'btnUniViewDados', postos: 'btnUniViewPostos', tabela: 'btnUniViewTabela', contratos: 'btnUniViewContratos' };
+    if(tab === 'tabela'){
+        if(typeof switchTab === 'function') switchTab('uni-tabelas');
+        switchUniViewTabelaSubtab('valores');
+        return;
+    }
+    const map = { dados: 'uniViewPanelDados', postos: 'uniViewPanelPostos', contratos: 'uniViewPanelContratos' };
+    const btnMap = { dados: 'btnUniViewDados', postos: 'btnUniViewPostos', contratos: 'btnUniViewContratos' };
     Object.keys(map).forEach(k => {
         document.getElementById(map[k])?.classList.toggle('active', k === tab);
         const b = document.getElementById(btnMap[k]);
         if(b){ b.classList.toggle('btn-tab-active', k === tab); b.classList.toggle('btn-tab', k !== tab); }
     });
-    if(tab === 'tabela') switchUniViewTabelaSubtab('valores');
     if(tab === 'postos') renderUnidadesPostosList();
     if(tab === 'contratos') switchUniViewContratosSubtab(uniContratosViewSubtab || 'contrato');
 }
@@ -12383,10 +12461,12 @@ function renderUnidadeVisualizacao(){
     const u = getUnidadeForDisplay(idx);
     if(!u) return;
     const v = (x) => esc(String(x ?? '').trim()) || '—';
-    const codEl = document.getElementById('uniViewCod');
-    const nomeEl = document.getElementById('uniViewNome');
-    if(codEl) codEl.textContent = v(u.cod);
-    if(nomeEl) nomeEl.textContent = v(u.nome);
+    [document.getElementById('uniViewCod'), document.getElementById('uniTabelaViewCod')].forEach(function(codEl){
+        if(codEl) codEl.textContent = v(u.cod);
+    });
+    [document.getElementById('uniViewNome'), document.getElementById('uniTabelaViewNome')].forEach(function(nomeEl){
+        if(nomeEl) nomeEl.textContent = v(u.nome);
+    });
     renderUniViewDadosReadonly(u);
     renderUniViewContratosReadonly(u);
     if(uniContratosViewSubtab === 'aditivos') renderUniAditivosTab();
@@ -12487,11 +12567,20 @@ function excluirUnidadeVisualizacaoAtual(){
 function abrirUnidadeVisualizacao(nome){
     if(typeof switchUnidadesSubtab === 'function') switchUnidadesSubtab('unidade');
     const sel = document.getElementById('unidadesViewSelect');
-    if(sel && nome){ sel.value = nome; onUnidadeViewSelectChange(); }
+    if(sel && nome){ sel.value = nome; syncUniViewSelects(sel); onUnidadeViewSelectChange(); }
+}
+function abrirUnidadeTabela(nome){
+    if(typeof switchTab === 'function') switchTab('uni-tabelas');
+    const sel = document.getElementById('unidadesTabelaViewSelect');
+    if(sel && nome){ sel.value = nome; syncUniViewSelects(sel); onUnidadeTabelaViewSelectChange(); }
 }
 function renderUnidadesList(){
     refreshUnidadesViewSelect();
     if(typeof refreshUnidadesPostosUnidadeSelect === 'function') refreshUnidadesPostosUnidadeSelect();
+    if(document.getElementById('uniTabelaShell') && document.getElementById('uni-tabelas')?.classList.contains('active')){
+        onUnidadeTabelaViewSelectChange();
+        return;
+    }
     if(document.getElementById('uniViewShell')){
         onUnidadeViewSelectChange();
         return;
@@ -12623,11 +12712,18 @@ function uniInitUnidadeTab(){
     if(typeof onUnidadeViewSelectChange === 'function') onUnidadeViewSelectChange();
     uniBindDateBrInputs(document);
 }
-/** @deprecated use switchTab('uni-cadastro'|'uni-unidade') */
+function uniInitTabelasTab(){
+    if(typeof refreshUnidadesViewSelect === 'function') refreshUnidadesViewSelect();
+    if(typeof onUnidadeTabelaViewSelectChange === 'function') onUnidadeTabelaViewSelectChange();
+    uniBindDateBrInputs(document);
+}
+/** @deprecated use switchTab('uni-cadastro'|'uni-unidade'|'uni-tabelas') */
 function switchUnidadesSubtab(tab){
     let t = tab || 'cadastro';
-    if(t === 'visualizacao' || t === 'unidades') t = 'unidade';
+    if(t === 'visualizacao' || t === 'unidades' || t === 'unidade') t = 'unidade';
+    if(t === 'tabelas' || t === 'tabela') t = 'tabelas';
     if(t === 'cadastro'){ if(typeof switchTab === 'function') switchTab('uni-cadastro'); }
+    else if(t === 'tabelas'){ if(typeof switchTab === 'function') switchTab('uni-tabelas'); }
     else { if(typeof switchTab === 'function') switchTab('uni-unidade'); }
 }
 function importUnidadesWorkbook(data){
