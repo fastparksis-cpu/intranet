@@ -7864,6 +7864,7 @@ function updateBdayCount() {
 // ========== CADASTRO / ABAS OPERACIONAIS ==========
 const MOV_CAD_KEY = 'fp_mov_cad';
 const UNI_KEY = 'fp_unidades';
+const FP_UNIDADES_ATT_BAG_KEY = 'fp_unidades_att_bag';
 const FP_UNIDADES_POSTOS_KEY = 'fp_unidades_postos';
 const FP_UNIDADES_ORCAMENTOS_KEY = 'fp_unidades_orcamentos';
 const FP_REF_SAUDE_KEY = 'fp_ref_saude';
@@ -10313,7 +10314,6 @@ function renderMovCadList(){
     }</tbody></table>`;
 }
 
-const FP_UNIDADES_ATT_BAG_KEY = 'fp_unidades_att_bag';
 const UNI_ANEXO_INLINE_MAX = 60000;
 function uniAttBagGet(){
     try { return JSON.parse(localStorage.getItem(FP_UNIDADES_ATT_BAG_KEY) || '{}') || {}; }
@@ -10361,7 +10361,47 @@ function uniPrepareUnidadeForStorage(u){
     }
     return o;
 }
-function getUnidades(){ return JSON.parse(localStorage.getItem(UNI_KEY) || '[]'); }
+function getUnidades(){
+    try {
+        const arr = JSON.parse(localStorage.getItem(UNI_KEY) || '[]');
+        return Array.isArray(arr) ? arr : [];
+    } catch(e){
+        console.error('[uni] getUnidades', e);
+        return [];
+    }
+}
+function uniHydrateUnidadeForDisplay(u){
+    if(!u || typeof u !== 'object') return u;
+    const o = { ...u };
+    const bag = uniAttBagGet();
+    if(o.contratoAnexoRef && !o.contratoAnexoData && bag[o.contratoAnexoRef]){
+        o.contratoAnexoData = bag[o.contratoAnexoRef];
+    }
+    if(Array.isArray(o.aditivos)){
+        o.aditivos = o.aditivos.map(a => {
+            if(!a) return a;
+            if(a.anexoRef && !a.anexoData && bag[a.anexoRef]) return { ...a, anexoData: bag[a.anexoRef] };
+            return a;
+        });
+    }
+    return o;
+}
+function getUnidadeForDisplay(idx){
+    if(idx == null || idx < 0) return null;
+    const u = getUnidades()[idx];
+    return u ? uniHydrateUnidadeForDisplay(u) : null;
+}
+function uniPersistUnidadesRaw(arr){
+    const prevPause = window.__fpLsHookPause;
+    window.__fpLsHookPause = true;
+    try {
+        const setItem = Storage.prototype.__fpOrigSetItem || Storage.prototype.setItem.bind(localStorage);
+        setItem(UNI_KEY, JSON.stringify(Array.isArray(arr) ? arr : []));
+    } finally {
+        window.__fpLsHookPause = prevPause;
+    }
+    fpAfterPersistentStorageWrite();
+}
 function setUnidades(v){
     const prevPause = window.__fpLsHookPause;
     window.__fpLsHookPause = true;
@@ -10482,7 +10522,7 @@ function uniEnsureTabelaVigenteOnUnits(){
             ch = true;
         }
     });
-    if(ch) setUnidades(arr);
+    if(ch) uniPersistUnidadesRaw(arr);
 }
 function uniDefaultPropMesRef(){
     const now = new Date();
@@ -11568,7 +11608,7 @@ function uniFichaTableFromFields(fields, u, pairsPerRow){
     const n = pairsPerRow || 2;
     const items = fields.map(f => ({
         label: f.label,
-        html: uniFichaVal(u[f.key], { money: f.money, percent: f.percent, multiline: f.multiline, date: f.date }),
+        html: f.html != null ? f.html : uniFichaVal(u[f.key], { money: f.money, percent: f.percent, multiline: f.multiline, date: f.date }),
         full: !!f.spanAll
     }));
     const fullRows = items.filter(it => it.full);
@@ -11700,15 +11740,14 @@ function renderUniViewContratosReadonly(u){
     const vigNote = nAd
         ? '<p style="margin:8px 0 0;font-size:12px;color:#555;">' + nAd + ' aditivo(s) registado(s). Consulte a subaba <strong>Aditivos</strong>.</p>'
         : '';
-    const docRow = '<tr class="uni-ficha-row-full">' + uniFichaCellPair('Documento do contrato', uniContratoAnexoHtml(u)) +
-        '<th class="uni-ficha-lbl"></th><td class="uni-ficha-val"></td></tr>';
     el.innerHTML = uniFichaWrap([
         uniFichaBlock('Contrato', [
             { label: 'Data contrato', key: 'dataContrato', date: true }, { label: 'Tipo contrato', key: 'tipoContrato' },
             { label: 'Aluguel', key: 'aluguel' }, { label: 'Índice reajuste', key: 'indiceReajuste' },
             { label: 'Faixa faturamento', key: 'faixaFaturamento' }, { label: 'Contratante pagamento', key: 'contratantePagamento' },
-            { label: 'Vencimento contrato', key: 'vencimentoContrato', date: true }
-        ], u).replace('</tbody></table></section>', docRow + '</tbody></table></section>') + vigNote
+            { label: 'Vencimento contrato', key: 'vencimentoContrato', date: true },
+            { label: 'Documento do contrato', html: uniContratoAnexoHtml(u), spanAll: true }
+        ], u) + vigNote
     ].join(''));
 }
 function renderUniViewTabelaAlterarReadonly(u){
@@ -11942,20 +11981,25 @@ function uniViewItem(label, value, spanAll){
 function onUnidadeViewSelectChange(){
     const empty = document.getElementById('uniViewEmpty');
     const shell = document.getElementById('uniViewShell');
-    const idx = getUniViewSelectedIdx();
-    if(idx == null){
-        uniViewSelectedIdx = null;
-        if(empty) empty.style.display = '';
-        if(shell) shell.style.display = 'none';
-        return;
+    try {
+        const idx = getUniViewSelectedIdx();
+        if(idx == null){
+            uniViewSelectedIdx = null;
+            if(empty) empty.style.display = '';
+            if(shell) shell.style.display = 'none';
+            return;
+        }
+        uniViewSelectedIdx = idx;
+        if(empty) empty.style.display = 'none';
+        if(shell) shell.style.display = 'block';
+        uniViewResetEditModes();
+        if(typeof limparFormUniAditivo === 'function') limparFormUniAditivo();
+        switchUniViewMainTab('dados');
+        renderUnidadeVisualizacao();
+    } catch(e){
+        console.error('[uni] onUnidadeViewSelectChange', e);
+        alert('Não foi possível abrir esta unidade. Atualize a página (Ctrl+F5). Se persistir, os dados locais podem estar corrompidos.');
     }
-    uniViewSelectedIdx = idx;
-    if(empty) empty.style.display = 'none';
-    if(shell) shell.style.display = '';
-    uniViewResetEditModes();
-    if(typeof limparFormUniAditivo === 'function') limparFormUniAditivo();
-    switchUniViewMainTab('dados');
-    renderUnidadeVisualizacao();
 }
 let uniContratosViewSubtab = 'contrato';
 let uniAditivosViewSubtab = 'cadastro';
@@ -12214,11 +12258,12 @@ function uniViewClearEditForms(){
     }
 }
 function renderUnidadeVisualizacao(){
+    try {
     refreshUnidadesViewSelect();
     uniEnsureTabelaVigenteOnUnits();
     const idx = uniViewSelectedIdx ?? getUniViewSelectedIdx();
     if(idx == null) return;
-    const u = getUnidades()[idx];
+    const u = getUnidadeForDisplay(idx);
     if(!u) return;
     const v = (x) => esc(String(x ?? '').trim()) || '—';
     const codEl = document.getElementById('uniViewCod');
@@ -12248,6 +12293,10 @@ function renderUnidadeVisualizacao(){
     }
     const pf = document.getElementById('uniViewPostosForm');
     if(pf && uniViewEditing.postos) uniMarkFilledInputs(pf);
+    } catch(e){
+        console.error('[uni] renderUnidadeVisualizacao', e);
+        alert('Erro ao exibir os dados da unidade. Atualize a página (Ctrl+F5).');
+    }
 }
 function renderUnidadeViewHistorico(){
     const el = document.getElementById('uniViewHistBody');
