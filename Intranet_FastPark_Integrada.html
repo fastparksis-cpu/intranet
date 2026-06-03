@@ -6250,7 +6250,7 @@ function build(r) {
         carga: one(r, F.carga), instrucao: one(r, F.instrucao), deficiencia: one(r, F.deficiencia),
         camisa: one(r, F.camisa), calca: one(r, F.calca), sapato: one(r, F.sapato),
         codigoRH: one(r, F.codigoRH), codigoESocial: one(r, F.codigoESocial),
-        codPosto: String(one(r, F.codPosto) || '').trim()
+        codPosto: normalizeCodPostoCadastro(one(r, F.codPosto))
     };
 }
 
@@ -7622,7 +7622,7 @@ function renderProfile() {
                         <select id="cadEmpCodPosto" style="min-width:220px;max-width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;"></select>
                         <button type="button" class="btn btn-fp-orange" onclick="salvarVinculoCodPostoCadastro()">Guardar vínculo</button>
                     </div>
-                    <p style="margin:6px 0 0;font-size:11px;color:#6b7280;">Lista os postos de <strong>Unidades → Postos</strong> da unidade em <strong>Atuando</strong>. Não preencha colaborador na aba Postos.</p>
+                    <p style="margin:6px 0 0;font-size:11px;color:#6b7280;">Um código de posto = um colaborador. Lista de <strong>Unidades → Postos</strong> (unidade = <strong>Atuando</strong>). Cada funcionário deve ter o seu código (ex.: 1501, 1502).</p>
                 </div>
                 <div class="cell lab"><div class="q">Código do posto (vigente)</div><div class="v">${esc(employeeCodigoPostoCadastro(e) || getCodigoPostoByColaboradorNome(e.nome, e.atuando) || '—')}</div></div>
                 <div class="cell lab"><div class="q">Carga Horária</div><div class="v">${esc(e.carga)}</div></div>
@@ -10283,7 +10283,7 @@ function salvarNovoFuncionario(){
         cargo: document.getElementById('novoCargo')?.value?.trim() || '',
         nivel: '',
         atuando: document.getElementById('novoUnidade')?.value?.trim() || '',
-        codPosto: (document.getElementById('novoCodPosto')?.value || '').trim(),
+        codPosto: normalizeCodPostoCadastro(document.getElementById('novoCodPosto')?.value),
         status: 'Funcionário Ativo',
         admissao: document.getElementById('novoAdmissao')?.value || '',
         vr: Number(document.getElementById('novoVr')?.value || 0),
@@ -13558,8 +13558,23 @@ function employeeAtuandoMatchesUnidade(emp, unidadeNome, unidadeCod){
     }
     return false;
 }
+function normalizeCodPostoCadastro(cod){
+    return String(cod || '').trim().toUpperCase();
+}
 function employeeCodigoPostoCadastro(emp){
-    return String(emp?.codPosto || emp?.codigoPosto || emp?.codigo_posto || '').trim().toUpperCase();
+    return normalizeCodPostoCadastro(emp?.codPosto || emp?.codigoPosto || emp?.codigo_posto);
+}
+/** Outro colaborador ativo na mesma unidade já vinculado a este código de posto. */
+function findEmployeeIdxComCodPostoNaUnidade(codPosto, unidadeNome, unidadeCod, exceptIdx){
+    const pk = normalizeCodPostoCadastro(codPosto);
+    if(!pk) return -1;
+    return (state.employees || []).findIndex((e, i) => {
+        if(exceptIdx != null && i === exceptIdx) return false;
+        const st = String(e.status || '').toUpperCase();
+        if(st.includes('DESLIG')) return false;
+        if(!employeeAtuandoMatchesUnidade(e, unidadeNome, unidadeCod)) return false;
+        return employeeCodigoPostoCadastro(e) === pk;
+    });
 }
 /** Códigos de posto cadastrados em Unidades → Postos para a unidade informada. */
 function getCodigosPostoPorUnidade(unidadeNome, unidadeCod){
@@ -13623,9 +13638,24 @@ function refreshCadastroVinculoPostoUi(){
 }
 function salvarVinculoCodPostoCadastro(){
     if(!state.selected){ alert('Selecione um funcionário na lista.'); return; }
-    const cod = (document.getElementById('cadEmpCodPosto')?.value || '').trim();
+    const cod = normalizeCodPostoCadastro(document.getElementById('cadEmpCodPosto')?.value);
     const idx = state.employees.findIndex(e => e === state.selected || normText(e.nome) === normText(state.selected.nome));
     if(idx < 0){ alert('Funcionário não encontrado no cadastro.'); return; }
+    const ref = resolveUnidadeRefFromAtuando(state.employees[idx].atuando);
+    if(!String(state.employees[idx].atuando || '').trim()){
+        alert('Preencha o campo Atuando (unidade) no cadastro do funcionário antes de vincular o posto.');
+        return;
+    }
+    if(cod){
+        const dupIdx = findEmployeeIdxComCodPostoNaUnidade(cod, ref.nome, ref.cod, idx);
+        if(dupIdx >= 0){
+            const outro = state.employees[dupIdx];
+            if(!confirm('O posto «' + cod + '» já está vinculado a «' + (outro?.nome || 'outro colaborador') + '». Deseja transferir o vínculo para «' + (state.employees[idx].nome || '') + '»?')){
+                return;
+            }
+            state.employees[dupIdx].codPosto = '';
+        }
+    }
     state.employees[idx].codPosto = cod;
     if(state.selected === state.employees[idx] || normText(state.selected.nome) === normText(state.employees[idx].nome)){
         state.selected = state.employees[idx];
@@ -14008,10 +14038,11 @@ function fmtQuadroAtualHora(v){
     const s = String(v || '').trim();
     return s || '—';
 }
-/** Colaborador do posto: somente aba Cadastro (Atuando / código posto). Ignora nome gravado no catálogo Unidades→Postos. */
+/** Colaborador do posto: vínculo explícito no Cadastro (codPosto = código do posto na mesma unidade Atuando). */
 function findColaboradorParaPostoCatalog(p, row){
     row = row || {};
-    const postoK = String(p.codigo || row.posto || '').trim().toUpperCase();
+    const postoK = normalizeCodPostoCadastro(p.codigo || row.posto || row.codigo);
+    if(!postoK) return null;
     const uniNome = String(p.unidadeNome || row.unidade || '').trim();
     const uniCod = String(p.unidadeCod || '').trim();
     const uniK = normText(uniNome || uniCod);
@@ -14019,35 +14050,12 @@ function findColaboradorParaPostoCatalog(p, row){
         const st = String(e.status || '').toUpperCase();
         return !st.includes('DESLIG') && employeeAtuandoMatchesUnidade(e, uniNome, uniCod);
     });
-    if(empsAtivos.length){
-        if(postoK){
-            const byCod = empsAtivos.filter(e => employeeCodigoPostoCadastro(e) === postoK);
-            if(byCod.length === 1) return byCod[0];
-        }
-        const uKey = _normUniPostoUnidadeKey(uniCod, uniNome);
-        const catUni = (getUnidadesPostosCatalog() || []).filter(cp =>
-            _normUniPostoUnidadeKey(cp.unidadeCod, cp.unidadeNome) === uKey
-        );
-        const assignedElsewhere = new Set();
-        catUni.forEach(cp => {
-            const ck = String(cp.codigo || '').trim().toUpperCase();
-            if(!ck || ck === postoK) return;
-            empsAtivos.forEach(e => {
-                if(employeeCodigoPostoCadastro(e) === ck) assignedElsewhere.add(normText(e.nome || ''));
-            });
-        });
-        const livres = empsAtivos.filter(e => !assignedElsewhere.has(normText(e.nome || '')));
-        const vagas = catUni.filter(cp => !String(cp.nome || '').trim());
-        if(livres.length === 1){
-            if(postoK && vagas.length === 1 && String(vagas[0].codigo || '').trim().toUpperCase() === postoK) return livres[0];
-            if(catUni.length === 1 && String(catUni[0].codigo || '').trim().toUpperCase() === postoK) return livres[0];
-            if(empsAtivos.length === 1) return livres[0];
-        }
-        if(empsAtivos.length === 1 && catUni.length <= 1) return empsAtivos[0];
-    }
+    const byCod = empsAtivos.filter(e => employeeCodigoPostoCadastro(e) === postoK);
+    if(byCod.length === 1) return byCod[0];
+    if(byCod.length > 1) return null;
     const q = (state.quadroGeral || []).find(r =>
         normText(String(r.unidade || '').trim()) === uniK &&
-        String(r.posto || r.codigo || '').trim().toUpperCase() === postoK &&
+        normalizeCodPostoCadastro(r.posto || r.codigo) === postoK &&
         String(r.nome || '').trim()
     );
     if(q) return findEmployeeForPostoNome(q.nome);
