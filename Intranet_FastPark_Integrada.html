@@ -486,7 +486,9 @@ body {
 }
 .uni-module #unidadesCadastroTab,
 .uni-module #unidadesVisualizacaoTab,
-.uni-module #unidadesTabelasTab { width: 100%; min-height: 0; box-sizing: border-box; }
+.uni-module #unidadesTabelasTab,
+.uni-module #unidadesPostosTab,
+.uni-module #unidadesContratosTab { width: 100%; min-height: 0; box-sizing: border-box; }
 .uni-module #uniViewShell.panel { width: 100%; max-width: 100%; }
 #cestas .panel,
 #cestas .filters,
@@ -1051,7 +1053,9 @@ body {
 }
 .uni-module #unidadesCadastroTab,
 .uni-module #unidadesVisualizacaoTab,
-.uni-module #unidadesTabelasTab { min-height: 0; }
+.uni-module #unidadesTabelasTab,
+.uni-module #unidadesPostosTab,
+.uni-module #unidadesContratosTab { min-height: 0; }
 .uni-module .uni-orc-hist-report { overflow-x: auto; }
 .uni-module .uni-orc-hist-report table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .uni-module .uni-orc-hist-report th, .uni-module .uni-orc-hist-report td { border: 1px solid #e5e7eb; padding: 8px; }
@@ -2169,6 +2173,8 @@ td { color: var(--t); font-weight: 500;}
                 <button type="button" class="fp-menu-item" data-tab="uni-cadastro" onclick="fpMenuSwitchTab('uni-cadastro', 'uni')">Cadastro</button>
                 <button type="button" class="fp-menu-item" data-tab="uni-unidade" onclick="fpMenuSwitchTab('uni-unidade', 'uni')">Unidades</button>
                 <button type="button" class="fp-menu-item" data-tab="uni-tabelas" onclick="fpMenuSwitchTab('uni-tabelas', 'uni')">Tabelas</button>
+                <button type="button" class="fp-menu-item" data-tab="uni-postos" onclick="fpMenuSwitchTab('uni-postos', 'uni')">Postos</button>
+                <button type="button" class="fp-menu-item" data-tab="uni-contratos" onclick="fpMenuSwitchTab('uni-contratos', 'uni')">Contratos</button>
             </div>
         </div>
         <div class="fp-menu-group" data-fp-group="sin">
@@ -2744,7 +2750,7 @@ td { color: var(--t); font-weight: 500;}
                 <div><label><strong>Selecionar unidade</strong></label><br><select id="unidadesViewSelect" style="min-width:280px;" onchange="onUnidadeViewSelectChange()"><option value="">— Selecione uma unidade —</option></select></div>
             </section>
             <!-- Aba Unidades: consulta e edição por unidade (antes Visualização) -->
-            <div id="uniViewEmpty" class="panel" style="padding:24px;text-align:center;"><div class="empty">Selecione uma unidade acima para visualizar os dados. Use <strong>Editar</strong> em cada seção para alterar.</div></div>
+            <div id="uniViewEmpty" class="panel" style="padding:24px;text-align:center;"><div class="empty">Selecione uma unidade acima para visualizar e editar dados, contatos e vagas.</div></div>
             <article id="uniViewShell" class="panel" style="display:none;">
                 <div class="uni-view-header">
                     <div><div id="uniViewCod" style="font-size:11px;color:#6b7280;">—</div><div id="uniViewNome" style="font-size:20px;font-weight:800;">—</div></div>
@@ -2752,11 +2758,6 @@ td { color: var(--t); font-weight: 500;}
                         <button type="button" class="btn btn-fp-orange" onclick="editarUnidadeVisualizacaoAtual()">Editar cadastro completo</button>
                         <button type="button" class="btn btn-fp-dark" onclick="excluirUnidadeVisualizacaoAtual()" style="margin-left:6px;">Excluir</button>
                     </div>
-                </div>
-                <div class="uni-view-tabs">
-                    <button type="button" class="btn btn-tab-active" id="btnUniViewDados" onclick="switchUniViewMainTab('dados')">Dados / Contatos / Vagas</button>
-                    <button type="button" class="btn btn-tab" id="btnUniViewPostos" onclick="switchUniViewMainTab('postos')">Postos</button>
-                    <button type="button" class="btn btn-tab" id="btnUniViewContratos" onclick="switchUniViewMainTab('contratos')">Contratos</button>
                 </div>
                 <div id="uniViewPanelDados" class="uni-view-panel active">
                     <div id="uniViewDadosReadonly" class="uni-display-wrap"></div>
@@ -2771,117 +2772,8 @@ td { color: var(--t); font-weight: 500;}
                         </div>
                     </div>
                 </div>
-                <div id="uniViewPanelPostos" class="uni-view-panel">
-                    <div id="uniViewPostosReadonly">
-                        <p style="margin:0 0 8px;font-size:12px;color:#555;">Ficha de postos — o Quadro de Postos usa estes registos.</p>
-                        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 10px;">
-                            <input id="uniPostoBuscaCodigo" type="text" placeholder="Buscar posto por código (ex.: 1501)" style="max-width:280px;">
-                            <button type="button" class="btn btn-fp-gray" onclick="localizarPostoPorCodigo()">Localizar</button>
-                            <span id="uniPostoBuscaHint" style="font-size:12px;color:#6b7280;"></span>
-                        </div>
-                        <div id="uniViewPostosListBody"><div class="empty">Selecione uma unidade.</div></div>
-                    </div>
-                    <div id="uniViewPostosEdit" class="uni-view-edit-block">
-                    <p style="margin:0 0 10px;font-size:12px;color:#555;">Preencha o formulário e salve cada posto.</p>
-                    <div class="body uni-postos-form" id="uniViewPostosForm">
-                        <input type="hidden" id="uniPostoEditId" value="">
-                        <div><label for="uniPostoCodigo">Código do posto</label><input id="uniPostoCodigo" type="text" placeholder="Ex.: P-01" oninput="uniMarkFilledInputs(this.closest('.uni-postos-form'))"></div>
-                        <div><label for="uniPostoDias">Dias da semana</label><select id="uniPostoDias" onchange="uniMarkFilledInputs(this.closest('.uni-postos-form'))"><option value="">Selecione</option></select></div>
-                        <div><label for="uniPostoEscala">Escala</label><select id="uniPostoEscala" onchange="uniMarkFilledInputs(this.closest('.uni-postos-form'))"><option value="">Selecione</option></select></div>
-                        <div><label for="uniPostoParidade">12x36 (pares/ímpares)</label><select id="uniPostoParidade" onchange="uniMarkFilledInputs(this.closest('.uni-postos-form'))"><option value="">N/A</option><option value="PARES">PARES</option><option value="ÍMPARES">ÍMPARES</option></select></div>
-                        <div><label for="uniPostoEntrada">Horário entrada</label><input id="uniPostoEntrada" type="time" oninput="uniMarkFilledInputs(this.closest('.uni-postos-form'))"></div>
-                        <div><label for="uniPostoSaidaIntervalo">Saída intervalo</label><input id="uniPostoSaidaIntervalo" type="time" oninput="uniMarkFilledInputs(this.closest('.uni-postos-form'))"></div>
-                        <div><label for="uniPostoRetornoIntervalo">Retorno intervalo</label><input id="uniPostoRetornoIntervalo" type="time" oninput="uniMarkFilledInputs(this.closest('.uni-postos-form'))"></div>
-                        <div><label for="uniPostoSaida">Saída</label><input id="uniPostoSaida" type="time" oninput="uniMarkFilledInputs(this.closest('.uni-postos-form'))"></div>
-                        <div style="grid-column: span 2;"><label for="uniPostoSupervisor">Supervisor</label><input id="uniPostoSupervisor" type="text" placeholder="Nome do supervisor" oninput="uniMarkFilledInputs(this.closest('.uni-postos-form'))"></div>
-                        <div class="uni-postos-actions">
-                            <button type="button" class="btn btn-fp-orange" onclick="salvarPostoUnidadeCatalog()">Salvar posto</button>
-                            <button type="button" class="btn btn-fp-gray" onclick="limparFormPostoUnidade()">Limpar</button>
-                        </div>
-                    </div>
-                    </div>
-                    <div class="uni-view-toolbar">
-                        <button type="button" class="btn btn-fp-orange" id="btnUniEditPostos" onclick="uniViewStartEdit('postos')">Editar postos</button>
-                        <div id="uniViewPostosBar" class="uni-view-save-bar" style="display:none;">
-                            <button type="button" class="btn btn-fp-gray" onclick="uniViewCancelEdit('postos')">Concluir</button>
-                        </div>
-                    </div>
-                </div>
-                <div id="uniViewPanelContratos" class="uni-view-panel">
-                    <div class="uni-view-subtabs">
-                        <button type="button" class="btn btn-tab-active" id="btnUniContratoSubContrato" onclick="switchUniViewContratosSubtab('contrato')">Contrato</button>
-                        <button type="button" class="btn btn-tab" id="btnUniContratoSubAditivos" onclick="switchUniViewContratosSubtab('aditivos')">Aditivos</button>
-                    </div>
-                    <div id="uniContratoSubPanelContrato" class="uni-contrato-subpanel active">
-                        <div id="uniViewContratosReadonly" class="uni-display-wrap"></div>
-                        <div id="uniViewContratosEdit" class="uni-view-edit-block">
-                            <div id="uniViewContratosBody" class="inner uni-view-edit-form"></div>
-                        </div>
-                        <div class="uni-view-toolbar" id="uniContratoToolbarWrap">
-                            <button type="button" class="btn btn-fp-orange" id="btnUniEditContratos" onclick="uniViewStartEdit('contratos')">Editar contratos</button>
-                            <div id="uniViewContratosBar" class="uni-view-save-bar" style="display:none;">
-                                <button type="button" class="btn btn-fp-orange" onclick="salvarUnidadeViewContratos()">Salvar</button>
-                                <button type="button" class="btn btn-fp-gray" onclick="uniViewCancelEdit('contratos')">Cancelar</button>
-                            </div>
-                        </div>
-                    </div>
-                    <div id="uniContratoSubPanelAditivos" class="uni-contrato-subpanel">
-                        <div class="laudos-subnav" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
-                            <button type="button" class="btn btn-info laudos-subtab active" id="uniAditivosSubBtnCad" onclick="switchUniAditivosSubtab('cadastro')">Cadastro</button>
-                            <button type="button" class="btn laudos-subtab" id="uniAditivosSubBtnHist" onclick="switchUniAditivosSubtab('historico')">Histórico</button>
-                        </div>
-                        <div id="uniAditivosPanelCadastro" class="laudos-subpanel active">
-                            <article class="panel" style="margin-bottom:12px;">
-                                <div class="head"><h3 id="uniAditivoFormTitle">Novo aditivo</h3></div>
-                                <div class="body uni-aditivos-form-grid" style="padding:12px;">
-                                    <input type="hidden" id="uniVaRenovacao" value="">
-                                    <div style="grid-column:1/-1;font-size:12px;color:#555;">Registe <strong>renovações</strong> do contrato com novo vencimento e anexe o documento (PDF ou imagem). O vencimento vigente da unidade é atualizado automaticamente.</div>
-                                    <div style="grid-column:1/-1;padding:10px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;font-size:12px;" id="uniVaResumoVigente">Selecione uma unidade.</div>
-                                    <div><label class="uni-field-label"><strong>Descrição / referência</strong></label><br><input id="uniVaDesc" type="text" placeholder="Ex.: 1º aditivo, renovação 2026…"></div>
-                                    <div><label class="uni-field-label"><strong>Novo vencimento</strong></label><br><input id="uniVaVencimento" type="text" placeholder="dd/mm/aaaa" inputmode="numeric" autocomplete="off"></div>
-                                    <div><label class="uni-field-label"><strong>Documento</strong></label><br><input id="uniVaAnexo" type="file" accept=".pdf,.jpg,.jpeg,.png" onchange="renderUniAditivoVaAnexoHint()"><div id="uniVaAnexoHint" style="margin-top:6px;"></div></div>
-                                    <div style="grid-column:1/-1;"><label class="uni-field-label"><strong>Observações</strong></label><br><textarea id="uniVaObs" rows="2" placeholder="Notas sobre o aditivo ou a renovação"></textarea></div>
-                                    <div style="grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-                                        <button type="button" class="btn btn-fp-orange" onclick="salvarUniAditivoView()">Salvar aditivo</button>
-                                        <button type="button" class="btn btn-fp-gray" onclick="limparFormUniAditivo()">Novo registro</button>
-                                        <button type="button" class="btn btn-info" onclick="iniciarRenovacaoContratoUni()">Renovar contrato</button>
-                                        <span id="uniAditivoRenovarHint" style="font-size:12px;color:#0d6efd;display:none;font-weight:600;">Renovação — informe o novo vencimento e anexe o aditivo, depois Salvar.</span>
-                                    </div>
-                                </div>
-                            </article>
-                            <article class="panel list">
-                                <div class="head"><h3>Aditivos da unidade</h3></div>
-                                <div class="inner" id="uniAditivosListaBody" style="max-height:min(50vh,480px);overflow-y:auto;"><div class="empty">Selecione uma unidade.</div></div>
-                            </article>
-                        </div>
-                        <div id="uniAditivosPanelHistorico" class="laudos-subpanel">
-                            <article class="panel">
-                                <div class="head"><h3>Histórico de aditivos</h3><p style="margin:6px 0 0;font-size:12px;opacity:.9;">Renovações e aditivos registados nesta unidade.</p></div>
-                                <div class="body" style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;padding:12px;">
-                                    <div><label><strong>De</strong></label><br><input type="text" id="uniVaHistIni" placeholder="dd/mm/aaaa" inputmode="numeric" onchange="renderUniAditivosHistorico()"></div>
-                                    <div><label><strong>Até</strong></label><br><input type="text" id="uniVaHistFim" placeholder="dd/mm/aaaa" inputmode="numeric" onchange="renderUniAditivosHistorico()"></div>
-                                    <button type="button" class="btn btn-fp-gray" onclick="uniAditivoHistLimparFiltros()">Limpar filtros</button>
-                                </div>
-                                <div class="inner" id="uniAditivosHistBody" style="max-height:min(55vh,520px);overflow-y:auto;padding:10px;"></div>
-                            </article>
-                        </div>
-                    </div>
-                </div>
             </article>
         </div>
-        </div>
-        <div id="fpUniAnexoModal" class="modal-overlay" style="display:none;z-index:2100;" onclick="if(event.target===this)fpCloseUniAnexoViewer()">
-            <div class="modal-card">
-                <div class="modal-header">
-                    <h3 id="fpUniAnexoModalTitle">Documento</h3>
-                    <button type="button" class="modal-close" onclick="fpCloseUniAnexoViewer()">✕</button>
-                </div>
-                <div class="modal-body" id="fpUniAnexoModalBody"><div class="empty" style="padding:24px;">Carregando…</div></div>
-                <div class="modal-footer" style="display:flex;gap:8px;flex-wrap:wrap;">
-                    <button type="button" class="btn btn-info" id="fpUniAnexoModalNovaAba">Abrir em nova aba</button>
-                    <button type="button" class="btn btn-fp-gray" onclick="fpCloseUniAnexoViewer()">Fechar</button>
-                </div>
-            </div>
         </div>
         <!-- historico global removido: ver subaba Tabela na Visualização -->
         <div id="unidadesHistoricoTab_removed" style="display:none !important;">
@@ -3021,15 +2913,160 @@ td { color: var(--t); font-weight: 500;}
         </div>
         </div>
     </div>
+    <div id="uni-postos" class="tab-content uni-module fp-page-full">
+        <div class="uni-page-root">
+        <div id="unidadesPostosTab">
+            <section class="filters" style="margin-bottom:10px;">
+                <div><label><strong>Selecionar unidade</strong></label><br><select id="unidadesPostosViewSelect" style="min-width:280px;" onchange="onUnidadePostosViewSelectChange()"><option value="">— Selecione uma unidade —</option></select></div>
+            </section>
+            <div id="uniPostosEmpty" class="panel" style="padding:24px;text-align:center;"><div class="empty">Selecione uma unidade acima para gerir os postos de trabalho.</div></div>
+            <article id="uniPostosShell" class="panel" style="display:none;">
+                <div class="uni-view-header">
+                    <div><div id="uniPostosViewCod" style="font-size:11px;color:#6b7280;">—</div><div id="uniPostosViewNome" style="font-size:20px;font-weight:800;">—</div></div>
+                    <div>
+                        <button type="button" class="btn btn-fp-orange" onclick="editarUnidadeVisualizacaoAtual()">Editar cadastro completo</button>
+                    </div>
+                </div>
+                <div id="uniViewPanelPostos" class="uni-view-panel active">
+                    <div id="uniViewPostosReadonly">
+                        <p style="margin:0 0 8px;font-size:12px;color:#555;">Ficha de postos — o Quadro de Postos usa estes registos.</p>
+                        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 10px;">
+                            <input id="uniPostoBuscaCodigo" type="text" placeholder="Buscar posto por código (ex.: 1501)" style="max-width:280px;">
+                            <button type="button" class="btn btn-fp-gray" onclick="localizarPostoPorCodigo()">Localizar</button>
+                            <span id="uniPostoBuscaHint" style="font-size:12px;color:#6b7280;"></span>
+                        </div>
+                        <div id="uniViewPostosListBody"><div class="empty">Selecione uma unidade.</div></div>
+                    </div>
+                    <div id="uniViewPostosEdit" class="uni-view-edit-block">
+                    <p style="margin:0 0 10px;font-size:12px;color:#555;">Preencha o formulário e salve cada posto.</p>
+                    <div class="body uni-postos-form" id="uniViewPostosForm">
+                        <input type="hidden" id="uniPostoEditId" value="">
+                        <div><label for="uniPostoCodigo">Código do posto</label><input id="uniPostoCodigo" type="text" placeholder="Ex.: P-01" oninput="uniMarkFilledInputs(this.closest('.uni-postos-form'))"></div>
+                        <div><label for="uniPostoDias">Dias da semana</label><select id="uniPostoDias" onchange="uniMarkFilledInputs(this.closest('.uni-postos-form'))"><option value="">Selecione</option></select></div>
+                        <div><label for="uniPostoEscala">Escala</label><select id="uniPostoEscala" onchange="uniMarkFilledInputs(this.closest('.uni-postos-form'))"><option value="">Selecione</option></select></div>
+                        <div><label for="uniPostoParidade">12x36 (pares/ímpares)</label><select id="uniPostoParidade" onchange="uniMarkFilledInputs(this.closest('.uni-postos-form'))"><option value="">N/A</option><option value="PARES">PARES</option><option value="ÍMPARES">ÍMPARES</option></select></div>
+                        <div><label for="uniPostoEntrada">Horário entrada</label><input id="uniPostoEntrada" type="time" oninput="uniMarkFilledInputs(this.closest('.uni-postos-form'))"></div>
+                        <div><label for="uniPostoSaidaIntervalo">Saída intervalo</label><input id="uniPostoSaidaIntervalo" type="time" oninput="uniMarkFilledInputs(this.closest('.uni-postos-form'))"></div>
+                        <div><label for="uniPostoRetornoIntervalo">Retorno intervalo</label><input id="uniPostoRetornoIntervalo" type="time" oninput="uniMarkFilledInputs(this.closest('.uni-postos-form'))"></div>
+                        <div><label for="uniPostoSaida">Saída</label><input id="uniPostoSaida" type="time" oninput="uniMarkFilledInputs(this.closest('.uni-postos-form'))"></div>
+                        <div style="grid-column: span 2;"><label for="uniPostoSupervisor">Supervisor</label><input id="uniPostoSupervisor" type="text" placeholder="Nome do supervisor" oninput="uniMarkFilledInputs(this.closest('.uni-postos-form'))"></div>
+                        <div class="uni-postos-actions">
+                            <button type="button" class="btn btn-fp-orange" onclick="salvarPostoUnidadeCatalog()">Salvar posto</button>
+                            <button type="button" class="btn btn-fp-gray" onclick="limparFormPostoUnidade()">Limpar</button>
+                        </div>
+                    </div>
+                    </div>
+                    <div class="uni-view-toolbar">
+                        <button type="button" class="btn btn-fp-orange" id="btnUniEditPostos" onclick="uniViewStartEdit('postos')">Editar postos</button>
+                        <div id="uniViewPostosBar" class="uni-view-save-bar" style="display:none;">
+                            <button type="button" class="btn btn-fp-gray" onclick="uniViewCancelEdit('postos')">Concluir</button>
+                        </div>
+                    </div>
+                </div>
+            </article>
+        </div>
+        </div>
+    </div>
+    <div id="uni-contratos" class="tab-content uni-module fp-page-full">
+        <div class="uni-page-root">
+        <div id="unidadesContratosTab">
+            <section class="filters" style="margin-bottom:10px;">
+                <div><label><strong>Selecionar unidade</strong></label><br><select id="unidadesContratosViewSelect" style="min-width:280px;" onchange="onUnidadeContratosViewSelectChange()"><option value="">— Selecione uma unidade —</option></select></div>
+            </section>
+            <div id="uniContratosEmpty" class="panel" style="padding:24px;text-align:center;"><div class="empty">Selecione uma unidade acima para consultar contrato e aditivos.</div></div>
+            <article id="uniContratosShell" class="panel" style="display:none;">
+                <div class="uni-view-header">
+                    <div><div id="uniContratosViewCod" style="font-size:11px;color:#6b7280;">—</div><div id="uniContratosViewNome" style="font-size:20px;font-weight:800;">—</div></div>
+                    <div>
+                        <button type="button" class="btn btn-fp-orange" onclick="editarUnidadeVisualizacaoAtual()">Editar cadastro completo</button>
+                    </div>
+                </div>
+                <div id="uniViewPanelContratos" class="uni-view-panel active">
+                    <div class="uni-view-subtabs">
+                        <button type="button" class="btn btn-tab-active" id="btnUniContratoSubContrato" onclick="switchUniViewContratosSubtab('contrato')">Contrato</button>
+                        <button type="button" class="btn btn-tab" id="btnUniContratoSubAditivos" onclick="switchUniViewContratosSubtab('aditivos')">Aditivos</button>
+                    </div>
+                    <div id="uniContratoSubPanelContrato" class="uni-contrato-subpanel active">
+                        <div id="uniViewContratosReadonly" class="uni-display-wrap"></div>
+                        <div id="uniViewContratosEdit" class="uni-view-edit-block">
+                            <div id="uniViewContratosBody" class="inner uni-view-edit-form"></div>
+                        </div>
+                        <div class="uni-view-toolbar" id="uniContratoToolbarWrap">
+                            <button type="button" class="btn btn-fp-orange" id="btnUniEditContratos" onclick="uniViewStartEdit('contratos')">Editar contratos</button>
+                            <div id="uniViewContratosBar" class="uni-view-save-bar" style="display:none;">
+                                <button type="button" class="btn btn-fp-orange" onclick="salvarUnidadeViewContratos()">Salvar</button>
+                                <button type="button" class="btn btn-fp-gray" onclick="uniViewCancelEdit('contratos')">Cancelar</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="uniContratoSubPanelAditivos" class="uni-contrato-subpanel">
+                        <div class="laudos-subnav" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+                            <button type="button" class="btn btn-info laudos-subtab active" id="uniAditivosSubBtnCad" onclick="switchUniAditivosSubtab('cadastro')">Cadastro</button>
+                            <button type="button" class="btn laudos-subtab" id="uniAditivosSubBtnHist" onclick="switchUniAditivosSubtab('historico')">Histórico</button>
+                        </div>
+                        <div id="uniAditivosPanelCadastro" class="laudos-subpanel active">
+                            <article class="panel" style="margin-bottom:12px;">
+                                <div class="head"><h3 id="uniAditivoFormTitle">Novo aditivo</h3></div>
+                                <div class="body uni-aditivos-form-grid" style="padding:12px;">
+                                    <input type="hidden" id="uniVaRenovacao" value="">
+                                    <div style="grid-column:1/-1;font-size:12px;color:#555;">Registe <strong>renovações</strong> do contrato com novo vencimento e anexe o documento (PDF ou imagem). O vencimento vigente da unidade é atualizado automaticamente.</div>
+                                    <div style="grid-column:1/-1;padding:10px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;font-size:12px;" id="uniVaResumoVigente">Selecione uma unidade.</div>
+                                    <div><label class="uni-field-label"><strong>Descrição / referência</strong></label><br><input id="uniVaDesc" type="text" placeholder="Ex.: 1º aditivo, renovação 2026…"></div>
+                                    <div><label class="uni-field-label"><strong>Novo vencimento</strong></label><br><input id="uniVaVencimento" type="text" placeholder="dd/mm/aaaa" inputmode="numeric" autocomplete="off"></div>
+                                    <div><label class="uni-field-label"><strong>Documento</strong></label><br><input id="uniVaAnexo" type="file" accept=".pdf,.jpg,.jpeg,.png" onchange="renderUniAditivoVaAnexoHint()"><div id="uniVaAnexoHint" style="margin-top:6px;"></div></div>
+                                    <div style="grid-column:1/-1;"><label class="uni-field-label"><strong>Observações</strong></label><br><textarea id="uniVaObs" rows="2" placeholder="Notas sobre o aditivo ou a renovação"></textarea></div>
+                                    <div style="grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                                        <button type="button" class="btn btn-fp-orange" onclick="salvarUniAditivoView()">Salvar aditivo</button>
+                                        <button type="button" class="btn btn-fp-gray" onclick="limparFormUniAditivo()">Novo registro</button>
+                                        <button type="button" class="btn btn-info" onclick="iniciarRenovacaoContratoUni()">Renovar contrato</button>
+                                        <span id="uniAditivoRenovarHint" style="font-size:12px;color:#0d6efd;display:none;font-weight:600;">Renovação — informe o novo vencimento e anexe o aditivo, depois Salvar.</span>
+                                    </div>
+                                </div>
+                            </article>
+                            <article class="panel list">
+                                <div class="head"><h3>Aditivos da unidade</h3></div>
+                                <div class="inner" id="uniAditivosListaBody" style="max-height:min(50vh,480px);overflow-y:auto;"><div class="empty">Selecione uma unidade.</div></div>
+                            </article>
+                        </div>
+                        <div id="uniAditivosPanelHistorico" class="laudos-subpanel">
+                            <article class="panel">
+                                <div class="head"><h3>Histórico de aditivos</h3><p style="margin:6px 0 0;font-size:12px;opacity:.9;">Renovações e aditivos registados nesta unidade.</p></div>
+                                <div class="body" style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;padding:12px;">
+                                    <div><label><strong>De</strong></label><br><input type="text" id="uniVaHistIni" placeholder="dd/mm/aaaa" inputmode="numeric" onchange="renderUniAditivosHistorico()"></div>
+                                    <div><label><strong>Até</strong></label><br><input type="text" id="uniVaHistFim" placeholder="dd/mm/aaaa" inputmode="numeric" onchange="renderUniAditivosHistorico()"></div>
+                                    <button type="button" class="btn btn-fp-gray" onclick="uniAditivoHistLimparFiltros()">Limpar filtros</button>
+                                </div>
+                                <div class="inner" id="uniAditivosHistBody" style="max-height:min(55vh,520px);overflow-y:auto;padding:10px;"></div>
+                            </article>
+                        </div>
+                    </div>
+                </div>
+            </article>
+        </div>
+        <div id="fpUniAnexoModal" class="modal-overlay" style="display:none;z-index:2100;" onclick="if(event.target===this)fpCloseUniAnexoViewer()">
+            <div class="modal-card">
+                <div class="modal-header">
+                    <h3 id="fpUniAnexoModalTitle">Documento</h3>
+                    <button type="button" class="modal-close" onclick="fpCloseUniAnexoViewer()">✕</button>
+                </div>
+                <div class="modal-body" id="fpUniAnexoModalBody"><div class="empty" style="padding:24px;">Carregando…</div></div>
+                <div class="modal-footer" style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <button type="button" class="btn btn-info" id="fpUniAnexoModalNovaAba">Abrir em nova aba</button>
+                    <button type="button" class="btn btn-fp-gray" onclick="fpCloseUniAnexoViewer()">Fechar</button>
+                </div>
+            </div>
+        </div>
+        </div>
+    </div>
     <div id="cadpostos" class="tab-content ref-module fp-page-full">
         <div class="ref-page-root">
             <article class="panel list ref-report quadro-atual-report">
                 <div class="head">
                     <h2>Quadro atual</h2>
-                    <p class="ref-report-sub">Relatório de postos cadastrados em <strong>Unidades → Unidades → Postos</strong>. Colaborador e função do cadastro de funcionários; <strong>Registro</strong> = empresa em que o colaborador está registrado.</p>
+                    <p class="ref-report-sub">Relatório de postos cadastrados em <strong>Unidades → Postos</strong>. Colaborador e função do cadastro de funcionários; <strong>Registro</strong> = empresa em que o colaborador está registrado.</p>
                 </div>
                 <div class="ref-report-actions">
-                    <button type="button" class="btn btn-info" onclick="switchTab('uni-unidade');switchUniViewMainTab('postos');">Abrir cadastro de postos (Unidades)</button>
+                    <button type="button" class="btn btn-info" onclick="abrirUnidadePostos()">Abrir cadastro de postos (Unidades)</button>
                 </div>
                 <div class="inner ref-report-body" id="postosPanorama"></div>
             </article>
@@ -3737,6 +3774,8 @@ function switchTab(tab) {
     if(tab === 'uni-cadastro' && typeof uniInitCadastroTab === 'function') uniInitCadastroTab();
     if(tab === 'uni-unidade' && typeof uniInitUnidadeTab === 'function') uniInitUnidadeTab();
     if(tab === 'uni-tabelas' && typeof uniInitTabelasTab === 'function') uniInitTabelasTab();
+    if(tab === 'uni-postos' && typeof uniInitPostosTab === 'function') uniInitPostosTab();
+    if(tab === 'uni-contratos' && typeof uniInitContratosTab === 'function') uniInitContratosTab();
     if(tab === 'dprefbeneficios' && typeof refInitBeneficiosTab === 'function') refInitBeneficiosTab();
     if(tab === 'dprefvt' && typeof refInitVtRefTab === 'function') refInitVtRefTab();
     if(tab === 'referencias' && typeof refInitEmpresasTab === 'function') refInitEmpresasTab();
@@ -6814,7 +6853,7 @@ function fpConsolidateFullPageTab(tab) {
 function fpInitTabPageLayout() {
     var fullPageIds = [
         'dprefbeneficios', 'dprefvt', 'vt', 'faltas', 'laudos', 'referencias',
-        'uni-cadastro', 'uni-unidade', 'uni-tabelas', 'fin-pagar', 'fin-receber', 'fin-relatorios',
+        'uni-cadastro', 'uni-unidade', 'uni-tabelas', 'uni-postos', 'uni-contratos', 'fin-pagar', 'fin-receber', 'fin-relatorios',
         'sinistros', 'est-fornecedores', 'est-estoque', 'est-saida', 'cadpostos', 'pagas'
     ];
     fullPageIds.forEach(function (id) {
@@ -11613,10 +11652,25 @@ function toggleUnidadesCadastroForm(){
         uniWireTabelaAutoCalc();
     }
 }
+const FP_UNI_VIEW_SELECT_IDS = ['unidadesViewSelect', 'unidadesTabelaViewSelect', 'unidadesPostosViewSelect', 'unidadesContratosViewSelect'];
+const FP_UNI_VIEW_TAB_SHELLS = [
+    { tabId: 'uni-unidade', emptyId: 'uniViewEmpty', shellId: 'uniViewShell' },
+    { tabId: 'uni-tabelas', emptyId: 'uniTabelaEmpty', shellId: 'uniTabelaShell' },
+    { tabId: 'uni-postos', emptyId: 'uniPostosEmpty', shellId: 'uniPostosShell' },
+    { tabId: 'uni-contratos', emptyId: 'uniContratosEmpty', shellId: 'uniContratosShell' }
+];
+function getUniActiveViewSelectId(){
+    const active = document.querySelector('.uni-module.tab-content.active');
+    const tabId = active && active.id;
+    if(tabId === 'uni-tabelas') return 'unidadesTabelaViewSelect';
+    if(tabId === 'uni-postos') return 'unidadesPostosViewSelect';
+    if(tabId === 'uni-contratos') return 'unidadesContratosViewSelect';
+    return 'unidadesViewSelect';
+}
 function syncUniViewSelects(fromEl){
     if(!fromEl) return;
     const v = fromEl.value || '';
-    ['unidadesViewSelect', 'unidadesTabelaViewSelect'].forEach(function(id){
+    FP_UNI_VIEW_SELECT_IDS.forEach(function(id){
         const s = document.getElementById(id);
         if(s && s !== fromEl){
             if([...s.options].some(o => o.value === v)) s.value = v;
@@ -11626,19 +11680,32 @@ function syncUniViewSelects(fromEl){
 }
 function refreshUnidadesViewSelect(){
     const arr = getUnidades();
-    const current = document.getElementById('unidadesViewSelect')?.value
-        || document.getElementById('unidadesTabelaViewSelect')?.value || '';
+    const current = FP_UNI_VIEW_SELECT_IDS.map(function(id){ return document.getElementById(id)?.value; }).find(Boolean) || '';
     const opts = '<option value="">— Selecione uma unidade —</option>' + arr
         .map(u => String(u.nome || '').trim())
         .filter(Boolean)
         .sort((a,b)=>a.localeCompare(b,'pt-BR'))
         .map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
-    ['unidadesViewSelect', 'unidadesTabelaViewSelect'].forEach(function(id){
+    FP_UNI_VIEW_SELECT_IDS.forEach(function(id){
         const sel = document.getElementById(id);
         if(!sel) return;
         sel.innerHTML = opts;
         if(current && [...sel.options].some(o => o.value === current)) sel.value = current;
     });
+}
+function uniToggleViewShellForTab(tabId, idx){
+    FP_UNI_VIEW_TAB_SHELLS.forEach(function(cfg){
+        const empty = document.getElementById(cfg.emptyId);
+        const shell = document.getElementById(cfg.shellId);
+        if(!empty && !shell) return;
+        const isActiveTab = tabId === cfg.tabId;
+        const show = idx != null && isActiveTab;
+        if(empty) empty.style.display = show ? 'none' : '';
+        if(shell) shell.style.display = show ? 'block' : 'none';
+    });
+}
+function uniClearAllViewShells(){
+    uniToggleViewShellForTab('', null);
 }
 let uniViewSelectedIdx = null;
 let uniViewTabelaBound = false;
@@ -11811,7 +11878,7 @@ function uniSetViewFields(map){
     Object.entries(map).forEach(([id, val]) => { const el = document.getElementById(id); if(el) el.value = val == null ? '' : val; });
 }
 function uniMarkFilledInputs(root){
-    const scope = root || document.querySelector('.uni-module.tab-content.active') || document.getElementById('uni-unidade') || document.getElementById('uni-tabelas') || document.getElementById('uni-cadastro');
+    const scope = root || document.querySelector('.uni-module.tab-content.active') || document.getElementById('uni-unidade') || document.getElementById('uni-tabelas') || document.getElementById('uni-postos') || document.getElementById('uni-contratos') || document.getElementById('uni-cadastro');
     if(!scope) return;
     scope.querySelectorAll('input:not([type="hidden"]), textarea, select').forEach(el => {
         const v = el.tagName === 'SELECT' ? el.value : String(el.value || '').trim();
@@ -12120,10 +12187,8 @@ function salvarUnidadeViewContratos(){
     });
 }
 function getUniViewSelectedIdx(){
-    const tabelasAtiva = document.getElementById('uni-tabelas')?.classList.contains('active');
-    const sel = document.getElementById(tabelasAtiva ? 'unidadesTabelaViewSelect' : 'unidadesViewSelect')
-        || document.getElementById('unidadesViewSelect')
-        || document.getElementById('unidadesTabelaViewSelect');
+    const sel = document.getElementById(getUniActiveViewSelectId())
+        || FP_UNI_VIEW_SELECT_IDS.map(function(id){ return document.getElementById(id); }).find(Boolean);
     const nome = sel?.value?.trim();
     if(!nome) return null;
     const idx = getUnidades().findIndex(u => String(u.nome || '').trim() === nome);
@@ -12137,28 +12202,17 @@ function uniViewItem(label, value, spanAll){
 }
 function onUnidadeViewSelectChange(){
     syncUniViewSelects(document.getElementById('unidadesViewSelect'));
-    const empty = document.getElementById('uniViewEmpty');
-    const shell = document.getElementById('uniViewShell');
     try {
         const idx = getUniViewSelectedIdx();
         if(idx == null){
             uniViewSelectedIdx = null;
-            if(empty) empty.style.display = '';
-            if(shell) shell.style.display = 'none';
-            const tEmpty = document.getElementById('uniTabelaEmpty');
-            const tShell = document.getElementById('uniTabelaShell');
-            if(tEmpty) tEmpty.style.display = '';
-            if(tShell) tShell.style.display = 'none';
+            uniClearAllViewShells();
             return;
         }
         uniViewSelectedIdx = idx;
-        if(empty) empty.style.display = 'none';
-        if(shell) shell.style.display = 'block';
+        uniToggleViewShellForTab('uni-unidade', idx);
         uniViewResetEditModes();
         if(typeof limparFormUniAditivo === 'function') limparFormUniAditivo();
-        if(document.getElementById('uni-unidade')?.classList.contains('active')){
-            switchUniViewMainTab('dados');
-        }
         renderUnidadeVisualizacao();
     } catch(e){
         console.error('[uni] onUnidadeViewSelectChange', e);
@@ -12167,29 +12221,60 @@ function onUnidadeViewSelectChange(){
 }
 function onUnidadeTabelaViewSelectChange(){
     syncUniViewSelects(document.getElementById('unidadesTabelaViewSelect'));
-    const empty = document.getElementById('uniTabelaEmpty');
-    const shell = document.getElementById('uniTabelaShell');
     try {
         const idx = getUniViewSelectedIdx();
         if(idx == null){
             uniViewSelectedIdx = null;
-            if(empty) empty.style.display = '';
-            if(shell) shell.style.display = 'none';
-            const uEmpty = document.getElementById('uniViewEmpty');
-            const uShell = document.getElementById('uniViewShell');
-            if(uEmpty) uEmpty.style.display = '';
-            if(uShell) uShell.style.display = 'none';
+            uniClearAllViewShells();
             return;
         }
         uniViewSelectedIdx = idx;
-        if(empty) empty.style.display = 'none';
-        if(shell) shell.style.display = 'block';
+        uniToggleViewShellForTab('uni-tabelas', idx);
         uniViewEditing.tabelaAlterar = false;
         switchUniViewTabelaSubtab('valores');
         renderUnidadeVisualizacao();
     } catch(e){
         console.error('[uni] onUnidadeTabelaViewSelectChange', e);
         alert('Não foi possível abrir a tabela desta unidade. Atualize a página (Ctrl+F5).');
+    }
+}
+function onUnidadePostosViewSelectChange(){
+    syncUniViewSelects(document.getElementById('unidadesPostosViewSelect'));
+    try {
+        const idx = getUniViewSelectedIdx();
+        if(idx == null){
+            uniViewSelectedIdx = null;
+            uniClearAllViewShells();
+            return;
+        }
+        uniViewSelectedIdx = idx;
+        uniToggleViewShellForTab('uni-postos', idx);
+        uniViewEditing.postos = false;
+        renderUnidadeVisualizacao();
+        renderUnidadesPostosList();
+    } catch(e){
+        console.error('[uni] onUnidadePostosViewSelectChange', e);
+        alert('Não foi possível abrir os postos desta unidade. Atualize a página (Ctrl+F5).');
+    }
+}
+function onUnidadeContratosViewSelectChange(){
+    syncUniViewSelects(document.getElementById('unidadesContratosViewSelect'));
+    try {
+        const idx = getUniViewSelectedIdx();
+        if(idx == null){
+            uniViewSelectedIdx = null;
+            uniClearAllViewShells();
+            return;
+        }
+        uniViewSelectedIdx = idx;
+        uniToggleViewShellForTab('uni-contratos', idx);
+        uniViewEditing.contratos = false;
+        switchUniViewContratosSubtab(uniContratosViewSubtab || 'contrato');
+        if(typeof limparFormUniAditivo === 'function') limparFormUniAditivo();
+        renderUnidadeVisualizacao();
+    } catch(e){
+        console.error('[uni] onUnidadeContratosViewSelectChange', e);
+        alert('Não foi possível abrir os contratos desta unidade. Atualize a página (Ctrl+F5).');
     }
 }
 let uniContratosViewSubtab = 'contrato';
@@ -12389,15 +12474,17 @@ function switchUniViewMainTab(tab){
         switchUniViewTabelaSubtab('valores');
         return;
     }
-    const map = { dados: 'uniViewPanelDados', postos: 'uniViewPanelPostos', contratos: 'uniViewPanelContratos' };
-    const btnMap = { dados: 'btnUniViewDados', postos: 'btnUniViewPostos', contratos: 'btnUniViewContratos' };
-    Object.keys(map).forEach(k => {
-        document.getElementById(map[k])?.classList.toggle('active', k === tab);
-        const b = document.getElementById(btnMap[k]);
-        if(b){ b.classList.toggle('btn-tab-active', k === tab); b.classList.toggle('btn-tab', k !== tab); }
-    });
-    if(tab === 'postos') renderUnidadesPostosList();
-    if(tab === 'contratos') switchUniViewContratosSubtab(uniContratosViewSubtab || 'contrato');
+    if(tab === 'postos'){
+        if(typeof switchTab === 'function') switchTab('uni-postos');
+        renderUnidadesPostosList();
+        return;
+    }
+    if(tab === 'contratos'){
+        if(typeof switchTab === 'function') switchTab('uni-contratos');
+        switchUniViewContratosSubtab(uniContratosViewSubtab || 'contrato');
+        return;
+    }
+    if(tab === 'dados' && typeof switchTab === 'function') switchTab('uni-unidade');
 }
 function switchUniViewTabelaSubtab(sub){
     const panels = {
@@ -12461,10 +12548,12 @@ function renderUnidadeVisualizacao(){
     const u = getUnidadeForDisplay(idx);
     if(!u) return;
     const v = (x) => esc(String(x ?? '').trim()) || '—';
-    [document.getElementById('uniViewCod'), document.getElementById('uniTabelaViewCod')].forEach(function(codEl){
+    ['uniViewCod', 'uniTabelaViewCod', 'uniPostosViewCod', 'uniContratosViewCod'].forEach(function(id){
+        const codEl = document.getElementById(id);
         if(codEl) codEl.textContent = v(u.cod);
     });
-    [document.getElementById('uniViewNome'), document.getElementById('uniTabelaViewNome')].forEach(function(nomeEl){
+    ['uniViewNome', 'uniTabelaViewNome', 'uniPostosViewNome', 'uniContratosViewNome'].forEach(function(id){
+        const nomeEl = document.getElementById(id);
         if(nomeEl) nomeEl.textContent = v(u.nome);
     });
     renderUniViewDadosReadonly(u);
@@ -12574,11 +12663,27 @@ function abrirUnidadeTabela(nome){
     const sel = document.getElementById('unidadesTabelaViewSelect');
     if(sel && nome){ sel.value = nome; syncUniViewSelects(sel); onUnidadeTabelaViewSelectChange(); }
 }
+function abrirUnidadePostos(nome){
+    if(typeof switchTab === 'function') switchTab('uni-postos');
+    const sel = document.getElementById('unidadesPostosViewSelect');
+    const v = nome || document.getElementById('unidadesViewSelect')?.value || '';
+    if(sel && v){ sel.value = v; syncUniViewSelects(sel); onUnidadePostosViewSelectChange(); }
+}
 function renderUnidadesList(){
     refreshUnidadesViewSelect();
     if(typeof refreshUnidadesPostosUnidadeSelect === 'function') refreshUnidadesPostosUnidadeSelect();
-    if(document.getElementById('uniTabelaShell') && document.getElementById('uni-tabelas')?.classList.contains('active')){
+    const activeUni = document.querySelector('.uni-module.tab-content.active');
+    const tabId = activeUni && activeUni.id;
+    if(tabId === 'uni-tabelas' && document.getElementById('uniTabelaShell')){
         onUnidadeTabelaViewSelectChange();
+        return;
+    }
+    if(tabId === 'uni-postos' && document.getElementById('uniPostosShell')){
+        onUnidadePostosViewSelectChange();
+        return;
+    }
+    if(tabId === 'uni-contratos' && document.getElementById('uniContratosShell')){
+        onUnidadeContratosViewSelectChange();
         return;
     }
     if(document.getElementById('uniViewShell')){
@@ -12717,13 +12822,27 @@ function uniInitTabelasTab(){
     if(typeof onUnidadeTabelaViewSelectChange === 'function') onUnidadeTabelaViewSelectChange();
     uniBindDateBrInputs(document);
 }
-/** @deprecated use switchTab('uni-cadastro'|'uni-unidade'|'uni-tabelas') */
+function uniInitPostosTab(){
+    if(typeof refreshUnidadesViewSelect === 'function') refreshUnidadesViewSelect();
+    if(typeof onUnidadePostosViewSelectChange === 'function') onUnidadePostosViewSelectChange();
+    uniBindDateBrInputs(document);
+}
+function uniInitContratosTab(){
+    if(typeof refreshUnidadesViewSelect === 'function') refreshUnidadesViewSelect();
+    if(typeof onUnidadeContratosViewSelectChange === 'function') onUnidadeContratosViewSelectChange();
+    uniBindDateBrInputs(document);
+}
+/** @deprecated use switchTab('uni-cadastro'|'uni-unidade'|'uni-tabelas'|'uni-postos'|'uni-contratos') */
 function switchUnidadesSubtab(tab){
     let t = tab || 'cadastro';
     if(t === 'visualizacao' || t === 'unidades' || t === 'unidade') t = 'unidade';
     if(t === 'tabelas' || t === 'tabela') t = 'tabelas';
+    if(t === 'postos') t = 'postos';
+    if(t === 'contratos') t = 'contratos';
     if(t === 'cadastro'){ if(typeof switchTab === 'function') switchTab('uni-cadastro'); }
     else if(t === 'tabelas'){ if(typeof switchTab === 'function') switchTab('uni-tabelas'); }
+    else if(t === 'postos'){ if(typeof switchTab === 'function') switchTab('uni-postos'); }
+    else if(t === 'contratos'){ if(typeof switchTab === 'function') switchTab('uni-contratos'); }
     else { if(typeof switchTab === 'function') switchTab('uni-unidade'); }
 }
 function importUnidadesWorkbook(data){
@@ -13460,10 +13579,13 @@ function editarPostoUnidadeCatalog(idEnc){
     const id = decodeURIComponent(String(idEnc || ''));
     const row = getUnidadesPostosCatalog().find(p => String(p.id) === id);
     if(!row) return;
-    const selView = document.getElementById('unidadesViewSelect');
-    if(selView && row.unidadeNome) selView.value = row.unidadeNome;
-    onUnidadeViewSelectChange();
-    switchUniViewMainTab('postos');
+    if(typeof switchTab === 'function') switchTab('uni-postos');
+    const selView = document.getElementById('unidadesPostosViewSelect');
+    if(selView && row.unidadeNome){
+        selView.value = row.unidadeNome;
+        syncUniViewSelects(selView);
+        onUnidadePostosViewSelectChange();
+    }
     uniViewStartEdit('postos');
     document.getElementById('uniPostoEditId').value = row.id || '';
     document.getElementById('uniPostoCodigo').value = row.codigo || '';
