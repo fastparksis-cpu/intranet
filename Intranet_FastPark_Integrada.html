@@ -9277,7 +9277,10 @@ async function applyFpEmbeddedIntranetDb(db, opts){
         try { localStorage.setItem('fastparkHistorico', JSON.stringify(historico)); } catch(e1) { console.warn(e1); }
     }
     const uExp = (db.unidadesResolved || []).map(u => expandUnidadeContratoAnexo(u, att));
-    setUnidades(uExp);
+    if(uExp.length){
+        try { uniPersistUnidadesRaw(uExp); }
+        catch(eUni) { console.error('[FP] unidades cloud/localStorage', eUni); }
+    }
     setFaltasCad(expandAnexoRefsInFaltas(db.faltasResolved || [], att));
     setSignedDocsMap(expandPagasSignedSlim(db.pagasSignedSlim || {}, att));
     const ls = db.localStrings || {};
@@ -10033,6 +10036,11 @@ function fpInstallAutosaveHooks(){
         }
     };
 }
+/** Grava no localStorage sem Illegal invocation (setItem exige .call(storage, …)). */
+function fpLsSetItem(key, value) {
+    const fn = Storage.prototype.__fpOrigSetItem || Storage.prototype.setItem;
+    fn.call(localStorage, key, value);
+}
 function fpRefreshAutosaveBanner(){
     const el = document.getElementById('fpAutosaveBanner');
     if(!el) return;
@@ -10395,8 +10403,7 @@ function uniPersistUnidadesRaw(arr){
     const prevPause = window.__fpLsHookPause;
     window.__fpLsHookPause = true;
     try {
-        const setItem = Storage.prototype.__fpOrigSetItem || Storage.prototype.setItem.bind(localStorage);
-        setItem(UNI_KEY, JSON.stringify(Array.isArray(arr) ? arr : []));
+        fpLsSetItem(UNI_KEY, JSON.stringify(Array.isArray(arr) ? arr : []));
     } finally {
         window.__fpLsHookPause = prevPause;
     }
@@ -10412,8 +10419,7 @@ function setUnidades(v){
             catch(e){ console.warn('[uni] prepare', e); return u; }
         }) : v;
         const json = JSON.stringify(prepared);
-        const setItem = Storage.prototype.__fpOrigSetItem || Storage.prototype.setItem.bind(localStorage);
-        setItem(UNI_KEY, json);
+        fpLsSetItem(UNI_KEY, json);
     } catch(e){
         const msg = (e && (e.name === 'QuotaExceededError' || e.code === 22))
             ? 'Não foi possível guardar: o anexo ou os dados da unidade excedem o espaço do navegador. Reduza o PDF, ligue a pasta de anexos ou sincronize com a nuvem.'
