@@ -522,6 +522,12 @@ body {
 .uni-module .uni-aditivos-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .uni-module .uni-aditivos-table th, .uni-module .uni-aditivos-table td { border: 1px solid #e5e7eb; padding: 8px 10px; text-align: left; vertical-align: middle; }
 .uni-module .uni-aditivos-table thead th { background: #f3f4f6; font-weight: 700; font-size: 11px; }
+#fpUniAnexoModal .modal-card { width: min(96vw, 920px); max-height: 92vh; display: flex; flex-direction: column; }
+#fpUniAnexoModal .modal-body { flex: 1; min-height: 240px; overflow: auto; padding: 0; background: #f3f4f6; }
+#fpUniAnexoModal .uni-anexo-viewer-wrap { display: flex; align-items: center; justify-content: center; min-height: 240px; padding: 8px; }
+#fpUniAnexoModal .uni-anexo-viewer-wrap img { max-width: 100%; max-height: 72vh; object-fit: contain; }
+#fpUniAnexoModal .uni-anexo-viewer-wrap iframe { width: 100%; height: 72vh; border: 0; background: #fff; }
+.uni-anexo-actions { display: inline-flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .uni-module .uni-view-tabela-form { display: grid; grid-template-columns: repeat(4, minmax(160px, 1fr)); gap: 10px; }
 .uni-module .uni-view-edit-form { display: grid; grid-template-columns: repeat(4, minmax(160px, 1fr)); gap: 10px; }
 .uni-module .uni-view-edit-form .uni-section-title { grid-column: 1 / -1; font-weight: 800; font-size: 12px; color: var(--fp-orange); text-transform: uppercase; letter-spacing: .4px; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px; margin-top: 4px; }
@@ -2917,7 +2923,7 @@ td { color: var(--t); font-weight: 500;}
                                     <div style="grid-column:1/-1;padding:10px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;font-size:12px;" id="uniVaResumoVigente">Selecione uma unidade.</div>
                                     <div><label class="uni-field-label"><strong>Descrição / referência</strong></label><br><input id="uniVaDesc" type="text" placeholder="Ex.: 1º aditivo, renovação 2026…"></div>
                                     <div><label class="uni-field-label"><strong>Novo vencimento</strong></label><br><input id="uniVaVencimento" type="text" placeholder="dd/mm/aaaa" inputmode="numeric" autocomplete="off"></div>
-                                    <div><label class="uni-field-label"><strong>Documento</strong></label><br><input id="uniVaAnexo" type="file" accept=".pdf,.jpg,.jpeg,.png"></div>
+                                    <div><label class="uni-field-label"><strong>Documento</strong></label><br><input id="uniVaAnexo" type="file" accept=".pdf,.jpg,.jpeg,.png" onchange="renderUniAditivoVaAnexoHint()"><div id="uniVaAnexoHint" style="margin-top:6px;"></div></div>
                                     <div style="grid-column:1/-1;"><label class="uni-field-label"><strong>Observações</strong></label><br><textarea id="uniVaObs" rows="2" placeholder="Notas sobre o aditivo ou a renovação"></textarea></div>
                                     <div style="grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
                                         <button type="button" class="btn btn-fp-orange" onclick="salvarUniAditivoView()">Salvar aditivo</button>
@@ -2959,6 +2965,19 @@ td { color: var(--t); font-weight: 500;}
                 <div class="modal-footer">
                     <button type="button" onclick="cancelUniReajusteModal()">Cancelar</button>
                     <button type="button" class="btn-primary" onclick="confirmUniReajusteModal()">Confirmar e salvar</button>
+                </div>
+            </div>
+        </div>
+        <div id="fpUniAnexoModal" class="modal-overlay" style="display:none;z-index:2100;" onclick="if(event.target===this)fpCloseUniAnexoViewer()">
+            <div class="modal-card">
+                <div class="modal-header">
+                    <h3 id="fpUniAnexoModalTitle">Documento</h3>
+                    <button type="button" class="modal-close" onclick="fpCloseUniAnexoViewer()">✕</button>
+                </div>
+                <div class="modal-body" id="fpUniAnexoModalBody"><div class="empty" style="padding:24px;">Carregando…</div></div>
+                <div class="modal-footer" style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <button type="button" class="btn btn-info" id="fpUniAnexoModalNovaAba">Abrir em nova aba</button>
+                    <button type="button" class="btn btn-fp-gray" onclick="fpCloseUniAnexoViewer()">Fechar</button>
                 </div>
             </div>
         </div>
@@ -8003,21 +8022,236 @@ function uniBindDateBrInputs(root){
         });
     });
 }
-function uniContratoAnexoHtml(u){
-    if(!u) return '—';
-    if(u.contratoAnexoData) return '<a href="' + u.contratoAnexoData + '" target="_blank" rel="noopener">' + esc(u.contratoAnexoNome || 'Ver contrato') + '</a>';
-    return '—';
+let fpUniAnexoViewerBlobUrl = null;
+let fpUniAnexoViewerLastUrl = '';
+function uniHasAnexo(item){
+    if(!item) return false;
+    return !!(item.anexoData || item.contratoAnexoData || item.anexoRef || item.contratoAnexoRef);
+}
+function uniResolveAnexoDataUrlSync(item){
+    if(!item) return null;
+    const inline = item.anexoData || item.contratoAnexoData;
+    if(inline && typeof fpIsDisplayableMediaUrl === 'function' && fpIsDisplayableMediaUrl(inline)) return inline;
+    const ref = item.anexoRef || item.contratoAnexoRef;
+    if(!ref) return null;
+    const att = window.__FP_EMBEDDED_ATTACHMENTS__ || {};
+    if(typeof fpLookupAttMedia === 'function'){
+        const u = fpLookupAttMedia(att, ref, null, null);
+        if(u && fpIsDisplayableMediaUrl(u)) return u;
+    }
+    const r = typeof sanitizeStoragePathForAtt === 'function' ? sanitizeStoragePathForAtt(ref) : ref;
+    const disp = window.__FP_CLOUD_DISPLAY_URLS__ || {};
+    if(disp[r]) return disp[r];
+    if(disp[ref]) return disp[ref];
+    const v = att[r] || att[ref];
+    if(typeof v === 'string' && fpIsDisplayableMediaUrl(v)) return v;
+    return null;
+}
+async function uniResolveAnexoDataUrlAsync(item){
+    const sync = uniResolveAnexoDataUrlSync(item);
+    if(sync) return sync;
+    const ref = item && (item.anexoRef || item.contratoAnexoRef);
+    if(ref && typeof window.fpResolveCloudMediaUrl === 'function'){
+        try {
+            const u = await window.fpResolveCloudMediaUrl(ref);
+            if(u && fpIsDisplayableMediaUrl(u)) return u;
+        } catch(e){ console.warn('[FP] anexo nuvem', e); }
+    }
+    return null;
+}
+function fpMimeFromDataUrl(u){
+    const m = String(u || '').match(/data:(.*?);/i);
+    return m ? m[1] : '';
+}
+function fpOpenDocumentInNewTab(dataUrl, fileName){
+    const u = String(dataUrl || '').trim();
+    if(!u){ alert('Documento sem conteúdo para visualizar.'); return; }
+    if(/^https?:\/\//i.test(u)){
+        const win = window.open(u, '_blank');
+        if(!win) alert('O navegador bloqueou a abertura. Permita pop-ups para este site.');
+        return;
+    }
+    try{
+        const [meta, b64] = u.split(',');
+        if(!meta || !b64){ window.open(u, '_blank'); return; }
+        const mime = fpMimeFromDataUrl(u) || 'application/octet-stream';
+        const bin = atob(b64);
+        const bytes = new Uint8Array(bin.length);
+        for(let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        const blob = new Blob([bytes], { type: mime });
+        const blobUrl = URL.createObjectURL(blob);
+        const win = window.open(blobUrl, '_blank');
+        if(!win){
+            const a = document.createElement('a');
+            a.href = blobUrl;
+            a.target = '_blank';
+            a.download = fileName || 'documento';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+        }
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 120000);
+    }catch(err){
+        console.error('Falha ao abrir documento', err);
+        window.open(u, '_blank');
+    }
+}
+function fpShowUniAnexoViewer(dataUrl, fileName){
+    const overlay = document.getElementById('fpUniAnexoModal');
+    const body = document.getElementById('fpUniAnexoModalBody');
+    const title = document.getElementById('fpUniAnexoModalTitle');
+    const btnTab = document.getElementById('fpUniAnexoModalNovaAba');
+    if(!overlay || !body){ fpOpenDocumentInNewTab(dataUrl, fileName); return; }
+    if(fpUniAnexoViewerBlobUrl){ URL.revokeObjectURL(fpUniAnexoViewerBlobUrl); fpUniAnexoViewerBlobUrl = null; }
+    const u = String(dataUrl || '').trim();
+    if(!u){ alert('Documento sem conteúdo para visualizar.'); return; }
+    fpUniAnexoViewerLastUrl = u;
+    if(title) title.textContent = fileName || 'Documento';
+    const mime = fpMimeFromDataUrl(u);
+    const isImg = /^image\//i.test(mime);
+    const isPdf = mime === 'application/pdf' || /\.pdf$/i.test(String(fileName || ''));
+    let displayUrl = u;
+    if(u.indexOf('data:') === 0){
+        try{
+            const [, b64] = u.split(',');
+            const bin = atob(b64);
+            const bytes = new Uint8Array(bin.length);
+            for(let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            const blob = new Blob([bytes], { type: mime || 'application/octet-stream' });
+            fpUniAnexoViewerBlobUrl = URL.createObjectURL(blob);
+            displayUrl = fpUniAnexoViewerBlobUrl;
+        }catch(e){ console.warn('[FP] blob viewer', e); }
+    }
+    if(isImg){
+        body.innerHTML = '<div class="uni-anexo-viewer-wrap"><img src="' + displayUrl + '" alt=""></div>';
+    } else if(isPdf){
+        body.innerHTML = '<div class="uni-anexo-viewer-wrap"><iframe src="' + displayUrl + '" title="PDF"></iframe></div>';
+    } else {
+        body.innerHTML = '<div style="padding:20px;font-size:13px;color:#555;">Pré-visualização não disponível para este tipo de arquivo. Use <strong>Abrir em nova aba</strong> ou faça o download.</div>';
+    }
+    if(btnTab){
+        btnTab.onclick = () => fpOpenDocumentInNewTab(fpUniAnexoViewerLastUrl, fileName);
+    }
+    overlay.style.display = 'flex';
+}
+function fpCloseUniAnexoViewer(){
+    const overlay = document.getElementById('fpUniAnexoModal');
+    if(overlay) overlay.style.display = 'none';
+    if(fpUniAnexoViewerBlobUrl){ URL.revokeObjectURL(fpUniAnexoViewerBlobUrl); fpUniAnexoViewerBlobUrl = null; }
+    fpUniAnexoViewerLastUrl = '';
+}
+function uniAnexoViewerBtn(onclick, label){
+    return '<button type="button" class="btn btn-info" style="padding:3px 8px;font-size:11px;" onclick="' + onclick + '">' + esc(label || 'Visualizar') + '</button>';
+}
+function uniContratoAnexoHtml(u, visualizarOnclick){
+    if(!uniHasAnexo(u)) return '—';
+    const nome = esc(u.contratoAnexoNome || 'Contrato');
+    const fn = visualizarOnclick || 'visualizarUniContratoAnexo()';
+    return '<span class="uni-anexo-actions">' + nome + uniAnexoViewerBtn(fn, 'Visualizar') + '</span>';
+}
+function uniAditivoAnexoCell(a, adIdx){
+    if(!uniHasAnexo(a)) return '—';
+    const nome = esc(a.anexoNome || 'Documento');
+    const onclick = typeof adIdx === 'number' ? 'visualizarUniAditivoAnexo(' + adIdx + ')' : '';
+    return '<span class="uni-anexo-actions">' + nome + (onclick ? uniAnexoViewerBtn(onclick, 'Visualizar') : '') + '</span>';
+}
+async function visualizarUniContratoAnexo(){
+    const idx = uniViewSelectedIdx ?? getUniViewSelectedIdx();
+    if(idx == null){ alert('Selecione uma unidade.'); return; }
+    const u = getUnidades()[idx];
+    const url = await uniResolveAnexoDataUrlAsync(u);
+    if(!url){ alert('Não foi possível carregar o contrato. Sincronize com a nuvem ou ligue a pasta de anexos.'); return; }
+    fpShowUniAnexoViewer(url, u.contratoAnexoNome || 'Contrato');
+}
+async function visualizarUniAditivoAnexo(adIdx){
+    const idx = uniViewSelectedIdx ?? getUniViewSelectedIdx();
+    if(idx == null) return;
+    return visualizarUniAditivoPorUnidadeIdx(idx, adIdx);
+}
+async function visualizarUniAditivoPorUnidadeIdx(uniIdx, adIdx){
+    const u = getUnidades()[uniIdx];
+    if(!u) return;
+    const a = (u.aditivos || [])[adIdx];
+    if(!a) return;
+    const url = await uniResolveAnexoDataUrlAsync(a);
+    if(!url){ alert('Não foi possível carregar o documento do aditivo.'); return; }
+    fpShowUniAnexoViewer(url, a.anexoNome || 'Aditivo');
+}
+async function visualizarUniContratoPorUnidadeIdx(uniIdx){
+    const u = getUnidades()[uniIdx];
+    if(!u) return;
+    const url = await uniResolveAnexoDataUrlAsync(u);
+    if(!url){ alert('Não foi possível carregar o contrato.'); return; }
+    fpShowUniAnexoViewer(url, u.contratoAnexoNome || 'Contrato');
+}
+async function visualizarUniContratoCadastro(){
+    if(unidadeContratoAnexoPending && unidadeContratoAnexoPending.anexoData){
+        fpShowUniAnexoViewer(unidadeContratoAnexoPending.anexoData, unidadeContratoAnexoPending.anexoNome);
+        return;
+    }
+    const file = document.getElementById('uniContratoAnexo')?.files?.[0];
+    if(file){
+        const r = new FileReader();
+        r.onload = ev => fpShowUniAnexoViewer(String(ev.target?.result || ''), file.name);
+        r.readAsDataURL(file);
+        return;
+    }
+    const editIdx = Number(getInputVal('uniEditIdx'));
+    if(Number.isInteger(editIdx) && editIdx >= 0){
+        const u = getUnidades()[editIdx];
+        if(u && uniHasAnexo(u)){
+            const url = await uniResolveAnexoDataUrlAsync(u);
+            if(url){ fpShowUniAnexoViewer(url, u.contratoAnexoNome); return; }
+        }
+    }
+    alert('Nenhum contrato anexado para visualizar.');
+}
+async function visualizarUniAditivoCadastroTemp(i){
+    const a = unidadeAditivosTemp[i];
+    if(!a || !a.anexoData){ alert('Este aditivo não tem documento.'); return; }
+    fpShowUniAnexoViewer(a.anexoData, a.anexoNome || 'Aditivo');
+}
+async function visualizarUniAditivoAnexoCadastroEdit(i){
+    const editIdx = Number(getInputVal('uniEditIdx'));
+    if(!Number.isInteger(editIdx) || editIdx < 0){ alert('Salve a unidade antes ou use a aba Aditivos na visualização.'); return; }
+    const a = (getUnidades()[editIdx].aditivos || [])[i];
+    if(!a){ return; }
+    const url = await uniResolveAnexoDataUrlAsync(a);
+    if(!url){ alert('Não foi possível carregar o documento.'); return; }
+    fpShowUniAnexoViewer(url, a.anexoNome || 'Aditivo');
+}
+function renderUniAditivoVaAnexoHint(){
+    const el = document.getElementById('uniVaAnexoHint');
+    if(!el) return;
+    const f = document.getElementById('uniVaAnexo')?.files?.[0];
+    if(f) el.innerHTML = '<span class="uni-anexo-actions">' + esc(f.name) + uniAnexoViewerBtn('visualizarUniVaAnexoForm()', 'Visualizar') + '</span>';
+    else el.innerHTML = '';
+}
+async function visualizarUniVaAnexoForm(){
+    const file = document.getElementById('uniVaAnexo')?.files?.[0];
+    if(file){
+        const r = new FileReader();
+        r.onload = ev => fpShowUniAnexoViewer(String(ev.target?.result || ''), file.name);
+        r.readAsDataURL(file);
+        return;
+    }
+    alert('Selecione um arquivo no campo Documento ou salve o aditivo primeiro.');
 }
 function renderUniContratoAnexoCadastro(u){
     const el = document.getElementById('uniContratoAnexoAtual');
     if(!el) return;
     const pending = unidadeContratoAnexoPending;
     if(pending && pending.anexoData){
-        el.innerHTML = 'Novo arquivo: <a href="' + pending.anexoData + '" target="_blank">' + esc(pending.anexoNome || 'documento') + '</a>';
+        el.innerHTML = 'Novo arquivo: ' + esc(pending.anexoNome || 'documento') + ' ' + uniAnexoViewerBtn('visualizarUniContratoCadastro()', 'Visualizar');
         return;
     }
-    if(u && u.contratoAnexoData){
+    if(u && uniHasAnexo(u)){
         el.innerHTML = 'Arquivo atual: ' + uniContratoAnexoHtml(u);
+        return;
+    }
+    const file = document.getElementById('uniContratoAnexo')?.files?.[0];
+    if(file){
+        el.innerHTML = 'Arquivo selecionado: ' + esc(file.name) + ' ' + uniAnexoViewerBtn('visualizarUniContratoCadastro()', 'Visualizar');
         return;
     }
     el.innerHTML = '<span style="color:#888;">Nenhum contrato anexado.</span>';
@@ -10764,7 +10998,7 @@ function addAditivoUnidade(){
         unidadeAditivosTemp.push({ desc, vencimento, vencimentoAnterior: vencAnt, anexoNome, anexoData, createdAt: new Date().toISOString() });
         const el = document.getElementById('uniAditivosTemp');
         const fv = (d) => (typeof fdate === 'function' ? fdate(d) : esc(d || '—'));
-        if(el) el.innerHTML = unidadeAditivosTemp.map((a,i)=>`<div>${i+1}. ${esc(a.desc)} | venc: ${fv(a.vencimento)} ${a.anexoData ? `<a href="${a.anexoData}" target="_blank">ver anexo</a>` : ''}</div>`).join('');
+        if(el) el.innerHTML = unidadeAditivosTemp.map((a,i)=>`<div style="margin:4px 0;">${i+1}. ${esc(a.desc)} | venc: ${fv(a.vencimento)} ${uniHasAnexo(a) ? uniAnexoViewerBtn('visualizarUniAditivoCadastroTemp(' + i + ')', 'Visualizar') : ''}</div>`).join('');
         if(vencimento){
             const vc = document.getElementById('uniVencimentoContrato');
             if(vc) vc.value = uniDateBrFromStore(vencimento);
@@ -10945,7 +11179,7 @@ function editarUnidadeIndividual(idx){
     renderUniContratoAnexoCadastro(u);
     const ad = document.getElementById('uniAditivosTemp');
     const fv = (d) => (typeof fdate === 'function' ? fdate(d) : esc(d || '—'));
-    if(ad) ad.innerHTML = (u.aditivos || []).map((a,i)=>`<div>${i+1}. ${esc(a.desc || '')} | venc: ${fv(a.vencimento)} ${a.anexoData ? `<a href="${a.anexoData}" target="_blank">ver anexo</a>` : ''}</div>`).join('');
+    if(ad) ad.innerHTML = (u.aditivos || []).map((a,i)=>`<div style="margin:4px 0;">${i+1}. ${esc(a.desc || '')} | venc: ${fv(a.vencimento)} ${uniHasAnexo(a) ? uniAnexoViewerBtn('visualizarUniAditivoAnexoCadastroEdit(' + i + ')', 'Visualizar') : ''}</div>`).join('');
     uniBindDateBrInputs(document);
     uniApplyTabelaCalculosFromForm();
     updateTaxaGrafico();
@@ -11397,7 +11631,7 @@ function buildUniViewContratosForm(u){
         uniVcContratantePagamento: u.contratantePagamento, uniVcVencimentoContrato: uniDateBrFromStore(u.vencimentoContrato)
     });
     const vcA = document.getElementById('uniVcContratoAnexoAtual');
-    if(vcA) vcA.innerHTML = u.contratoAnexoData ? 'Atual: ' + uniContratoAnexoHtml(u) : '<span style="color:#888;">Nenhum arquivo.</span>';
+    if(vcA) vcA.innerHTML = uniHasAnexo(u) ? 'Atual: ' + uniContratoAnexoHtml(u) : '<span style="color:#888;">Nenhum arquivo.</span>';
     uniBindDateBrInputs(el);
     uniMarkFilledInputs(el);
     el.querySelectorAll('input, textarea, select').forEach(inp => {
@@ -11483,11 +11717,6 @@ function uniFmtDataIso(d){
     if(!d) return '—';
     if(typeof fdate === 'function') return fdate(d);
     return esc(String(d));
-}
-function uniAditivoAnexoHtml(a){
-    if(!a || !a.anexoData) return '—';
-    const nome = esc(a.anexoNome || 'Ver documento');
-    return '<a href="' + a.anexoData + '" target="_blank" rel="noopener">' + nome + '</a>';
 }
 function uniGetVencimentoVigenteUnidade(u){
     if(!u) return '';
@@ -11580,7 +11809,7 @@ function renderUniAditivosLista(){
     const rows = ads.map((a, revIdx) => {
         const i = (u.aditivos || []).length - 1 - revIdx;
         const dt = a.createdAt ? uniFmtDataIso(String(a.createdAt).slice(0, 10)) : '—';
-        return '<tr><td>' + (revIdx + 1) + '</td><td>' + dt + '</td><td>' + esc(a.desc || '—') + '</td><td>' + uniFmtDataIso(a.vencimento) + '</td><td>' + uniFmtDataIso(a.vencimentoAnterior) + '</td><td>' + uniAditivoAnexoHtml(a) + '</td><td style="white-space:nowrap;"><button type="button" class="btn btn-danger" style="padding:4px 8px;font-size:11px;" onclick="excluirUniAditivoView(' + i + ')">Excluir</button></td></tr>';
+        return '<tr><td>' + (revIdx + 1) + '</td><td>' + dt + '</td><td>' + esc(a.desc || '—') + '</td><td>' + uniFmtDataIso(a.vencimento) + '</td><td>' + uniFmtDataIso(a.vencimentoAnterior) + '</td><td>' + uniAditivoAnexoCell(a, i) + '</td><td style="white-space:nowrap;"><button type="button" class="btn btn-danger" style="padding:4px 8px;font-size:11px;" onclick="excluirUniAditivoView(' + i + ')">Excluir</button></td></tr>';
     }).join('');
     el.innerHTML = '<table class="uni-aditivos-table"><thead><tr><th>#</th><th>Registo</th><th>Descrição</th><th>Vencimento</th><th>Venc. anterior</th><th>Documento</th><th></th></tr></thead><tbody>' + rows + '</tbody></table>';
 }
@@ -11604,7 +11833,7 @@ function renderUniAditivosHistorico(){
     const rows = ads.map(a => {
         const dt = a.createdAt ? uniFmtDataIso(String(a.createdAt).slice(0, 10)) : '—';
         const obs = a.obs ? '<br><span style="font-size:11px;color:#6b7280;">' + esc(a.obs) + '</span>' : '';
-        return '<tr><td>' + dt + '</td><td>' + esc(a.desc || '—') + obs + '</td><td>' + uniFmtDataIso(a.vencimentoAnterior) + '</td><td>' + uniFmtDataIso(a.vencimento) + '</td><td>' + uniAditivoAnexoHtml(a) + '</td></tr>';
+        return '<tr><td>' + dt + '</td><td>' + esc(a.desc || '—') + obs + '</td><td>' + uniFmtDataIso(a.vencimentoAnterior) + '</td><td>' + uniFmtDataIso(a.vencimento) + '</td><td>' + uniAditivoAnexoCell(a, a._idx) + '</td></tr>';
     }).join('');
     el.innerHTML = '<table class="uni-aditivos-table"><thead><tr><th>Data</th><th>Descrição</th><th>Venc. anterior</th><th>Novo vencimento</th><th>Documento</th></tr></thead><tbody>' + rows + '</tbody></table>';
 }
@@ -11879,9 +12108,9 @@ function renderUnidadesList(){
             const taxa = Math.max(0, Math.min(100, Number(u.taxaOcupacao || 0)));
             const fvU = (d) => (typeof fdate === 'function' ? fdate(d) : esc(d || '—'));
             const aditivos = (u.aditivos || []).length
-                ? (u.aditivos || []).map((a,i)=>`<div>${i + 1}) ${esc(a.desc || '')} ${a.vencimento ? '- ' + fvU(a.vencimento) : ''} ${a.anexoData ? ` <a href="${a.anexoData}" target="_blank">anexo</a>` : ''}</div>`).join('')
+                ? (u.aditivos || []).map((a,i)=>`<div>${i + 1}) ${esc(a.desc || '')} ${a.vencimento ? '- ' + fvU(a.vencimento) : ''} ${uniHasAnexo(a) ? uniAnexoViewerBtn('visualizarUniAditivoPorUnidadeIdx(' + safeIdx + ',' + i + ')', 'Ver') : ''}</div>`).join('')
                 : '—';
-            const docContrato = u.contratoAnexoData ? uniContratoAnexoHtml(u) : '—';
+            const docContrato = uniHasAnexo(u) ? uniContratoAnexoHtml(u, 'visualizarUniContratoPorUnidadeIdx(' + safeIdx + ')') : '—';
             return `<article style="border:1px solid #e5e7eb;border-radius:12px;padding:14px;background:#fff;">
                 <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;flex-wrap:wrap;">
                     <div>
