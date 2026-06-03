@@ -494,7 +494,9 @@ body {
 }
 .uni-module .panel .inner,
 #cadpostos .panel .inner,
-#vt .panel .inner {
+#vt .panel .inner,
+#laudos .panel .inner,
+#laudos #laudosHistTableWrap {
     max-height: none;
 }
 .uni-module input.uni-tabela-auto,
@@ -638,7 +640,7 @@ body {
 }
 .ref-module.tab-content.active:not(#dprefbeneficios),
 .uni-module.tab-content.active,
-.fp-page-full.tab-content.active:not(#dprefbeneficios) {
+.fp-page-full.tab-content.active:not(#dprefbeneficios):not(#laudos) {
     display: block !important;
     width: 100% !important;
     height: 100% !important;
@@ -966,6 +968,72 @@ body {
     width: 0;
     height: 0;
 }
+/* Laudos: sub-abas Cadastro / Histórico — página cheia, sem caixa de 250px */
+#laudos.tab-content.active {
+    display: flex !important;
+    flex-direction: column !important;
+    width: 100% !important;
+    height: 100% !important;
+    max-width: none !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    padding: 8px 12px 12px !important;
+    box-sizing: border-box !important;
+    margin: 0 !important;
+}
+#laudos .laudos-subnav {
+    flex: 0 0 auto;
+    flex-shrink: 0;
+    margin: 0 0 8px !important;
+}
+#laudos .laudos-subpanel {
+    display: none;
+    flex-direction: column;
+    flex: 1 1 0;
+    min-height: 0;
+    overflow: hidden;
+    width: 100%;
+    box-sizing: border-box;
+    margin: 0 !important;
+}
+#laudos .laudos-subpanel.active {
+    display: flex !important;
+}
+#laudos .laudos-subpanel > .panel:first-child {
+    flex: 0 0 auto;
+    flex-shrink: 0;
+}
+#laudos #laudosPanelCadastro > .panel.list {
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    margin-top: 8px !important;
+    overflow: hidden;
+}
+#laudos #laudosPanelCadastro > .panel.list > .head {
+    flex-shrink: 0;
+}
+#laudos #laudosPanelHistorico > .panel {
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    margin: 0 !important;
+}
+#laudos #laudosPanelHistorico > .panel > .head,
+#laudos #laudosPanelHistorico > .panel > .body {
+    flex-shrink: 0;
+}
+#laudos #laudosList,
+#laudos #laudosHistTableWrap {
+    flex: 1 1 0 !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: auto !important;
+    -webkit-overflow-scrolling: touch;
+}
 .uni-module #unidadesCadastroTab,
 .uni-module #unidadesVisualizacaoTab { min-height: 0; }
 .uni-module .uni-orc-hist-report { overflow-x: auto; }
@@ -1268,7 +1336,7 @@ body {
     overflow: hidden;
     padding: 0;
 }
-.tab-container > .tab-content.active.fp-page-full:not(#dprefbeneficios),
+.tab-container > .tab-content.active.fp-page-full:not(#dprefbeneficios):not(#laudos),
 .tab-container > .tab-content.active.ref-module:not(#dprefbeneficios),
 .tab-container > .tab-content.active.uni-module {
     display: block !important;
@@ -1276,7 +1344,8 @@ body {
     overflow-y: auto !important;
     padding: 8px 12px 16px !important;
 }
-.tab-container > #dprefbeneficios.tab-content.active {
+.tab-container > #dprefbeneficios.tab-content.active,
+.tab-container > #laudos.tab-content.active {
     display: flex !important;
     flex-direction: column !important;
     overflow: hidden !important;
@@ -2985,7 +3054,7 @@ td { color: var(--t); font-weight: 500;}
             <button type="button" class="btn btn-info laudos-subtab active" id="laudosSubBtnCad" onclick="switchLaudosSubtab('cadastro')">Cadastro</button>
             <button type="button" class="btn laudos-subtab" id="laudosSubBtnHist" onclick="switchLaudosSubtab('historico')">Histórico</button>
         </div>
-        <div id="laudosPanelCadastro">
+        <div id="laudosPanelCadastro" class="laudos-subpanel active">
             <article class="panel">
                 <div class="head"><h2 id="laudosFormTitle">Novo laudo</h2></div>
                 <div class="body" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;">
@@ -3026,17 +3095,17 @@ td { color: var(--t); font-weight: 500;}
                         </select>
                     </div>
                 </div>
-                <div class="inner" id="laudosList" style="overflow-x:auto;"></div>
+                <div class="inner" id="laudosList"></div>
             </article>
         </div>
-        <div id="laudosPanelHistorico" style="display:none;margin-top:12px;">
+        <div id="laudosPanelHistorico" class="laudos-subpanel">
             <article class="panel">
                 <div class="head"><h2>Histórico de laudos</h2><p style="margin:6px 0 0;font-size:12px;opacity:.9;">Cadastros e renovações — filtre por unidade ou tipo.</p></div>
                 <div class="body" style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;padding:12px;">
                     <div><label><strong>Unidade</strong></label><br><select id="laudoHistUnidade" onchange="renderLaudosHistorico()"><option value="">Todas</option></select></div>
                     <div><label><strong>Tipo</strong></label><br><input id="laudoHistTipo" list="laudoTiposList" placeholder="Filtrar tipo" oninput="renderLaudosHistorico()" style="min-width:200px;"></div>
                 </div>
-                <div class="inner" id="laudosHistTableWrap" style="padding:10px;overflow-x:auto;"></div>
+                <div class="inner" id="laudosHistTableWrap" style="padding:10px;"></div>
             </article>
         </div>
     </div>
@@ -3460,6 +3529,7 @@ function switchTab(tab) {
         fpSyncSidebarMenu('sinistros', { sinSub: sinSub });
     }
     if(tab === 'laudos'){
+        if(typeof laudosInitTab === 'function') laudosInitTab();
         if(typeof refreshLaudosFormSelects === 'function') refreshLaudosFormSelects();
         if(typeof renderLaudosList === 'function') renderLaudosList();
         if(typeof renderLaudosHistorico === 'function') renderLaudosHistorico();
@@ -11690,8 +11760,14 @@ function switchLaudosSubtab(tab){
     const btnCad = document.getElementById('laudosSubBtnCad');
     const btnHist = document.getElementById('laudosSubBtnHist');
     const isHist = tab === 'historico';
-    if(cad) cad.style.display = isHist ? 'none' : '';
-    if(hist) hist.style.display = isHist ? '' : 'none';
+    if(cad){
+        cad.classList.toggle('active', !isHist);
+        cad.style.display = '';
+    }
+    if(hist){
+        hist.classList.toggle('active', isHist);
+        hist.style.display = '';
+    }
     [btnCad, btnHist].forEach(b => { if(b) b.classList.remove('active', 'btn-info'); });
     const active = isHist ? btnHist : btnCad;
     if(active){ active.classList.add('active', 'btn-info'); }
@@ -11699,6 +11775,11 @@ function switchLaudosSubtab(tab){
         if(typeof refreshLaudosHistFilters === 'function') refreshLaudosHistFilters();
         if(typeof renderLaudosHistorico === 'function') renderLaudosHistorico();
     } else if(typeof renderLaudosList === 'function') renderLaudosList();
+}
+function laudosInitTab(){
+    switchLaudosSubtab(
+        document.getElementById('laudosPanelHistorico')?.classList.contains('active') ? 'historico' : 'cadastro'
+    );
 }
 function refreshLaudosFormSelects(){
     const unidades = getLaudosUnidadesLista();
