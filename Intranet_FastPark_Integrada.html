@@ -7718,7 +7718,7 @@ function renderLists() {
     });
     E.birthdaysList.innerHTML = renderNames(birthdays(list), 'Nenhum aniversário este mês', e => fdate(e.nascimento));
     E.ferias30List.innerHTML = renderNames(ferias30(list), 'Nenhuma férias próxima', e => `${fdate(e.inicioFerias)} a ${fdate(e.fimFerias)}`);
-    E.feriasAgoraList.innerHTML = renderNames(feriasAgora(list), 'Ninguém em férias', e => `${fdate(e.inicioFerias)} a ${fdate(e.fimFerias)}`);
+    E.feriasAgoraList.innerHTML = renderNames(getFeriasAgora(), 'Ninguém em férias hoje', e => `${fdate(e.inicio)} a ${fdate(e.fim)}`);
     E.asoTable.innerHTML = renderNames(asoSoon(list), 'Nenhum ASO a vencer', e => {
         const d = daysTo(e.aso);
         return d < 0 ? `Vencido há ${Math.abs(d)} dias` : `Vence em ${d} dias`;
@@ -7949,14 +7949,41 @@ function ferias30(list) {
         return ini && ini > hoje && ini <= prox30;
     });
 }
+function estaEmFeriasHoje(inicio, fim, refHoje){
+    const ini = dparse(inicio);
+    if(!ini) return false;
+    const fimDt = dparse(fim);
+    if(!fimDt) return false;
+    const hoje = refHoje || today();
+    const h = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+    const i = new Date(ini.getFullYear(), ini.getMonth(), ini.getDate());
+    const f = new Date(fimDt.getFullYear(), fimDt.getMonth(), fimDt.getDate());
+    return h >= i && h <= f;
+}
 function feriasAgora(list) {
-    const hoje = today();
-    const ultimos30 = new Date(hoje.getTime() - 30*86400000);
-    return list.filter(e => {
-        const ini = dparse(e.inicioFerias), fim = dparse(e.fimFerias);
-        if(!ini || !fim) return false;
-        return (hoje >= ini && hoje <= fim) || (ini >= ultimos30 && ini <= hoje);
-    });
+    return list.filter(e => estaEmFeriasHoje(e.inicioFerias, e.fimFerias));
+}
+function getFeriasAgora(){
+    const seen = new Set();
+    const all = [];
+    const pushSeEmFeriasHoje = (nome, empresa, inicio, fim) => {
+        const n = String(nome || '').trim();
+        if(!n || seen.has(n) || !estaEmFeriasHoje(inicio, fim)) return;
+        seen.add(n);
+        all.push({ nome: n, empresa: empresa || '', inicio: inicio || '', fim: fim || '' });
+    };
+    try {
+        const feriasStore = JSON.parse(localStorage.getItem(FERIAS_HIST_KEY) || '{}');
+        Object.entries(feriasStore).forEach(([nome, rows]) => {
+            (rows || []).forEach(r => {
+                const emp = (state.employees || []).find(e => e.nome === nome);
+                pushSeEmFeriasHoje(nome, emp?.empresa, r.dataInicio, r.dataFim);
+            });
+        });
+    } catch(_){ /* ignore */ }
+    (state.ferias || []).forEach(f => pushSeEmFeriasHoje(f.nome, f.empresa, f.inicio, f.fim));
+    (state.employees || []).forEach(e => pushSeEmFeriasHoje(e.nome, e.empresa, e.inicioFerias, e.fimFerias));
+    return all.sort((a, b) => (dparse(b.inicio) || 0) - (dparse(a.inicio) || 0));
 }
 
 // ========== MODAIS ==========

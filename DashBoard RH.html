@@ -2279,50 +2279,48 @@ function getFerias30() {
     return result.sort((a, b) => (dparse(a.inicio)||0) - (dparse(b.inicio)||0));
 }
 
+/** Colaborador está de férias na data de referência (inclusive início e fim). */
+function estaEmFeriasHoje(inicio, fim, refHoje){
+    const ini = dparse(inicio);
+    if(!ini) return false;
+    const fimDt = dparse(fim);
+    if(!fimDt) return false;
+    const hoje = refHoje || today();
+    const h = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+    const i = new Date(ini.getFullYear(), ini.getMonth(), ini.getDate());
+    const f = new Date(fimDt.getFullYear(), fimDt.getMonth(), fimDt.getDate());
+    return h >= i && h <= f;
+}
 function getFeriasAgora() {
-    const t = today();
-    const mesIni = new Date(t.getFullYear(), t.getMonth(), 1);
-    const mesFim = new Date(t.getFullYear(), t.getMonth() + 1, 0);
     const seen = new Set();
     const all = [];
+    const pushSeEmFeriasHoje = (nome, empresa, unidade, inicio, fim) => {
+        const n = String(nome || '').trim();
+        if(!n || seen.has(n) || !estaEmFeriasHoje(inicio, fim)) return;
+        seen.add(n);
+        all.push({
+            nome: n,
+            empresa: empresa || '',
+            unidade: unidade || '',
+            status: 'FÉRIAS',
+            inicio: inicio || '',
+            fim: fim || ''
+        });
+    };
     const feriasStore = JSON.parse(localStorage.getItem(FERIAS_HIST_KEY) || '{}');
     Object.entries(feriasStore).forEach(([nome, rows]) => {
         (rows || []).forEach(r => {
-            const ini = dparse(r.dataInicio);
-            const fim = dparse(r.dataFim);
-            const cruzaMes = ini && ((ini >= mesIni && ini <= mesFim) || (fim && fim >= mesIni && ini <= mesFim) || (!fim && ini <= mesFim));
-            if(cruzaMes && !seen.has(nome)){
-                seen.add(nome);
-                const emp = state.employees.find(e => e.nome === nome);
-                all.push({ nome, empresa: emp?.empresa || '', unidade: emp?.atuando || '', status: 'FÉRIAS', inicio: r.dataInicio, fim: r.dataFim || '' });
-            }
+            const emp = state.employees.find(e => e.nome === nome);
+            pushSeEmFeriasHoje(nome, emp?.empresa, emp?.atuando, r.dataInicio, r.dataFim);
         });
     });
-
-    // QUADRO_EFETIVO
-    state.ferias.forEach(f => {
-        const ini = dparse(f.inicio);
-        const fim = dparse(f.fim);
-        const cruzaMes = ini && ((ini >= mesIni && ini <= mesFim) || (fim && fim >= mesIni && ini <= mesFim) || (!fim && ini <= mesFim));
-        if(cruzaMes && !seen.has(f.nome)) {
-            seen.add(f.nome);
-            all.push(f);
-        }
+    (state.ferias || []).forEach(f => {
+        pushSeEmFeriasHoje(f.nome, f.empresa, f.unidade, f.inicio, f.fim);
     });
-
-    // Aba principal
-    state.employees.forEach(e => {
-        if(seen.has(e.nome)) return;
-        const ini = dparse(e.inicioFerias);
-        const fim = dparse(e.fimFerias);
-        const cruzaMes = ini && ((ini >= mesIni && ini <= mesFim) || (fim && fim >= mesIni && ini <= mesFim) || (!fim && ini <= mesFim));
-        if(cruzaMes) {
-            seen.add(e.nome);
-            all.push({ nome: e.nome, empresa: e.empresa, unidade: e.atuando || '', status: 'FÉRIAS', inicio: e.inicioFerias, fim: e.fimFerias || '' });
-        }
+    (state.employees || []).forEach(e => {
+        pushSeEmFeriasHoje(e.nome, e.empresa, e.atuando, e.inicioFerias, e.fimFerias);
     });
-
-    return all;
+    return all.sort((a, b) => (dparse(b.inicio) || 0) - (dparse(a.inicio) || 0));
 }
 function getDataLimite90(){
     const t = today();
@@ -2796,7 +2794,7 @@ function renderAlerts(list) {
         ['CNH a Vencer', sn.length, 'Próximos 90 dias', sn.length ? 'w' : 'ok'],
         ['Vencimento ASO', aso.length, `${asoVenc.length} vencido(s) · ${asoAVencer.length} a vencer`, asoColor],
         ['Férias Próximas', fer30.length, 'Agendadas para o próximo mês', fer30.length ? 'w' : 'ok'],
-        ['Em Férias no mês', ferNow.length, 'Períodos no mês atual', ferNow.length ? 'fp' : 'n'],
+        ['Em Férias hoje', ferNow.length, 'De férias nesta data', ferNow.length ? 'fp' : 'n'],
         ['Data Limite (90d)', limite90.length, 'Vencimento próximo', limite90.length ? 'w' : 'ok']
     ];
     const cardTargets = ['birthdaysList', 'experienceList', 'expiredCnhList', 'expiringCnhList', 'asoTable', 'ferias30List', 'feriasAgoraList', 'feriasLimite90List'];
@@ -2818,7 +2816,7 @@ function renderAlerts(list) {
         return d ? `Dia ${String(d.getDate()).padStart(2, '0')}` : '—';
     });
     E.ferias30List.innerHTML = renderNames(fer30, 'Sem férias no próximo mês', e => `${fdate(e.inicio)} até ${fdate(e.fim)}`);
-    E.feriasAgoraList.innerHTML = renderNames(ferNow, 'Sem férias no mês atual', e => `${fdate(e.inicio)} até ${fdate(e.fim)}`);
+    E.feriasAgoraList.innerHTML = renderNames(ferNow, 'Ninguém em férias hoje', e => `${fdate(e.inicio)} até ${fdate(e.fim)}`);
     E.feriasLimite90List.innerHTML = renderNames(limite90, 'Sem data limite nos próximos 90 dias', e => fdate(e.dataLimite));
 
     const rows = [];
