@@ -2633,6 +2633,7 @@ td { color: var(--t); font-weight: 500;}
                     <button type="button" class="btn" onclick="limparFormMovCad()">Novo registro</button>
                     <span id="movCadEditHint" style="font-size:12px;color:var(--fp-orange);display:none;font-weight:600;">Editando — «Novo registro» cancela.</span>
                 </div>
+                <p style="grid-column:1 / -1;margin:0;font-size:11px;color:#6b7280;">Ao salvar, a <strong>ficha cadastral</strong> do colaborador é atualizada com a <strong>unidade destino</strong> e o <strong>cód. posto destino</strong> da movimentação vigente (sem data fim ou fim futuro).</p>
             </div>
         </article>
         <article class="panel list" style="margin-top:12px;"><h3>Histórico de movimentações cadastradas</h3><div class="inner" id="movCadList"></div></article>
@@ -7796,7 +7797,8 @@ function renderMovimentacoes() {
         tipo: 'POSTO ALTERADO',
         funcao: '',
         origem: m.origem || '',
-        destino: m.destino || ''
+        destino: m.destino || '',
+        codPosto: m.codPostoDestino || ''
     }));
     const merged = [...(state.movimentacoes || []), ...cadMovs];
     const movsRaw = merged.filter(m => movimentacaoRefersToEmployee(m, emp));
@@ -7817,7 +7819,7 @@ function renderMovimentacoes() {
     panel.innerHTML = `
         <table>
             <thead><tr><th>Data</th><th>Cód. posto</th><th>Tipo</th><th>Função</th><th>Origem</th><th>Destino</th></tr></thead>
-            <tbody>${movs.map(m => `<tr><td>${fdate(m.data)}</td><td>${esc(getCodigoPostoByColaboradorNome(m.funcionario) || '—')}</td><td>${esc(m.tipo)}</td><td>${esc(m.funcao)}</td><td>${esc(m.origem)}</td><td>${esc(m.destino)}</td></tr>`).join('')}</tbody>
+            <tbody>${movs.map(m => `<tr><td>${fdate(m.data)}</td><td>${esc(m.codPosto || getCodigoPostoByColaboradorNome(m.funcionario, m.destino) || '—')}</td><td>${esc(m.tipo)}</td><td>${esc(m.funcao)}</td><td>${esc(m.origem)}</td><td>${esc(m.destino)}</td></tr>`).join('')}</tbody>
         </table>
     `;
 }
@@ -10408,6 +10410,77 @@ function setMovCad(v){
     localStorage.setItem(MOV_CAD_KEY, JSON.stringify(v));
     fpAfterPersistentStorageWrite();
 }
+/** Movimentação vigente do colaborador (sem data fim ou fim futuro; senão a mais recente encerrada). */
+function getMovimentacaoVigenteColaborador(nome){
+    const nk = normText(nome || '');
+    if(!nk) return null;
+    const hoje = new Date().toISOString().slice(0, 10);
+    const movs = (getMovCad() || []).filter(m => normText(m.funcionario || '') === nk);
+    if(!movs.length) return null;
+    const sortMov = (a, b) => {
+        const d = String(b.dataIni || '').localeCompare(String(a.dataIni || ''));
+        if(d) return d;
+        return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
+    };
+    const ativos = movs.filter(m => {
+        const fim = String(m.dataFim || '').trim();
+        return !fim || fim >= hoje;
+    });
+    if(ativos.length) return ativos.sort(sortMov)[0];
+    return movs.sort((a, b) => {
+        const d = String(b.dataFim || b.dataIni || '').localeCompare(String(a.dataFim || a.dataIni || ''));
+        if(d) return d;
+        return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
+    })[0];
+}
+/** Unidade e código de posto atuais conforme histórico de movimentações cadastradas. */
+function getUnidadeCodPostoAtualFromMovimentacoes(nome){
+    const mov = getMovimentacaoVigenteColaborador(nome);
+    if(!mov) return { unidade: '', codPosto: '' };
+    return {
+        unidade: String(mov.destino || '').trim(),
+        codPosto: normalizeCodPostoCadastro(mov.codPostoDestino)
+    };
+}
+/** Atualiza ficha cadastral (Atuando + codPosto) a partir das movimentações do colaborador. */
+function syncFichaCadastroFromMovimentacoes(nome){
+    const nomeTrim = String(nome || '').trim();
+    if(!nomeTrim) return false;
+    const idx = (state.employees || []).findIndex(e =>
+        e === state.selected || normText(e.nome || '') === normText(nomeTrim)
+    );
+    if(idx < 0) return false;
+    const emp = state.employees[idx];
+    const { unidade, codPosto } = getUnidadeCodPostoAtualFromMovimentacoes(nomeTrim);
+    if(!unidade && !codPosto) return false;
+    let changed = false;
+    if(unidade && String(emp.atuando || '').trim() !== unidade){
+        emp.atuando = unidade;
+        changed = true;
+    }
+    if(codPosto){
+        const ref = resolveUnidadeRefFromAtuando(unidade || emp.atuando);
+        const dupIdx = findEmployeeIdxComCodPostoNaUnidade(codPosto, ref.nome, ref.cod, idx);
+        if(dupIdx >= 0 && dupIdx !== idx){
+            state.employees[dupIdx].codPosto = '';
+            changed = true;
+        }
+        if(employeeCodigoPostoCadastro(emp) !== codPosto){
+            emp.codPosto = codPosto;
+            changed = true;
+        }
+    } else if(unidade){
+        const cur = employeeCodigoPostoCadastro(emp);
+        if(cur){
+            emp.codPosto = '';
+            changed = true;
+        }
+    }
+    if(changed && state.selected && normText(state.selected.nome) === normText(nomeTrim)){
+        state.selected = emp;
+    }
+    return changed;
+}
 function movCadFindEmployeeByName(nome){
     const n = normText(nome || '');
     if(!n) return null;
@@ -10416,8 +10489,10 @@ function movCadFindEmployeeByName(nome){
 function movCadOnFuncionarioChange(keepOrigemDestino){
     const nome = document.getElementById('movCadFuncionario')?.value || '';
     const emp = movCadFindEmployeeByName(nome);
-    const unidadeAtual = String(emp?.atuando || '').trim();
-    const codPosto = getCodigoPostoByColaboradorNome(nome) || '';
+    const vigente = getMovimentacaoVigenteColaborador(nome);
+    const fromMov = getUnidadeCodPostoAtualFromMovimentacoes(nome);
+    const unidadeAtual = fromMov.unidade || String(emp?.atuando || '').trim();
+    const codPosto = fromMov.codPosto || employeeCodigoPostoCadastro(emp) || '';
     const unEl = document.getElementById('movCadUnidadeAtual');
     const codEl = document.getElementById('movCadCodPostoAtual');
     if(unEl) unEl.value = unidadeAtual || '';
@@ -10427,7 +10502,8 @@ function movCadOnFuncionarioChange(keepOrigemDestino){
     const origemEl = document.getElementById('movCadOrigem');
     if(origemEl){
         origemEl.value = '';
-        if(unidadeAtual && [...origemEl.options].some(o => o.value === unidadeAtual)) origemEl.value = unidadeAtual;
+        const origemSug = vigente?.destino || unidadeAtual;
+        if(origemSug && [...origemEl.options].some(o => o.value === origemSug)) origemEl.value = origemSug;
     }
 }
 function movCadOnDestinoChange(){
@@ -10506,12 +10582,20 @@ function editarMovCad(id){
 }
 function excluirMovCad(id){
     if(!confirm('Excluir esta movimentação do histórico?')) return;
-    const arr = getMovCad().filter(x => x.id !== id);
-    setMovCad(arr);
+    const arr = getMovCad();
+    const removed = arr.find(x => x.id === id);
+    const next = arr.filter(x => x.id !== id);
+    setMovCad(next);
+    if(removed?.funcionario) syncFichaCadastroFromMovimentacoes(removed.funcionario);
     const hid = document.getElementById('movCadEditId');
     if(hid && hid.value === id) limparFormMovCad();
     renderMovCadList();
+    if(typeof renderPostosPanorama === 'function') renderPostosPanorama();
     if(typeof renderMovimentacoes === 'function') renderMovimentacoes();
+    if(typeof renderAll === 'function') renderAll();
+    fpSaveEmployeesToLocalStorage();
+    fpNotifyIntranetChanged();
+    if(typeof propagateStateToDashboardIframes === 'function') propagateStateToDashboardIframes();
 }
 function setupMovCadListActions(){
     const el = document.getElementById('movCadList');
@@ -10564,9 +10648,11 @@ function salvarMovimentacaoCadastro(){
         createdAt: new Date().toISOString()
     };
     const arr = getMovCad();
+    let prevFuncionario = '';
     if(editId){
         const idx = arr.findIndex(x => x.id === editId);
         if(idx < 0){ alert('Registro não encontrado.'); return; }
+        prevFuncionario = String(arr[idx].funcionario || '').trim();
         item.id = editId;
         item.createdAt = arr[idx].createdAt || item.createdAt;
         arr[idx] = item;
@@ -10585,14 +10671,18 @@ function salvarMovimentacaoCadastro(){
             destino: item.destino
         });
     }
-    const emp = state.employees.find(e => e.nome === item.funcionario);
-    if(emp && item.destino) emp.atuando = item.destino;
+    syncFichaCadastroFromMovimentacoes(item.funcionario);
+    if(prevFuncionario && normText(prevFuncionario) !== normText(item.funcionario)){
+        syncFichaCadastroFromMovimentacoes(prevFuncionario);
+    }
     limparFormMovCad();
     renderPostosPanorama();
     renderMovimentacoes();
     renderAll();
     renderMovCadList();
     fpSaveEmployeesToLocalStorage();
+    fpNotifyIntranetChanged();
+    if(typeof propagateStateToDashboardIframes === 'function') propagateStateToDashboardIframes();
 }
 function renderMovCadList(){
     const el = document.getElementById('movCadList');
@@ -10602,7 +10692,10 @@ function renderMovCadList(){
     el.innerHTML = `<table><thead><tr><th>Funcionário</th><th>Cód. posto atual</th><th>Cód. posto destino</th><th>Origem</th><th>Destino</th><th>Início</th><th>Fim</th><th>Observações</th><th style="min-width:130px;">Ações</th></tr></thead><tbody>${
         arr.map(x=>{
             const idAttr = encodeURIComponent(x.id || '');
-            return `<tr><td>${esc(x.funcionario)}</td><td>${esc(getCodigoPostoByColaboradorNome(x.funcionario) || '—')}</td><td>${esc(x.codPostoDestino || getCodigoPostoByColaboradorNome(x.funcionario, x.destino) || '—')}</td><td>${esc(x.origem)}</td><td>${esc(x.destino)}</td><td>${esc(x.dataIni)}</td><td>${esc(x.dataFim)}</td><td>${esc(x.obs)}</td><td style="white-space:nowrap;"><button type="button" class="btn movcad-btn-edit" style="padding:4px 10px;font-size:11px;" data-movcad-id="${idAttr}">Editar</button> <button type="button" class="btn btn-danger movcad-btn-excluir" style="padding:4px 10px;font-size:11px;" data-movcad-id="${idAttr}">Excluir</button></td></tr>`;
+            const codAtual = getUnidadeCodPostoAtualFromMovimentacoes(x.funcionario).codPosto
+                || employeeCodigoPostoCadastro(movCadFindEmployeeByName(x.funcionario))
+                || '—';
+            return `<tr><td>${esc(x.funcionario)}</td><td>${esc(codAtual)}</td><td>${esc(x.codPostoDestino || getCodigoPostoByColaboradorNome(x.funcionario, x.destino) || '—')}</td><td>${esc(x.origem)}</td><td>${esc(x.destino)}</td><td>${esc(x.dataIni)}</td><td>${esc(x.dataFim)}</td><td>${esc(x.obs)}</td><td style="white-space:nowrap;"><button type="button" class="btn movcad-btn-edit" style="padding:4px 10px;font-size:11px;" data-movcad-id="${idAttr}">Editar</button> <button type="button" class="btn btn-danger movcad-btn-excluir" style="padding:4px 10px;font-size:11px;" data-movcad-id="${idAttr}">Excluir</button></td></tr>`;
         }).join('')
     }</tbody></table>`;
 }
@@ -14897,8 +14990,7 @@ function registrarMovimentacaoUnidadeQuadro(funcionario, origem, destino){
         origem: o,
         destino: d
     });
-    const emp = findEmployeeForPostoNome(nomeNorm) || state.employees.find(e => String(e.nome || '').trim() === nomeNorm);
-    if(emp) emp.atuando = d;
+    syncFichaCadastroFromMovimentacoes(nomeNorm);
     const nk = normText(nomeNorm);
     (state.quadroGeral || []).forEach(r => {
         if(normText(String(r?.nome || '').trim()) === nk){
@@ -14931,7 +15023,6 @@ function registrarMovimentacaoUnidadeQuadro(funcionario, origem, destino){
     if(extrasChanged) setPostosExtras(extras);
     const runPostMovUi = () => {
         try{
-            syncEmployeeAtuandoFromPostoQuadro(nomeNorm);
             fpSaveEmployeesToLocalStorage();
             fpPersistPostosQuadroState();
             refreshPostosUnidadeOptions();
@@ -14939,6 +15030,8 @@ function registrarMovimentacaoUnidadeQuadro(funcionario, origem, destino){
             renderMovimentacoes();
             renderMovCadList();
             renderAll();
+            fpNotifyIntranetChanged();
+            if(typeof propagateStateToDashboardIframes === 'function') propagateStateToDashboardIframes();
             if(typeof renderBeneficiosCestas === 'function') renderBeneficiosCestas();
             if(typeof renderVtReport === 'function') renderVtReport();
             if(typeof populateCadastroDependentes === 'function') populateCadastroDependentes();
