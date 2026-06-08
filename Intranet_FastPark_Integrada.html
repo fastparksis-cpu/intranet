@@ -18,6 +18,7 @@
 <script src="/fp-auth.js"></script>
 <script src="/fp-supabase-sync.js"></script>
 <script src="/fp-propostas.js"></script>
+<script src="/fp-selos.js"></script>
 <script>
 (function () {
     if (window.FP_AUTH_REQUIRED === false) return;
@@ -2153,6 +2154,7 @@ td { color: var(--t); font-weight: 500;}
             </button>
             <div class="fp-menu-sub">
                 <button type="button" class="fp-menu-item" data-tab="propostas" onclick="fpMenuSwitchTab('propostas', 'com')">Propostas</button>
+                <button type="button" class="fp-menu-item" data-tab="selos" onclick="fpMenuSwitchTab('selos', 'com')">Selos</button>
             </div>
         </div>
         <div class="fp-menu-group" data-fp-group="fin">
@@ -3436,6 +3438,41 @@ td { color: var(--t); font-weight: 500;}
         </article>
     </div>
 
+    <div id="selos" class="tab-content fp-page-full">
+        <section class="hero">
+            <div class="hero-brand">
+                <div>
+                    <h1>Geração de Selos</h1>
+                    <p class="hero-subtitle">Cadastre a empresa compradora, validade e quantidade — PDF em folha A4 (4×14 selos) com marca d'água FastPark, no layout do modelo Itaú.</p>
+                </div>
+            </div>
+            <div class="u" style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;min-width:200px;">
+                <p style="margin:0;font-size:11px;opacity:.85;text-align:right;">Próximo serial: <strong id="seloProximoSerial">—</strong></p>
+            </div>
+        </section>
+        <article class="panel">
+            <div class="head"><h2>Novo lote de selos</h2><span id="seloEditHint" style="display:none;font-size:12px;color:var(--fp-orange);font-weight:600;">Editando lote — Salvar atualiza o registro.</span></div>
+            <div class="body" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;font-size:12px;">
+                <div style="grid-column:span 2;"><label><strong>Empresa compradora</strong></label><br><input id="seloEmpresa" type="text" placeholder="Ex.: ITAÚ UNIBANCO S.A" style="width:100%;box-sizing:border-box;"></div>
+                <div><label><strong>Unidade FastPark</strong></label><br><select id="seloUnidadeIdx" style="width:100%;box-sizing:border-box;"></select></div>
+                <div><label><strong>Validade do selo</strong></label><br><select id="seloValidade" style="width:100%;box-sizing:border-box;"></select></div>
+                <div><label><strong>Quantidade</strong></label><br><input id="seloQuantidade" type="number" min="1" max="500" value="50" style="width:100%;box-sizing:border-box;"></div>
+                <div><label><strong>Data emissão</strong></label><br><input id="seloData" type="date" style="width:100%;box-sizing:border-box;"></div>
+                <div style="grid-column:1/-1;"><label><strong>Observações</strong> <span style="font-weight:400;color:#666;">(opcional)</span></label><br><textarea id="seloObs" rows="2" placeholder="Pedido, responsável, nota interna…" style="width:100%;box-sizing:border-box;"></textarea></div>
+                <div style="grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+                    <button type="button" class="btn btn-success" onclick="salvarLoteSelos()">Salvar lote</button>
+                    <button type="button" class="btn btn-fp-dark" onclick="gerarPdfSelos()">Gerar PDF</button>
+                    <button type="button" class="btn" onclick="seloLimparForm()">Novo / limpar</button>
+                </div>
+                <p style="grid-column:1/-1;margin:0;font-size:11px;color:#555;">Cada selo traz: empresa, validade, código único (<code>#!000111-xxxxx!11136224T</code>), <strong>FAST PARK</strong> e nome da unidade. A folha imprime 56 selos por página.</p>
+            </div>
+        </article>
+        <article class="panel list" style="margin-top:12px;">
+            <h3>Histórico de lotes</h3>
+            <div class="inner" id="seloLista"></div>
+        </article>
+    </div>
+
     <div id="fin-pagar" class="tab-content fp-page-full">
         <div class="fp-placeholder-panel"><p>Esta área será ligada ao fluxo financeiro. Indique quando quiser implementar os campos e integrações.</p></div>
     </div>
@@ -3783,6 +3820,7 @@ function switchTab(tab) {
     if(tab === 'referencias' && typeof refInitEmpresasTab === 'function') refInitEmpresasTab();
     if(tab === 'acessos' && typeof renderAcessosTab === 'function') renderAcessosTab();
     if(tab === 'propostas' && typeof renderPropostasTab === 'function') renderPropostasTab();
+    if(tab === 'selos' && typeof renderSelosTab === 'function') renderSelosTab();
 }
 
 function limparFormUsuarioAcesso(){
@@ -8006,6 +8044,8 @@ const FP_LAUDOS_KEY = 'fp_laudos';
 const FP_GESTAO_PAGAMENTOS_KEY = 'fp_gestao_pagamentos_rubricas_v1';
 const FP_GESTAO_PAGAMENTOS_HIST_IMPORT_KEY = 'fp_gestao_pagamentos_hist_import_v1';
 const FP_PROPOSTAS_KEY = 'fp_propostas_v1';
+const FP_SELOS_KEY = 'fp_selos_lotes_v1';
+const FP_SELOS_SERIAL_KEY = 'fp_selos_serial_counter_v1';
 const FP_DB_VERSION = 3;
 /** Chaves reservadas para módulos ainda em placeholder (Financeiro / Estoque). */
 const FP_FIN_CONTAS_PAGAR_KEY = 'fp_fin_contas_pagar';
@@ -8052,6 +8092,8 @@ const FP_SNAPSHOT_STORAGE_REGISTRY = [
     { key: FP_GESTAO_PAGAMENTOS_HIST_IMPORT_KEY, area: 'Gestão de Folha — Histórico importado' },
     { key: FP_PROPOSTAS_KEY, area: 'Comercial — Propostas' },
     { key: FP_PROPOSTA_MODELO_IDB_KEY, area: 'Comercial — Modelo PPTX (metadado IDB)' },
+    { key: FP_SELOS_KEY, area: 'Comercial — Selos (lotes)' },
+    { key: FP_SELOS_SERIAL_KEY, area: 'Comercial — Selos (contador serial)' },
     { key: MOV_CAD_KEY, area: 'Movimentações' },
     { key: 'fp_vt_cfg', area: 'Vale Transporte' },
     { key: 'fp_vt_monthly', area: 'Vale Transporte (histórico)' },
