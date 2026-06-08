@@ -191,6 +191,39 @@
         });
     }
 
+    function seloBarcodeDataUrl(codigo) {
+        if (!g.JsBarcode) return null;
+        const text = String(codigo || '').trim();
+        if (!text) return null;
+        try {
+            const canvas = g.document.createElement('canvas');
+            g.JsBarcode(canvas, text, {
+                format: 'CODE128',
+                width: 1,
+                height: 36,
+                displayValue: false,
+                margin: 1,
+                background: '#ffffff',
+                lineColor: '#000000'
+            });
+            return canvas.toDataURL('image/png');
+        } catch (e) {
+            console.warn('[FP Selos] barcode', text, e);
+            return null;
+        }
+    }
+
+    function preloadSelosBarcodes(selos) {
+        const map = new Map();
+        (selos || []).forEach(function (selo) {
+            const k = String(selo.codigo || '');
+            if (!k || map.has(k)) return;
+            const img = seloBarcodeDataUrl(k);
+            if (img) map.set(k, img);
+        });
+        return map;
+    }
+
     function drawSeloWatermark(doc, logoData, cx, cy, w, h) {
         if (!logoData) return;
         const lw = w * 0.72;
@@ -211,7 +244,7 @@
         }
     }
 
-    function drawSeloCell(doc, x, y, w, h, selo, logoData) {
+    function drawSeloCell(doc, x, y, w, h, selo, logoData, barcodeData) {
         doc.setDrawColor(180, 180, 180);
         doc.setLineWidth(0.15);
         doc.setLineDashPattern([1.2, 1.2], 0);
@@ -219,52 +252,70 @@
         doc.setLineDashPattern([], 0);
 
         const cx = x + w / 2;
-        drawSeloWatermark(doc, logoData, cx, y + h * 0.48, w, h);
+        drawSeloWatermark(doc, logoData, cx, y + h * 0.52, w, h);
 
-        const pad = 1.2;
-        let ty = y + pad + 2.8;
+        const pad = 1;
+        let ty = y + pad + 2.2;
         const maxW = w - pad * 2;
+        const bottom = y + h - pad;
 
         doc.setTextColor(20, 20, 20);
 
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(6.2);
-        const empLines = doc.splitTextToSize(String(selo.empresa || '—').toUpperCase(), maxW);
+        doc.setFontSize(5.8);
+        const empLines = doc.splitTextToSize(String(selo.empresa || '—').toUpperCase(), maxW).slice(0, 2);
         empLines.forEach(function (ln) {
             doc.text(ln, cx, ty, { align: 'center' });
-            ty += 2.6;
+            ty += 2.3;
         });
 
         doc.setFont('helvetica', 'normal');
-        doc.setFontSize(5.2);
-        ty += 0.4;
+        doc.setFontSize(4.8);
+        ty += 0.2;
         doc.text('Válido por', cx, ty, { align: 'center' });
-        ty += 2.4;
+        ty += 2.1;
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(5.8);
+        doc.setFontSize(5.4);
         doc.text(String(selo.validade || '1 Hora'), cx, ty, { align: 'center' });
-        ty += 3.2;
+        ty += 2.4;
+
+        const barH = 6.8;
+        const barW = maxW * 0.92;
+        const barX = cx - barW / 2;
+        if (barcodeData) {
+            try {
+                doc.addImage(barcodeData, 'PNG', barX, ty, barW, barH, undefined, 'FAST');
+            } catch (e) {
+                console.warn('[FP Selos] addImage barcode', e);
+            }
+            ty += barH + 0.8;
+        } else {
+            ty += 0.5;
+        }
 
         doc.setFont('courier', 'bold');
-        doc.setFontSize(5.4);
-        const codLines = doc.splitTextToSize(String(selo.codigo || ''), maxW);
+        doc.setFontSize(4.6);
+        const codText = String(selo.codigo || '');
+        const codLines = doc.splitTextToSize(codText, maxW).slice(0, 2);
         codLines.forEach(function (ln) {
+            if (ty > bottom - 7) return;
             doc.text(ln, cx, ty, { align: 'center' });
-            ty += 2.5;
+            ty += 2.1;
         });
 
+        ty = Math.max(ty + 0.4, bottom - 6.2);
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(6.4);
-        ty += 0.6;
+        doc.setFontSize(5.8);
         doc.text('FAST PARK', cx, ty, { align: 'center' });
-        ty += 2.8;
+        ty += 2.4;
 
         doc.setFont('helvetica', 'normal');
-        doc.setFontSize(5.6);
-        const uniLines = doc.splitTextToSize(String(selo.unidadeNome || '—'), maxW);
+        doc.setFontSize(5);
+        const uniLines = doc.splitTextToSize(String(selo.unidadeNome || '—'), maxW).slice(0, 2);
         uniLines.forEach(function (ln) {
+            if (ty > bottom - 0.5) return;
             doc.text(ln, cx, ty, { align: 'center' });
-            ty += 2.4;
+            ty += 2.1;
         });
     }
 
@@ -288,6 +339,12 @@
             : generateSelosForLote(lote);
 
         const logoData = await loadFpLogoForPdf();
+        const barcodeMap = preloadSelosBarcodes(selos);
+        if (!g.JsBarcode) {
+            g.alert('Biblioteca de código de barras não carregada. Verifique a ligação à internet e atualize a página (Ctrl+F5).');
+        } else if (barcodeMap.size === 0 && selos.length) {
+            console.warn('[FP Selos] nenhum código de barras gerado');
+        }
         const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
         const pageW = 210;
         const pageH = 297;
@@ -308,7 +365,7 @@
             const row = Math.floor(pageIdx / cols);
             const x = marginX + col * (cellW + gapX);
             const y = marginY + row * (cellH + gapY);
-            drawSeloCell(doc, x, y, cellW, cellH, selo, logoData);
+            drawSeloCell(doc, x, y, cellW, cellH, selo, logoData, barcodeMap.get(String(selo.codigo || '')) || null);
         });
 
         const fname = 'Selos_' + String(lote.empresa || 'cliente').replace(/\W+/g, '_').slice(0, 40) +
