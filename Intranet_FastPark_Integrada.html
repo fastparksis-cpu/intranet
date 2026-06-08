@@ -3041,7 +3041,7 @@ td { color: var(--t); font-weight: 500;}
             <article class="panel list ref-report quadro-atual-report">
                 <div class="head">
                     <h2>Quadro atual</h2>
-                    <p class="ref-report-sub">Relatório alimentado por <strong>Unidades → Postos</strong> (código, dias, escala, horários, supervisor) e cadastro da unidade (endereço, CNPJ, empresa). <strong>Colaborador, função e registro</strong> vêm da aba <strong>Cadastro</strong> (<strong>Atuando</strong> = unidade; código do posto no cadastro).</p>
+                    <p class="ref-report-sub">Relatório alimentado por <strong>Unidades → Postos</strong> (código, dias, escala, horários, supervisor) e cadastro da unidade (endereço, CNPJ, empresa). <strong>Colaborador, função e registro</strong> vêm <strong>somente da ficha cadastral</strong>: campo <strong>Código do posto</strong> (deve coincidir com o código do posto em Unidades → Postos) e <strong>Atuando</strong> = unidade.</p>
                 </div>
                 <div class="ref-report-actions">
                     <button type="button" class="btn btn-info" onclick="abrirUnidadePostos()">Abrir cadastro de postos (Unidades)</button>
@@ -7662,9 +7662,9 @@ function renderProfile() {
                         <select id="cadEmpCodPosto" style="min-width:220px;max-width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;"></select>
                         <button type="button" class="btn btn-fp-orange" onclick="salvarVinculoCodPostoCadastro()">Guardar vínculo</button>
                     </div>
-                    <p style="margin:6px 0 0;font-size:11px;color:#6b7280;">Um código de posto = um colaborador. Lista de <strong>Unidades → Postos</strong> (unidade = <strong>Atuando</strong>). Cada funcionário deve ter o seu código (ex.: 1501, 1502).</p>
+                    <p style="margin:6px 0 0;font-size:11px;color:#6b7280;">Um código de posto = um colaborador. O <strong>Quadro atual</strong> lê o colaborador só da ficha (<strong>Código do posto</strong> + <strong>Atuando</strong>). Lista de códigos: <strong>Unidades → Postos</strong>.</p>
                 </div>
-                <div class="cell lab"><div class="q">Código do posto (vigente)</div><div class="v">${esc(employeeCodigoPostoCadastro(e) || getCodigoPostoByColaboradorNome(e.nome, e.atuando) || '—')}</div></div>
+                <div class="cell lab"><div class="q">Código do posto (vigente)</div><div class="v">${esc(employeeCodigoPostoCadastro(e) || '—')}</div></div>
                 <div class="cell lab"><div class="q">Carga Horária</div><div class="v">${esc(e.carga)}</div></div>
                 <div class="cell lab"><div class="q">Instrução</div><div class="v">${esc(e.instrucao)}</div></div>
                 <div class="cell lab"><div class="q">Deficiência</div><div class="v">${esc(e.deficiencia)}</div></div>
@@ -14277,28 +14277,29 @@ function fmtQuadroAtualHora(v){
     const s = String(v || '').trim();
     return s || '—';
 }
-/** Colaborador do posto: vínculo explícito no Cadastro (codPosto = código do posto na mesma unidade Atuando). */
-function findColaboradorParaPostoCatalog(p, row){
-    row = row || {};
-    const postoK = normalizeCodPostoCadastro(p.codigo || row.posto || row.codigo);
-    if(!postoK) return null;
-    const uniNome = String(p.unidadeNome || row.unidade || '').trim();
-    const uniCod = String(p.unidadeCod || '').trim();
-    const uniK = normText(uniNome || uniCod);
+/** Colaborador do posto: somente ficha cadastral (campo codPosto = código do posto na unidade Atuando). */
+function findEmployeeByCodPostoFichaCadastro(codPosto, unidadeNome, unidadeCod){
+    const pk = normalizeCodPostoCadastro(codPosto);
+    if(!pk) return null;
     const empsAtivos = (state.employees || []).filter(e => {
         const st = String(e.status || '').toUpperCase();
-        return !st.includes('DESLIG') && employeeAtuandoMatchesUnidade(e, uniNome, uniCod);
+        return !st.includes('DESLIG') && employeeCodigoPostoCadastro(e) === pk;
     });
-    const byCod = empsAtivos.filter(e => employeeCodigoPostoCadastro(e) === postoK);
-    if(byCod.length === 1) return byCod[0];
-    if(byCod.length > 1) return null;
-    const q = (state.quadroGeral || []).find(r =>
-        normText(String(r.unidade || '').trim()) === uniK &&
-        normalizeCodPostoCadastro(r.posto || r.codigo) === postoK &&
-        String(r.nome || '').trim()
-    );
-    if(q) return findEmployeeForPostoNome(q.nome);
+    if(!empsAtivos.length) return null;
+    const naUnidade = empsAtivos.filter(e => employeeAtuandoMatchesUnidade(e, unidadeNome, unidadeCod));
+    if(naUnidade.length === 1) return naUnidade[0];
+    if(naUnidade.length > 1) return null;
+    if(empsAtivos.length === 1) return empsAtivos[0];
     return null;
+}
+function findColaboradorParaPostoCatalog(p, row){
+    row = row || {};
+    const postoK = normalizeCodPostoCadastro(p?.codigo || row.posto || row.codigo);
+    if(!postoK) return null;
+    const uni = resolveUnidadeRecordParaPosto(p) || findUnidadeCanonical(p?.unidadeCod, p?.unidadeNome, p?.unidadeNome || row.unidade);
+    const uniNome = String(uni?.nome || p?.unidadeNome || row.unidade || '').trim();
+    const uniCod = String(uni?.cod || p?.unidadeCod || row.unidadeCod || '').trim();
+    return findEmployeeByCodPostoFichaCadastro(postoK, uniNome, uniCod);
 }
 function fmtEmpresaRegistroColaborador(emp){
     const e = String(emp?.empresa || '').trim();
@@ -14307,10 +14308,12 @@ function fmtEmpresaRegistroColaborador(emp){
 }
 function dadosColaboradorQuadroAtual(emp){
     if(!emp) return { colaborador: '—', funcao: '—', registro: '—' };
+    const registro = String(emp.registro2 || emp.codigoRH || emp.codigoESocial || '').trim()
+        || fmtEmpresaRegistroColaborador(emp);
     return {
         colaborador: String(emp.nome || '').trim() || '—',
         funcao: String(emp.cargo || '').trim() || '—',
-        registro: fmtEmpresaRegistroColaborador(emp)
+        registro: registro === '—' ? '—' : registro
     };
 }
 function parseCargaSemanalHoras(raw, diasRef, escalaRef){
@@ -14555,7 +14558,7 @@ function renderPostosPanorama(){
                 </select>
             </div>
         </div>
-        <p style="margin:0 0 10px;font-size:12px;color:#6b7280;">${linhasFiltradas.length} posto(s) exibido(s) de ${linhas.length} total — competência: <strong>${String(comp.mes).padStart(2,'0')}/${comp.ano}</strong>. Dados operacionais (código, dias, escala, horários, supervisor) vêm de <strong>Unidades → Postos</strong>; endereço/CNPJ/empresa da unidade vêm do <strong>Cadastro de unidades</strong>; colaborador só na aba <strong>Cadastro</strong> (<strong>Atuando</strong> + código do posto).</p>
+        <p style="margin:0 0 10px;font-size:12px;color:#6b7280;">${linhasFiltradas.length} posto(s) exibido(s) de ${linhas.length} total — competência: <strong>${String(comp.mes).padStart(2,'0')}/${comp.ano}</strong>. Dados do posto: <strong>Unidades → Postos</strong>. Colaborador: ficha cadastral com <strong>Código do posto</strong> igual ao código do posto + <strong>Atuando</strong> = unidade.</p>
         ${gruposHtml}`;
 }
 
