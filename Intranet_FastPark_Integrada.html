@@ -6384,8 +6384,10 @@ function loadWorkbook(data) {
         state.cnhColBDByNome = cnhDadosCols.venc;
         state.cnhColNumeroByNome = cnhDadosCols.numero;
         state.cnhColCategoriaByNome = cnhDadosCols.categoria;
+        const prevEmployeesForCodPosto = (state.employees || []).map(e => ({ ...e }));
         const rawData = XLSX.utils.sheet_to_json(sh, {defval: '', raw: false, cellDates: true});
         state.employees = rawData.map(row => build(sheetRowToNormKeys(row))).filter(x => x.nome);
+        state.employees = fpMergeEmployeeLocalCadastroFields(state.employees, prevEmployeesForCodPosto);
 
         if(rawData.length > 0) {
             const rawKeys = Object.keys(rawData[0]);
@@ -8768,6 +8770,33 @@ function fpSlimEmployeesForLocalStorage(arr){
     });
     return { slim, bag };
 }
+/** Chave estável para cruzar colaborador entre snapshot embutido/nuvem e cadastro local. */
+function fpEmployeeCadastroMatchKey(emp){
+    const cpf = String(emp?.cpf || '').replace(/\D/g, '');
+    if(cpf.length >= 11) return 'cpf:' + cpf;
+    const nk = normText(emp?.nome || '');
+    return nk ? 'nome:' + nk : '';
+}
+/** Preserva vínculo de posto (codPosto) gravado na ficha quando snapshot embutido/nuvem não traz o campo. */
+function fpMergeEmployeeLocalCadastroFields(incoming, localPrev){
+    if(!Array.isArray(incoming) || !incoming.length) return incoming || [];
+    if(!Array.isArray(localPrev) || !localPrev.length) return incoming;
+    const localMap = new Map();
+    localPrev.forEach(e => {
+        const k = fpEmployeeCadastroMatchKey(e);
+        if(k) localMap.set(k, e);
+    });
+    if(!localMap.size) return incoming;
+    return incoming.map(e => {
+        const hit = localMap.get(fpEmployeeCadastroMatchKey(e));
+        if(!hit) return e;
+        const localCod = normalizeCodPostoCadastro(hit.codPosto || hit.codigoPosto || hit.codigo_posto);
+        if(!localCod) return e;
+        const incCod = normalizeCodPostoCadastro(e.codPosto || e.codigoPosto || e.codigo_posto);
+        if(incCod === localCod) return e;
+        return { ...e, codPosto: localCod };
+    });
+}
 function fpMergeEmployeeAttachments(arr, bag){
     if(!Array.isArray(arr)) return [];
     const b = bag && typeof bag === 'object' ? bag : {};
@@ -9449,7 +9478,17 @@ async function applyFpEmbeddedIntranetDb(db, opts){
         window.__FP_CLOUD_SNAPSHOT_LOADED__ = true;
     }
     window.__FP_EMBEDDED_ATTACHMENTS__ = att;
+    let localPrevEmployees = [];
+    if(Array.isArray(state.employees) && state.employees.length){
+        localPrevEmployees = state.employees.map(e => ({ ...e }));
+    } else {
+        try {
+            const rawLs = localStorage.getItem(FP_EMPLOYEES_STORE_KEY);
+            if(rawLs) localPrevEmployees = JSON.parse(rawLs);
+        } catch(eLs) { console.warn('[FP] merge codPosto local', eLs); }
+    }
     state.employees = expandEmployeeRefsInEmployees(db.state.employees, att);
+    state.employees = fpMergeEmployeeLocalCadastroFields(state.employees, localPrevEmployees);
     state.cnhMap = new Map(Object.entries(db.state.cnhMapObj || {}));
     state.cnhColBDByNome = new Map(Object.entries(db.state.cnhColBDByNomeObj || {}));
     state.ferias = db.state.ferias || [];
@@ -13794,7 +13833,14 @@ function employeeAtuandoMatchesUnidade(emp, unidadeNome, unidadeCod){
         if(pa.cod && unidadeCodLooksSimilar(u.cod, pa.cod)) return true;
         if(pa.nome && unidadeNomeCore(u.nome) === normText(pa.nome)) return true;
     }
+    const empKey = _normUniPostoUnidadeKey(parseUnidadeLabelRef(a).cod, parseUnidadeLabelRef(a).nome || a);
+    const postoKey = _normUniPostoUnidadeKey(unidadeCod, unidadeNome);
+    if(empKey && postoKey && empKey === postoKey) return true;
     return false;
+}
+function employeeAtuandoUnidadeKey(emp){
+    const ref = resolveUnidadeRefFromAtuando(emp?.atuando || emp?.unidade || '');
+    return _normUniPostoUnidadeKey(ref.cod, ref.nome || emp?.atuando || emp?.unidade || '');
 }
 function normalizeCodPostoCadastro(cod){
     return String(cod || '').trim().toUpperCase();
@@ -13837,9 +13883,10 @@ if(typeof window !== 'undefined'){
 function resolveUnidadeRefFromAtuando(atuando){
     const a = String(atuando || '').trim();
     if(!a) return { nome: '', cod: '' };
-    const arr = getUnidades();
-    const hit = arr.find(u => normText(u.nome) === normText(a) || normText(u.cod) === normText(a));
-    return hit ? { nome: String(hit.nome || '').trim(), cod: String(hit.cod || '').trim() } : { nome: a, cod: '' };
+    const uni = findUnidadeCanonical('', '', a);
+    if(uni) return { nome: String(uni.nome || '').trim(), cod: String(uni.cod || '').trim() };
+    const parsed = parseUnidadeLabelRef(a);
+    return { nome: parsed.nome || a, cod: parsed.cod || '' };
 }
 function fillCodPostoSelect(elId, unidadeNome, unidadeCod, selectedCod){
     const sel = document.getElementById(elId);
@@ -14281,12 +14328,18 @@ function fmtQuadroAtualHora(v){
 function findEmployeeByCodPostoFichaCadastro(codPosto, unidadeNome, unidadeCod){
     const pk = normalizeCodPostoCadastro(codPosto);
     if(!pk) return null;
+    const postoKey = _normUniPostoUnidadeKey(unidadeCod, unidadeNome);
     const empsAtivos = (state.employees || []).filter(e => {
         const st = String(e.status || '').toUpperCase();
         return !st.includes('DESLIG') && employeeCodigoPostoCadastro(e) === pk;
     });
     if(!empsAtivos.length) return null;
-    const naUnidade = empsAtivos.filter(e => employeeAtuandoMatchesUnidade(e, unidadeNome, unidadeCod));
+    const matchUnidade = (e) => {
+        if(employeeAtuandoMatchesUnidade(e, unidadeNome, unidadeCod)) return true;
+        const ek = employeeAtuandoUnidadeKey(e);
+        return ek && postoKey && ek === postoKey;
+    };
+    const naUnidade = empsAtivos.filter(matchUnidade);
     if(naUnidade.length === 1) return naUnidade[0];
     if(naUnidade.length > 1) return null;
     if(empsAtivos.length === 1) return empsAtivos[0];
@@ -14802,10 +14855,11 @@ function getPostoUnidadeAutoritativaParaColaborador(nome){
     return best;
 }
 function syncEmployeeAtuandoFromPostoQuadro(nome){
-    const u = getPostoUnidadeAutoritativaParaColaborador(nome);
-    if(u === null) return;
     const emp = findEmployeeForPostoNome(nome);
     if(!emp) return;
+    if(employeeCodigoPostoCadastro(emp)) return;
+    const u = getPostoUnidadeAutoritativaParaColaborador(nome);
+    if(u === null) return;
     emp.atuando = u;
 }
 function syncTodosAtuandoCruzamentoCadastroQuadro(){
