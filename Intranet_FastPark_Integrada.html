@@ -3041,7 +3041,7 @@ td { color: var(--t); font-weight: 500;}
             <article class="panel list ref-report quadro-atual-report">
                 <div class="head">
                     <h2>Quadro atual</h2>
-                    <p class="ref-report-sub">Relatório de postos cadastrados em <strong>Unidades → Postos</strong>. <strong>Colaborador, função e registro</strong> vêm só da aba <strong>Cadastro</strong> (campo <strong>Atuando</strong> = unidade; opcional código do posto no cadastro). A aba Postos não grava nome de funcionário.</p>
+                    <p class="ref-report-sub">Relatório alimentado por <strong>Unidades → Postos</strong> (código, dias, escala, horários, supervisor) e cadastro da unidade (endereço, CNPJ, empresa). <strong>Colaborador, função e registro</strong> vêm da aba <strong>Cadastro</strong> (<strong>Atuando</strong> = unidade; código do posto no cadastro).</p>
                 </div>
                 <div class="ref-report-actions">
                     <button type="button" class="btn btn-info" onclick="abrirUnidadePostos()">Abrir cadastro de postos (Unidades)</button>
@@ -6474,6 +6474,7 @@ function loadWorkbook(data) {
             });
             setUnidades(saved);
             sincronizarTodosPostosComCadastro();
+            syncLegacyPostosIntoUnidadesCatalog();
             syncTodosAtuandoCruzamentoCadastroQuadro();
             fpSaveEmployeesToLocalStorage();
         }
@@ -9455,6 +9456,7 @@ async function applyFpEmbeddedIntranetDb(db, opts){
     state.movimentacoes = db.state.movimentacoes || [];
     state.quadroGeral = db.state.quadroGeral || [];
     enrichQuadroGeralUnidadesFromEmployees();
+    syncLegacyPostosIntoUnidadesCatalog();
     sincronizarTodosPostosComCadastro();
     state.pagas = db.state.pagas || [];
     state.selected = null;
@@ -9573,6 +9575,7 @@ async function applyFpEmbeddedIntranetDb(db, opts){
         if(typeof render === 'function') render();
         if(typeof renderPagasHistory === 'function') renderPagasHistory();
         if(typeof renderPedidosHistorico === 'function') renderPedidosHistorico();
+        if(typeof renderPostosPanorama === 'function') renderPostosPanorama();
     } catch(rendErr) { console.warn('[FP] Re-render pós-banco embutido', rendErr); }
     if(typeof addAudit === 'function') addAudit('Banco embutido aplicado a partir do arquivo HTML.', 'action');
     if(typeof syncTodosAtuandoCruzamentoCadastroQuadro === 'function') syncTodosAtuandoCruzamentoCadastroQuadro();
@@ -13536,6 +13539,84 @@ function findPostoCatalogByCodigoGlobal(codigo){
     const arr = getUnidadesPostosCatalog();
     return arr.find(p => String(p.codigo || '').trim().toUpperCase() === cod) || null;
 }
+/** Unidade cadastrada correspondente ao registro do catálogo de postos. */
+function resolveUnidadeRecordParaPosto(p){
+    if(!p) return null;
+    const arr = getUnidades();
+    const cod = String(p.unidadeCod || '').trim();
+    const nome = String(p.unidadeNome || '').trim();
+    if(cod){
+        const hit = arr.find(u => normText(String(u.cod || '').trim()) === normText(cod));
+        if(hit) return hit;
+    }
+    if(nome){
+        const hit = arr.find(u => normText(String(u.nome || '').trim()) === normText(nome));
+        if(hit) return hit;
+    }
+    return null;
+}
+/** Importa postos legados (planilha quadro / extras) para o catálogo Unidades → Postos, sem duplicar. */
+function syncLegacyPostosIntoUnidadesCatalog(){
+    const catalog = getUnidadesPostosCatalog();
+    const seen = new Set();
+    catalog.forEach(p => {
+        const k = _normUniPostoUnidadeKey(p.unidadeCod, p.unidadeNome) + '|' + String(p.codigo || '').trim().toUpperCase();
+        if(k.endsWith('|')) return;
+        seen.add(k);
+    });
+    let changed = false;
+    const unidades = getUnidades();
+    const sources = [
+        ...(state.quadroGeral || []).map(r => ({ row: r, from: 'quadroGeral' })),
+        ...getPostosExtras().map(r => ({ row: r, from: 'extras' }))
+    ];
+    sources.forEach(({ row: r }) => {
+        const codigo = String(r.posto || r.codigo || '').trim();
+        const unidadeNome = String(r.unidade || r.unidadeNome || '').trim();
+        if(!codigo || !unidadeNome) return;
+        const uni = unidades.find(u =>
+            _normUnidadePosto(u.nome) === _normUnidadePosto(unidadeNome) ||
+            _normUnidadePosto(u.cod) === _normUnidadePosto(unidadeNome)
+        );
+        const uCod = String(uni?.cod || r.unidadeCod || '').trim();
+        const uNome = String(uni?.nome || unidadeNome).trim();
+        const key = _normUniPostoUnidadeKey(uCod, uNome) + '|' + codigo.toUpperCase();
+        if(seen.has(key)) return;
+        seen.add(key);
+        catalog.push({
+            id: 'up_legacy_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+            unidadeCod: uCod,
+            unidadeNome: uNome,
+            codigo,
+            diasSemana: String(r.diasSemana || '').trim(),
+            paridade12x36: String(r.paridade12x36 || '').trim(),
+            escala: String(r.escala || r.jornada || '').trim(),
+            jornada: String(r.escala || r.jornada || '').trim(),
+            entrada: String(r.entrada || '').trim(),
+            saidaIntervalo: String(r.saidaIntervalo || r.intervalo || '').trim(),
+            retornoIntervalo: String(r.retornoIntervalo || r.intervalo2 || '').trim(),
+            saida: String(r.saida || '').trim(),
+            supervisor: String(r.supervisor || '').trim(),
+            status: String(r.status || 'ATIVO').trim(),
+            criadoEm: new Date().toISOString(),
+            atualizadoEm: new Date().toISOString()
+        });
+        changed = true;
+    });
+    if(changed) setUnidadesPostosCatalog(catalog);
+    return changed;
+}
+function getQuadroAtualPostosCatalog(){
+    let catalog = getUnidadesPostosCatalog();
+    if(!catalog.length){
+        const hasLegacy = (state.quadroGeral || []).some(r => String(r.posto || r.codigo || '').trim() && String(r.unidade || '').trim())
+            || getPostosExtras().some(r => String(r.posto || r.codigo || '').trim() && String(r.unidade || '').trim());
+        if(hasLegacy && syncLegacyPostosIntoUnidadesCatalog()){
+            catalog = getUnidadesPostosCatalog();
+        }
+    }
+    return catalog;
+}
 function localizarPostoPorCodigo(){
     const cod = (document.getElementById('uniPostoBuscaCodigo')?.value || '').trim();
     const hint = document.getElementById('uniPostoBuscaHint');
@@ -13552,15 +13633,22 @@ function localizarPostoPorCodigo(){
     editarPostoUnidadeCatalog(encodeURIComponent(String(row.id || '')));
 }
 function catalogPostoToQuadroRow(p, catalogIdx){
-    const d = lookupDadosUnidadeParaQuadro(p.unidadeNome || p.unidadeCod || '');
+    const uni = resolveUnidadeRecordParaPosto(p);
+    const uniNome = String(uni?.nome || p.unidadeNome || '').trim();
+    const uniCod = String(uni?.cod || p.unidadeCod || '').trim();
+    const d = lookupDadosUnidadeParaQuadro(uniNome || uniCod);
+    const enderecoUnidade = String(uni?.endereco || d.enderecoUnidade || '').trim();
+    const cnpjUnidade = String(uni?.cnpj || d.cnpjUnidade || '').trim();
+    const empresaUnidade = String(uni?.empresa || d.empresaUnidade || '').trim();
     const row = {
         posto: p.codigo || '',
         codigo: p.codigo || '',
         status: p.status || 'ATIVO',
-        unidade: p.unidadeNome || '',
-        enderecoUnidade: d.enderecoUnidade || '',
-        cnpjUnidade: d.cnpjUnidade || '',
-        empresaUnidade: d.empresaUnidade || '',
+        unidade: uniNome,
+        unidadeCod: uniCod,
+        enderecoUnidade,
+        cnpjUnidade,
+        empresaUnidade,
         idRh: p.idRh || '',
         nome: p.nome || '',
         funcao: p.funcao || '',
@@ -13575,7 +13663,7 @@ function catalogPostoToQuadroRow(p, catalogIdx){
         intervalo2: p.retornoIntervalo || '',
         saida: p.saida || '',
         supervisor: p.supervisor || '',
-        empresa: p.empresa || '',
+        empresa: p.empresa || empresaUnidade || '',
         __source: 'catalog',
         __idx: catalogIdx,
         __catalogId: p.id
@@ -14248,9 +14336,9 @@ function onQuadroAtualUnidadeFiltroChange(){
 function renderPostosPanorama(){
     const el = document.getElementById('postosPanorama');
     if(!el) return;
-    const catalog = getUnidadesPostosCatalog();
+    const catalog = getQuadroAtualPostosCatalog();
     if(!catalog.length){
-        el.innerHTML = '<div class="empty postos-panorama-empty">Nenhum posto cadastrado. Vá em <strong>Unidades → Unidade → Postos</strong> e cadastre os postos de cada unidade.</div>';
+        el.innerHTML = '<div class="empty postos-panorama-empty">Nenhum posto cadastrado. Vá em <strong>Unidades → Postos</strong>, selecione a unidade e cadastre os postos (código, dias, escala e horários).</div>';
         return;
     }
     const comp = getCompetenciaAnoMesRef();
@@ -14258,13 +14346,12 @@ function renderPostosPanorama(){
         const row = catalogPostoToQuadroRow(p, idx);
         const emp = findColaboradorParaPostoCatalog(p, row);
         const col = dadosColaboradorQuadroAtual(emp);
-        // Compatibilidade com dados antigos/importados (campos legado).
-        const escalaTxt = p.escala || p.jornada || row.escala || row.jornada || '';
-        const diasRef = p.diasSemana || row.diasSemana || '';
-        const entradaRef = p.entrada || row.entrada || '';
-        const saidaIntervaloRef = p.saidaIntervalo || p.intervalo || row.saidaInt || row.intervalo || '';
-        const retornoIntervaloRef = p.retornoIntervalo || p.intervalo2 || row.retornoInt || row.intervalo2 || '';
-        const saidaRef = p.saida || row.saida || '';
+        const escalaTxt = p.escala || p.jornada || '';
+        const diasRef = p.diasSemana || '';
+        const entradaRef = p.entrada || '';
+        const saidaIntervaloRef = p.saidaIntervalo || '';
+        const retornoIntervaloRef = p.retornoIntervalo || '';
+        const saidaRef = p.saida || '';
         const is12x36 = normText(escalaTxt).includes('12X36');
         const cargaColab = parseCargaSemanalHoras(emp?.carga, diasRef, escalaTxt);
         const minDiaPosto = minutosPostoDia(entradaRef, saidaRef, saidaIntervaloRef, retornoIntervaloRef);
@@ -14281,11 +14368,12 @@ function renderPostosPanorama(){
         const extraMes = (cargaPostoMes > 0 && cargaColabMes > 0) ? +(cargaPostoMes - cargaColabMes).toFixed(2) : 0;
         return {
             posto: p.codigo || '',
-            unidade: p.unidadeNome || '',
+            unidade: row.unidade || p.unidadeNome || '',
             endereco: row.enderecoUnidade || '',
             cnpj: row.cnpjUnidade || '',
+            empresa: row.empresaUnidade || '',
             dias: diasRef || '',
-            escala: p.escala || p.jornada || '',
+            escala: escalaTxt || '',
             paridade12x36: p.paridade12x36 || '',
             entrada: entradaRef || '',
             saidaInt: saidaIntervaloRef || '',
@@ -14308,7 +14396,7 @@ function renderPostosPanorama(){
     const allUnidades = [...new Set(linhas.map(r => String(r.unidade || 'Sem unidade')))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
     const filtroUnidade = String(window.__fpQuadroAtualUnidadeFiltro || '').trim();
     const linhasFiltradas = filtroUnidade ? linhas.filter(r => String(r.unidade || 'Sem unidade') === filtroUnidade) : linhas;
-    const th = ['Posto','Unidade','Endereço','CNPJ','Dias','Escala','12x36','Entrada','Saída int.','Retorno int.','Saída','Supervisor','Colaborador','Função','Registro','Carga colaborador','Carga posto','Horas extras (semana)','Horas extras (mês)'];
+    const th = ['Posto','Unidade','Endereço','CNPJ','Empresa','Dias','Escala','12x36','Entrada','Saída int.','Retorno int.','Saída','Supervisor','Colaborador','Função','Registro','Carga colaborador','Carga posto','Horas extras (semana)','Horas extras (mês)'];
     const byUnidade = new Map();
     linhasFiltradas.forEach(r => {
         const k = String(r.unidade || 'Sem unidade');
@@ -14321,6 +14409,7 @@ function renderPostosPanorama(){
             <td>${esc(r.unidade || '—')}</td>
             <td>${esc(r.endereco || '—')}</td>
             <td>${esc(r.cnpj || '—')}</td>
+            <td>${esc(r.empresa || '—')}</td>
             <td>${esc(r.dias || '—')}</td>
             <td>${esc(r.escala || '—')}</td>
             <td>${esc(r.paridade12x36 || '—')}</td>
@@ -14358,7 +14447,7 @@ function renderPostosPanorama(){
                 </select>
             </div>
         </div>
-        <p style="margin:0 0 10px;font-size:12px;color:#6b7280;">${linhasFiltradas.length} posto(s) exibido(s) de ${linhas.length} total — competência: <strong>${String(comp.mes).padStart(2,'0')}/${comp.ano}</strong>. Postos em <strong>Unidades → Postos</strong>; colaborador só na aba <strong>Cadastro</strong> (<strong>Atuando</strong> = unidade).</p>
+        <p style="margin:0 0 10px;font-size:12px;color:#6b7280;">${linhasFiltradas.length} posto(s) exibido(s) de ${linhas.length} total — competência: <strong>${String(comp.mes).padStart(2,'0')}/${comp.ano}</strong>. Dados operacionais (código, dias, escala, horários, supervisor) vêm de <strong>Unidades → Postos</strong>; endereço/CNPJ/empresa da unidade vêm do <strong>Cadastro de unidades</strong>; colaborador só na aba <strong>Cadastro</strong> (<strong>Atuando</strong> + código do posto).</p>
         ${gruposHtml}`;
 }
 
@@ -14713,7 +14802,9 @@ function savePostoInline(source, idx, field, value, opts){
     const clean = String(value || '').trim();
     if(src === 'catalog'){
         const arr = getUnidadesPostosCatalog();
-        const p = arr[i];
+        const catalogId = String(opts.catalogId || '').trim();
+        let p = catalogId ? arr.find(x => String(x.id) === catalogId) : null;
+        if(!p) p = arr[i];
         if(!p) return;
         const key = _catalogFieldFromQuadro(field);
         p[key] = clean;
