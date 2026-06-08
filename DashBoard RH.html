@@ -644,7 +644,8 @@
                 <div class="alerts" id="alertsPanel"></div>
                 <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
                     <div class="panel list"><h3 style="display:flex;justify-content:space-between;align-items:center;">🎂 Aniversariantes (Mês)<button onclick="openBirthdayEmailModal()" style="background:#25D366;color:#fff;border:none;border-radius:4px;padding:3px 9px;font-size:9px;font-weight:700;cursor:pointer;letter-spacing:.3px;white-space:nowrap;" title="Enviar parabéns via WhatsApp para aniversariantes de hoje">📱 Enviar Parabéns</button></h3><div class="inner" id="birthdaysList"></div></div>
-                    <div class="panel list"><h3>⏰ Experiência (60 / 90 dias)</h3><div class="inner" id="experienceList"></div></div>
+                    <div class="panel list"><h3>⏰ Experiência — 1ª (dias 1 a 30)</h3><div class="inner" id="experiencePeriodo1List"></div></div>
+                    <div class="panel list"><h3>⏰ Experiência — 2ª (dias 31 a 60)</h3><div class="inner" id="experiencePeriodo2List"></div></div>
                     <div class="panel list"><h3>🔴 CNH Vencidas</h3><div class="inner" id="expiredCnhList"></div></div>
                     <div class="panel list"><h3>🟡 CNH a Vencer (90d)</h3><div class="inner" id="expiringCnhList"></div></div>
                     <div class="panel list"><h3>🏖️ Férias Próximas (30d)</h3><div class="inner" id="ferias30List"></div></div>
@@ -833,7 +834,8 @@ const companySummary = document.getElementById('companySummary');
 const selectionInfo = document.getElementById('selectionInfo');
 const expiredCnhList = document.getElementById('expiredCnhList');
 const expiringCnhList = document.getElementById('expiringCnhList');
-const experienceList = document.getElementById('experienceList');
+const experiencePeriodo1List = document.getElementById('experiencePeriodo1List');
+const experiencePeriodo2List = document.getElementById('experiencePeriodo2List');
 const asoTable = document.getElementById('asoTable');
 const birthdaysList = document.getElementById('birthdaysList');
 const benefitsPanel = document.getElementById('benefitsPanel');
@@ -845,7 +847,8 @@ const E = {
     file: excelFile, company: companyFilter, employee: employeeFilter, search: searchInput,
     status: statusFilter, metrics: metrics, profile: profilePanel, alerts: alertsPanel,
     alertsTable: alertsTable, companySummary: companySummary, selectionInfo: selectionInfo,
-    expiredCnhList: expiredCnhList, expiringCnhList: expiringCnhList, experienceList: experienceList,
+    expiredCnhList: expiredCnhList, expiringCnhList: expiringCnhList,
+    experiencePeriodo1List: experiencePeriodo1List, experiencePeriodo2List: experiencePeriodo2List,
     asoTable: asoTable, birthdaysList: birthdaysList, benefitsPanel: benefitsPanel,
     ferias30List: ferias30List, feriasAgoraList: feriasAgoraList, feriasLimite90List: feriasLimite90List
 };
@@ -1513,8 +1516,13 @@ function sendEmailAlerts() {
         body += '\n';
     }
     if(xp.length) {
-        body += '=== EM EXPERIÊNCIA (60d demais unidades · 90d 00 ADMINISTRAÇÃO) ===\n';
-        xp.forEach(e => body += `- ${e.nome} (${e.empresa}) | ${daysSince(e.admissao)} dias de empresa\n`);
+        const xp1m = expsPeriodo(list, 1), xp2m = expsPeriodo(list, 2);
+        body += '=== EM EXPERIÊNCIA — 1ª (dias 1 a 30) ===\n';
+        if(xp1m.length) xp1m.forEach(e => body += `- ${e.nome} (${e.empresa}) | ${fpDiaExperienciaColaborador(e)}º dia\n`);
+        else body += '(nenhum)\n';
+        body += '\n=== EM EXPERIÊNCIA — 2ª (dias 31 a 60) ===\n';
+        if(xp2m.length) xp2m.forEach(e => body += `- ${e.nome} (${e.empresa}) | ${fpDiaExperienciaColaborador(e)}º dia\n`);
+        else body += '(nenhum)\n';
         body += '\n';
     }
     if(aso.length) {
@@ -2210,6 +2218,31 @@ function emPeriodoExperiencia(e) {
     if(d === null || d < 0) return false;
     return d < fpLimiteDiasExperiencia(e);
 }
+/** Dia de experiência (1 = dia da admissão). */
+function fpDiaExperienciaColaborador(e){
+    const d = daysSince(e.admissao);
+    if(d === null || d < 0) return null;
+    return d + 1;
+}
+function emPeriodoExperienciaFaixa(e, faixa){
+    if(!emPeriodoExperiencia(e)) return false;
+    const dia = fpDiaExperienciaColaborador(e);
+    if(dia == null) return false;
+    if(faixa === 1) return dia >= 1 && dia <= 30;
+    if(faixa === 2) return dia >= 31 && dia <= 60;
+    return false;
+}
+function expsPeriodo(list, faixa){
+    return (list || []).filter(e => emPeriodoExperienciaFaixa(e, faixa))
+        .sort((a, b) => (daysSince(a.admissao) || 0) - (daysSince(b.admissao) || 0));
+}
+function fpLabelExperienciaFicha(e){
+    if(!emPeriodoExperiencia(e)) return null;
+    const dia = fpDiaExperienciaColaborador(e);
+    if(dia != null && dia <= 30) return `1ª experiência (${dia}º dia)`;
+    if(dia != null && dia <= 60) return `2ª experiência (${dia}º dia)`;
+    return `Contrato Experiência (${fpLimiteDiasExperiencia(e)}d)`;
+}
 const exps = l => l.filter(emPeriodoExperiencia).sort((a, b) => (daysSince(a.admissao) || 0) - (daysSince(b.admissao) || 0));
 /** CNH vencida: data de vencimento estritamente anterior ao dia atual (não inclui “vence hoje”). */
 const cnhExpired = l => l.filter(e => {
@@ -2728,7 +2761,7 @@ function renderProfile(e, qtd) {
                 <div class="side">
                     <div>${statusDoc('CNH', cd)}</div>
                     <div>${statusDoc('ASO', ad)}</div>
-                    <div>${emPeriodoExperiencia(e) ? pill('w', `Contrato Experiência (${fpLimiteDiasExperiencia(e)}d)`) : pill('ok', 'Efetivado')}</div>
+                    <div>${emPeriodoExperiencia(e) ? pill('w', fpLabelExperienciaFicha(e)) : pill('ok', 'Efetivado')}</div>
                 </div>
             </div>
             <div class="grid"><div class="sec">Dados Contratuais e Benefícios</div>${part1.map((x, i) => field(x[0], x[1], i % 2 === 0)).join('')}<div class="sec">Dados Pessoais e Documentação</div>${part2.map((x, i) => field(x[0], x[1], i % 2 === 0)).join('')}</div>
@@ -2778,8 +2811,8 @@ function renderProfile(e, qtd) {
 }
 
 function renderAlerts(list) {
-    if(!E.alerts || !E.experienceList || !E.expiredCnhList || !E.expiringCnhList || !E.birthdaysList || !E.ferias30List || !E.feriasAgoraList || !E.feriasLimite90List) return;
-    const ex = cnhExpired(list), sn = cnhSoon(list), xp = exps(list), aso = asoSoon(list), bdays = getBirthdays(list);
+    if(!E.alerts || !E.experiencePeriodo1List || !E.experiencePeriodo2List || !E.expiredCnhList || !E.expiringCnhList || !E.birthdaysList || !E.ferias30List || !E.feriasAgoraList || !E.feriasLimite90List) return;
+    const ex = cnhExpired(list), sn = cnhSoon(list), xp = exps(list), xp1 = expsPeriodo(list, 1), xp2 = expsPeriodo(list, 2), aso = asoSoon(list), bdays = getBirthdays(list);
     const asoVenc = aso.filter(e => daysTo(e.aso) < 0);
     const asoAVencer = aso.filter(e => { const d = daysTo(e.aso); return d !== null && d >= 0; });
     const asoColor = asoVenc.length ? 'd' : asoAVencer.length ? 'w' : 'ok';
@@ -2789,7 +2822,7 @@ function renderAlerts(list) {
 
     const cards = [
         ['Aniversariantes', bdays.length, 'Neste mês', bdays.length ? 'ok' : 'n'],
-        ['Em Experiência', xp.length, '60d (demais) · 90d (00 Admin.)', xp.length ? 'w' : 'n'],
+        ['Em Experiência', xp.length, `1ª: ${xp1.length} (1-30d) · 2ª: ${xp2.length} (31-60d)`, xp.length ? 'w' : 'n'],
         ['CNH Vencidas', ex.length, 'Exige ação imediata', ex.length ? 'd' : 'ok'],
         ['CNH a Vencer', sn.length, 'Próximos 90 dias', sn.length ? 'w' : 'ok'],
         ['Vencimento ASO', aso.length, `${asoVenc.length} vencido(s) · ${asoAVencer.length} a vencer`, asoColor],
@@ -2797,7 +2830,7 @@ function renderAlerts(list) {
         ['Em Férias hoje', ferNow.length, 'De férias nesta data', ferNow.length ? 'fp' : 'n'],
         ['Data Limite (90d)', limite90.length, 'Vencimento próximo', limite90.length ? 'w' : 'ok']
     ];
-    const cardTargets = ['birthdaysList', 'experienceList', 'expiredCnhList', 'expiringCnhList', 'asoTable', 'ferias30List', 'feriasAgoraList', 'feriasLimite90List'];
+    const cardTargets = ['birthdaysList', 'experiencePeriodo1List', 'expiredCnhList', 'expiringCnhList', 'asoTable', 'ferias30List', 'feriasAgoraList', 'feriasLimite90List'];
     E.alerts.innerHTML = cards.map((c, i) => `<div class="abox ${c[3]}-box" onclick="scrollToList('${cardTargets[i]}')" title="Ver lista detalhada"><h3>${esc(c[0])}</h3><div class="num">${esc(String(c[1]))}</div><p>${esc(c[2])}</p></div>`).join('');
 
     E.expiredCnhList.innerHTML = renderNames(
@@ -2807,10 +2840,13 @@ function renderAlerts(list) {
         e => `<button type="button" onclick="enviarAvisoCNH('${esc(String(e.nome || ''))}', '${esc(String(e.telefone || ''))}')">Solicitar CNH</button>`
     );
     E.expiringCnhList.innerHTML = renderNames(sn, 'Nenhuma CNH a vencer no período', e => `${fdate(e.cnh)} · ${daysTo(e.cnh)}d restantes`);
-    E.experienceList.innerHTML = renderNames(xp, 'Nenhum funcionário em experiência', e => {
+    const fmtExpPeriodo = (e) => {
+        const dia = fpDiaExperienciaColaborador(e);
         const lim = fpLimiteDiasExperiencia(e);
-        return `${fdate(e.admissao)} · ${daysSince(e.admissao)}d / ${lim}d (${esc(e.atuando || '—')})`;
-    });
+        return `${fdate(e.admissao)} · ${dia}º dia / ${lim}d (${esc(e.atuando || '—')})`;
+    };
+    E.experiencePeriodo1List.innerHTML = renderNames(xp1, 'Ninguém na 1ª experiência (dias 1 a 30)', fmtExpPeriodo);
+    E.experiencePeriodo2List.innerHTML = renderNames(xp2, 'Ninguém na 2ª experiência (dias 31 a 60)', fmtExpPeriodo);
     E.birthdaysList.innerHTML = renderNames(bdays, 'Sem registros no mês', e => {
         const d = dparse(e.nascimento);
         return d ? `Dia ${String(d.getDate()).padStart(2, '0')}` : '—';
@@ -2821,7 +2857,11 @@ function renderAlerts(list) {
 
     const rows = [];
     [...ex, ...sn].forEach(e => rows.push({ nome: e.nome, empresa: e.empresa, tipo: daysTo(e.cnh) < 0 ? 'CNH Vencida' : 'CNH a Vencer', data: fdate(e.cnh), sit: daysTo(e.cnh) < 0 ? `Atraso: ${Math.abs(daysTo(e.cnh))}d` : `Faltam: ${daysTo(e.cnh)}d` }));
-    xp.forEach(e => rows.push({ nome: e.nome, empresa: e.empresa, tipo: 'Experiência', data: fdate(e.admissao), sit: `${daysSince(e.admissao)}d de Casa` }));
+    xp.forEach(e => {
+        const dia = fpDiaExperienciaColaborador(e);
+        const faixa = dia != null && dia <= 30 ? '1ª (1-30)' : dia != null && dia <= 60 ? '2ª (31-60)' : 'Experiência';
+        rows.push({ nome: e.nome, empresa: e.empresa, tipo: 'Experiência', data: fdate(e.admissao), sit: `${dia != null ? dia + 'º dia' : '—'} · ${faixa}` });
+    });
     if(E.alertsTable) E.alertsTable.innerHTML = rows.length ? `<table><thead><tr><th>Funcionário</th><th>Empresa</th><th>Alerta</th><th>Data Ref.</th><th>Status</th></tr></thead><tbody>${rows.map(r => `<tr><td>${esc(r.nome)}</td><td>${esc(r.empresa)}</td><td>${esc(r.tipo)}</td><td>${esc(r.data)}</td><td>${esc(r.sit)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">Sem alertas críticos no momento.</div>';
     if(E.asoTable) E.asoTable.innerHTML = aso.length ? `<table><thead><tr><th>Funcionário</th><th>Empresa</th><th>Vencimento ASO</th><th>Status</th></tr></thead><tbody>${aso.map(e => { const d = daysTo(e.aso); return `<tr><td>${esc(e.nome)}</td><td>${esc(e.empresa)}</td><td>${esc(fdate(e.aso))}</td><td>${esc(d < 0 ? `Vencido (${Math.abs(d)}d)` : `A vencer (${d}d)`)}</td></tr>`; }).join('')}</tbody></table>` : '<div class="empty">Todos os ASOs em dia.</div>';
 }

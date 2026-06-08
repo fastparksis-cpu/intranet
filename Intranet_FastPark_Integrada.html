@@ -2480,7 +2480,8 @@ td { color: var(--t); font-weight: 500;}
                         <div class="alerts" id="alertsPanel"></div>
                         <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
                             <div class="panel list"><h3 style="display:flex;justify-content:space-between;align-items:center;">🎂 Aniversariantes (Mês)<button onclick="openBirthdayEmailModal()" style="background:#25D366;color:#fff;border:none;border-radius:4px;padding:3px 9px;font-size:9px;font-weight:700;cursor:pointer;letter-spacing:.3px;white-space:nowrap;" title="Enviar parabéns via WhatsApp para aniversariantes de hoje">📱 Enviar Parabéns</button></h3><div class="inner" id="birthdaysList"></div></div>
-                            <div class="panel list"><h3>⏰ Experiência (60 / 90 dias)</h3><div class="inner" id="experienceList"></div></div>
+                            <div class="panel list"><h3>⏰ Experiência — 1ª (dias 1 a 30)</h3><div class="inner" id="experiencePeriodo1List"></div></div>
+                            <div class="panel list"><h3>⏰ Experiência — 2ª (dias 31 a 60)</h3><div class="inner" id="experiencePeriodo2List"></div></div>
                             <div class="panel list"><h3>🔴 CNH Vencidas</h3><div class="inner" id="expiredCnhList"></div></div>
                             <div class="panel list"><h3>🟡 CNH a Vencer (90d)</h3><div class="inner" id="expiringCnhList"></div></div>
                             <div class="panel list"><h3>🏖️ Férias Próximas (30d)</h3><div class="inner" id="ferias30List"></div></div>
@@ -5627,7 +5628,8 @@ const E = {
     file: document.getElementById('excelFileDashboard'), company: document.getElementById('companyFilter'), employee: document.getElementById('employeeFilter'), search: document.getElementById('searchInput'),
     status: document.getElementById('statusFilter'), metrics: document.getElementById('metrics'), profile: document.getElementById('profilePanel'), alerts: document.getElementById('alertsPanel'),
     alertsTable: document.getElementById('alertsTable'), companySummary: document.getElementById('companySummary'), selectionInfo: document.getElementById('selectionInfo'),
-    expiredCnhList: document.getElementById('expiredCnhList'), expiringCnhList: document.getElementById('expiringCnhList'), experienceList: document.getElementById('experienceList'),
+    expiredCnhList: document.getElementById('expiredCnhList'), expiringCnhList: document.getElementById('expiringCnhList'),
+    experiencePeriodo1List: document.getElementById('experiencePeriodo1List'), experiencePeriodo2List: document.getElementById('experiencePeriodo2List'),
     asoTable: document.getElementById('asoTable'), birthdaysList: document.getElementById('birthdaysList'), benefitsPanel: document.getElementById('benefitsPanel'),
     ferias30List: document.getElementById('ferias30List'), feriasAgoraList: document.getElementById('feriasAgoraList')
 };
@@ -6085,8 +6087,13 @@ function sendEmailAlerts() {
         body += '\n';
     }
     if(xp.length) {
-        body += '=== EM EXPERIÊNCIA (60d demais unidades · 90d 00 ADMINISTRAÇÃO) ===\n';
-        xp.forEach(e => body += `- ${e.nome} (${e.empresa}) | ${daysSince(e.admissao)} dias de empresa\n`);
+        const xp1m = expsPeriodo(list, 1), xp2m = expsPeriodo(list, 2);
+        body += '=== EM EXPERIÊNCIA — 1ª (dias 1 a 30) ===\n';
+        if(xp1m.length) xp1m.forEach(e => body += `- ${e.nome} (${e.empresa}) | ${fpDiaExperienciaColaborador(e)}º dia\n`);
+        else body += '(nenhum)\n';
+        body += '\n=== EM EXPERIÊNCIA — 2ª (dias 31 a 60) ===\n';
+        if(xp2m.length) xp2m.forEach(e => body += `- ${e.nome} (${e.empresa}) | ${fpDiaExperienciaColaborador(e)}º dia\n`);
+        else body += '(nenhum)\n';
         body += '\n';
     }
     if(aso.length) {
@@ -7682,7 +7689,7 @@ function renderProfile() {
 
 function renderAlerts() {
     const list = listaCompletaPlanilha();
-    const ex = cnhExpired(list), sn = cnhSoon(list), xp = exps(list), aso = asoSoon(list);
+    const ex = cnhExpired(list), sn = cnhSoon(list), xp = exps(list), xp1 = expsPeriodo(list, 1), xp2 = expsPeriodo(list, 2), aso = asoSoon(list);
     if(!E.alerts) return;
     E.alerts.innerHTML = `
         <div class="abox ${ex.length ? 'd-box' : 'n-box'}" onclick="showList('expiredCnhList')">
@@ -7695,10 +7702,10 @@ function renderAlerts() {
             <div class="num">${sn.length}</div>
             <p>Próximos 90 dias</p>
         </div>
-        <div class="abox ${xp.length ? 'w-box' : 'n-box'}" onclick="showList('experienceList')">
+        <div class="abox ${xp.length ? 'w-box' : 'n-box'}" onclick="showList('experiencePeriodo1List')">
             <h3>Em Experiência</h3>
             <div class="num">${xp.length}</div>
-            <p>60d (demais) · 90d (00 Admin.)</p>
+            <p>1ª: ${xp1.length} (1-30d) · 2ª: ${xp2.length} (31-60d)</p>
         </div>
         <div class="abox ${aso.length ? 'w-box' : 'n-box'}" onclick="showList('asoTable')">
             <h3>ASO a Vencer</h3>
@@ -7712,10 +7719,13 @@ function renderLists() {
     const list = listaCompletaPlanilha();
     E.expiredCnhList.innerHTML = renderNames(cnhExpired(list), 'Nenhuma CNH vencida', e => `${fdate(e.cnh)} (${Math.abs(daysTo(e.cnh))} dias atrás)`);
     E.expiringCnhList.innerHTML = renderNames(cnhSoon(list), 'Nenhuma CNH a vencer', e => `${fdate(e.cnh)} (${daysTo(e.cnh)} dias)`);
-    E.experienceList.innerHTML = renderNames(exps(list), 'Nenhum funcionário em experiência', e => {
+    const fmtExpPeriodo = (e) => {
+        const dia = fpDiaExperienciaColaborador(e);
         const lim = fpLimiteDiasExperiencia(e);
-        return `${fdate(e.admissao)} · ${daysSince(e.admissao)}d / ${lim}d (${esc(e.atuando || '—')})`;
-    });
+        return `${fdate(e.admissao)} · ${dia}º dia / ${lim}d (${esc(e.atuando || '—')})`;
+    };
+    if(E.experiencePeriodo1List) E.experiencePeriodo1List.innerHTML = renderNames(expsPeriodo(list, 1), 'Ninguém na 1ª experiência (dias 1 a 30)', fmtExpPeriodo);
+    if(E.experiencePeriodo2List) E.experiencePeriodo2List.innerHTML = renderNames(expsPeriodo(list, 2), 'Ninguém na 2ª experiência (dias 31 a 60)', fmtExpPeriodo);
     E.birthdaysList.innerHTML = renderNames(birthdays(list), 'Nenhum aniversário este mês', e => fdate(e.nascimento));
     E.ferias30List.innerHTML = renderNames(ferias30(list), 'Nenhuma férias próxima', e => `${fdate(e.inicioFerias)} a ${fdate(e.fimFerias)}`);
     E.feriasAgoraList.innerHTML = renderNames(getFeriasAgora(), 'Ninguém em férias hoje', e => `${fdate(e.inicio)} a ${fdate(e.fim)}`);
@@ -7923,6 +7933,23 @@ function emPeriodoExperiencia(e) {
     const d = daysSince(e.admissao);
     if(d === null || d < 0) return false;
     return d < fpLimiteDiasExperiencia(e);
+}
+function fpDiaExperienciaColaborador(e){
+    const d = daysSince(e.admissao);
+    if(d === null || d < 0) return null;
+    return d + 1;
+}
+function emPeriodoExperienciaFaixa(e, faixa){
+    if(!emPeriodoExperiencia(e)) return false;
+    const dia = fpDiaExperienciaColaborador(e);
+    if(dia == null) return false;
+    if(faixa === 1) return dia >= 1 && dia <= 30;
+    if(faixa === 2) return dia >= 31 && dia <= 60;
+    return false;
+}
+function expsPeriodo(list, faixa){
+    return (list || []).filter(e => emPeriodoExperienciaFaixa(e, faixa))
+        .sort((a, b) => (daysSince(a.admissao) || 0) - (daysSince(b.admissao) || 0));
 }
 function exps(list) {
     return list.filter(emPeriodoExperiencia).sort((a, b) => (daysSince(a.admissao) || 0) - (daysSince(b.admissao) || 0));
