@@ -9457,6 +9457,7 @@ async function applyFpEmbeddedIntranetDb(db, opts){
     state.quadroGeral = db.state.quadroGeral || [];
     enrichQuadroGeralUnidadesFromEmployees();
     syncLegacyPostosIntoUnidadesCatalog();
+    repairUnidadesPostosCatalogRefs();
     sincronizarTodosPostosComCadastro();
     state.pagas = db.state.pagas || [];
     state.selected = null;
@@ -13505,7 +13506,108 @@ function setUnidadesPostosCatalog(arr){
     localStorage.setItem(FP_UNIDADES_POSTOS_KEY, JSON.stringify(Array.isArray(arr) ? arr : []));
     fpAfterPersistentStorageWrite();
 }
+function parseUnidadeLabelRef(s){
+    const raw = String(s || '').trim();
+    if(!raw) return { cod: '', nome: '', raw: '' };
+    const paren = raw.match(/^(.+?)\s*[-–—]\s*\(\s*(.+?)\s*\)\s*$/);
+    if(paren) return { cod: paren[1].trim(), nome: paren[2].trim(), raw };
+    const dash = raw.match(/^(.+?)\s*[-–—]\s*(.+)$/);
+    if(dash) return { cod: dash[1].trim(), nome: dash[2].trim(), raw };
+    return { cod: '', nome: raw, raw };
+}
+function normUnidadeCodKey(cod){
+    return String(cod || '').trim().toUpperCase().replace(/\s+/g, '');
+}
+function parseUnidadeCodParts(cod){
+    const s = normUnidadeCodKey(cod);
+    const m = s.match(/^([A-Z-]*?)(\d+)$/);
+    if(m) return { prefix: m[1], num: parseInt(m[2], 10) };
+    return { prefix: s, num: null };
+}
+/** U-00 e U-000 tratados como o mesmo código quando o número coincide. */
+function unidadeCodLooksSimilar(a, b){
+    if(!a || !b) return false;
+    if(normUnidadeCodKey(a) === normUnidadeCodKey(b)) return true;
+    const pa = parseUnidadeCodParts(a);
+    const pb = parseUnidadeCodParts(b);
+    return pa.prefix === pb.prefix && pa.num !== null && pb.num !== null && pa.num === pb.num;
+}
+function unidadeNomeCore(nome){
+    const p = parseUnidadeLabelRef(nome);
+    const core = String(p.nome || nome || '').trim();
+    return normText(core);
+}
+/** Localiza unidade cadastrada (código/nome canónicos) a partir de rótulos legados da planilha. */
+function findUnidadeCanonical(cod, nome, rawLabel){
+    const arr = getUnidades();
+    if(!arr.length) return null;
+    const parsed = parseUnidadeLabelRef(rawLabel || nome || cod || '');
+    const tryCod = String(cod || parsed.cod || '').trim();
+    const tryNome = String(nome || parsed.nome || '').trim();
+    const tokens = [...new Set([tryCod, tryNome, parsed.raw, String(rawLabel || '').trim()].filter(Boolean))];
+    for(const t of tokens){
+        const hit = arr.find(u => normText(String(u.cod || '').trim()) === normText(t) || normText(String(u.nome || '').trim()) === normText(t));
+        if(hit) return hit;
+    }
+    if(tryCod){
+        const hit = arr.find(u => unidadeCodLooksSimilar(u.cod, tryCod));
+        if(hit) return hit;
+    }
+    if(parsed.cod){
+        const hit = arr.find(u => unidadeCodLooksSimilar(u.cod, parsed.cod));
+        if(hit) return hit;
+    }
+    const core = unidadeNomeCore(tryNome || parsed.raw);
+    if(core){
+        const hits = arr.filter(u => unidadeNomeCore(u.nome) === core || normText(String(u.nome || '').trim()) === core);
+        if(hits.length === 1) return hits[0];
+        if(hits.length > 1 && tryCod){
+            const h2 = hits.find(u => unidadeCodLooksSimilar(u.cod, tryCod));
+            if(h2) return h2;
+        }
+    }
+    for(const t of tokens){
+        if(typeof fpIsUnidadeAdministracao === 'function' && fpIsUnidadeAdministracao(t)){
+            const admin = arr.find(u => fpIsUnidadeAdministracao(u.cod) || fpIsUnidadeAdministracao(u.nome));
+            if(admin) return admin;
+        }
+    }
+    return null;
+}
+function formatUnidadeQuadroLabel(uni){
+    if(!uni) return '';
+    let cod = String(uni.cod || '').trim();
+    let nome = String(uni.nome || '').trim();
+    const parsed = parseUnidadeLabelRef(nome);
+    if(!cod && parsed.cod) cod = parsed.cod;
+    const nomeCore = (parsed.nome && (parsed.cod || cod)) ? parsed.nome : nome;
+    if(cod && nomeCore && !normText(nomeCore).includes(normText(cod))) return cod + ' - (' + nomeCore + ')';
+    if(cod) return cod;
+    return nome || nomeCore;
+}
+function repairUnidadesPostosCatalogRefs(){
+    const arr = getUnidadesPostosCatalog();
+    let changed = false;
+    arr.forEach(p => {
+        const uni = findUnidadeCanonical(p.unidadeCod, p.unidadeNome, p.unidadeNome || p.unidadeCod);
+        if(!uni) return;
+        const cod = String(uni.cod || '').trim();
+        const nome = String(uni.nome || '').trim();
+        if(p.unidadeCod !== cod || p.unidadeNome !== nome){
+            p.unidadeCod = cod;
+            p.unidadeNome = nome;
+            changed = true;
+        }
+    });
+    if(changed) setUnidadesPostosCatalog(arr);
+    return changed;
+}
 function _normUniPostoUnidadeKey(cod, nome){
+    const uni = findUnidadeCanonical(cod, nome, nome || cod);
+    if(uni){
+        const c = String(uni.cod || '').trim().toUpperCase();
+        if(c) return c;
+    }
     const c = String(cod || '').trim().toUpperCase();
     const n = String(nome || '').trim().toUpperCase();
     return c || n;
@@ -13542,18 +13644,7 @@ function findPostoCatalogByCodigoGlobal(codigo){
 /** Unidade cadastrada correspondente ao registro do catálogo de postos. */
 function resolveUnidadeRecordParaPosto(p){
     if(!p) return null;
-    const arr = getUnidades();
-    const cod = String(p.unidadeCod || '').trim();
-    const nome = String(p.unidadeNome || '').trim();
-    if(cod){
-        const hit = arr.find(u => normText(String(u.cod || '').trim()) === normText(cod));
-        if(hit) return hit;
-    }
-    if(nome){
-        const hit = arr.find(u => normText(String(u.nome || '').trim()) === normText(nome));
-        if(hit) return hit;
-    }
-    return null;
+    return findUnidadeCanonical(p.unidadeCod, p.unidadeNome, p.unidadeNome || p.unidadeCod);
 }
 /** Importa postos legados (planilha quadro / extras) para o catálogo Unidades → Postos, sem duplicar. */
 function syncLegacyPostosIntoUnidadesCatalog(){
@@ -13576,8 +13667,9 @@ function syncLegacyPostosIntoUnidadesCatalog(){
         if(!codigo || !unidadeNome) return;
         const uni = unidades.find(u =>
             _normUnidadePosto(u.nome) === _normUnidadePosto(unidadeNome) ||
-            _normUnidadePosto(u.cod) === _normUnidadePosto(unidadeNome)
-        );
+            _normUnidadePosto(u.cod) === _normUnidadePosto(unidadeNome) ||
+            unidadeCodLooksSimilar(u.cod, unidadeNome)
+        ) || findUnidadeCanonical('', '', unidadeNome);
         const uCod = String(uni?.cod || r.unidadeCod || '').trim();
         const uNome = String(uni?.nome || unidadeNome).trim();
         const key = _normUniPostoUnidadeKey(uCod, uNome) + '|' + codigo.toUpperCase();
@@ -13607,6 +13699,7 @@ function syncLegacyPostosIntoUnidadesCatalog(){
     return changed;
 }
 function getQuadroAtualPostosCatalog(){
+    repairUnidadesPostosCatalogRefs();
     let catalog = getUnidadesPostosCatalog();
     if(!catalog.length){
         const hasLegacy = (state.quadroGeral || []).some(r => String(r.posto || r.codigo || '').trim() && String(r.unidade || '').trim())
@@ -13644,7 +13737,7 @@ function catalogPostoToQuadroRow(p, catalogIdx){
         posto: p.codigo || '',
         codigo: p.codigo || '',
         status: p.status || 'ATIVO',
-        unidade: uniNome,
+        unidade: formatUnidadeQuadroLabel(uni) || uniNome,
         unidadeCod: uniCod,
         enderecoUnidade,
         cnpjUnidade,
@@ -13676,16 +13769,30 @@ function refreshUnidadesPostosUnidadeSelect(){
 }
 /** Colaborador «Atuando» coincide com nome ou código da unidade (cadastro de funcionários / unidades). */
 function employeeAtuandoMatchesUnidade(emp, unidadeNome, unidadeCod){
-    const a = normText(String(emp?.atuando || emp?.unidade || '').trim());
+    const a = String(emp?.atuando || emp?.unidade || '').trim();
     if(!a) return false;
-    if(unidadeNome && normText(unidadeNome) === a) return true;
-    if(unidadeCod && normText(unidadeCod) === a) return true;
-    const u = getUnidades().find(x =>
+    const canonPosto = findUnidadeCanonical(unidadeCod, unidadeNome, unidadeNome || unidadeCod);
+    const parsedA = parseUnidadeLabelRef(a);
+    const canonEmp = findUnidadeCanonical(parsedA.cod, parsedA.nome, a);
+    if(canonPosto && canonEmp){
+        if(String(canonPosto.cod || '').trim() && String(canonEmp.cod || '').trim()){
+            return unidadeCodLooksSimilar(canonPosto.cod, canonEmp.cod) || normText(canonPosto.cod) === normText(canonEmp.cod);
+        }
+        return normText(canonPosto.nome) === normText(canonEmp.nome);
+    }
+    if(unidadeNome && normText(unidadeNome) === normText(a)) return true;
+    if(unidadeCod && normText(unidadeCod) === normText(a)) return true;
+    if(unidadeCod && unidadeCodLooksSimilar(a, unidadeCod)) return true;
+    const u = canonPosto || getUnidades().find(x =>
         normText(x.nome) === normText(unidadeNome) || normText(x.cod) === normText(unidadeCod)
     );
     if(u){
-        if(normText(u.nome) === a) return true;
-        if(normText(u.cod) === a) return true;
+        if(normText(u.nome) === normText(a)) return true;
+        if(normText(u.cod) === normText(a)) return true;
+        if(unidadeCodLooksSimilar(u.cod, a)) return true;
+        const pa = parseUnidadeLabelRef(a);
+        if(pa.cod && unidadeCodLooksSimilar(u.cod, pa.cod)) return true;
+        if(pa.nome && unidadeNomeCore(u.nome) === normText(pa.nome)) return true;
     }
     return false;
 }
@@ -13889,6 +13996,7 @@ function salvarPostoUnidadeCatalog(){
         arr.unshift(stripColaboradorDoCatalogo(payload));
     }
     setUnidadesPostosCatalog(arr);
+    repairUnidadesPostosCatalogRefs();
     limparFormPostoUnidade();
     renderUnidadesPostosList();
     if(typeof renderPostosPanorama === 'function') renderPostosPanorama();
@@ -14368,7 +14476,7 @@ function renderPostosPanorama(){
         const extraMes = (cargaPostoMes > 0 && cargaColabMes > 0) ? +(cargaPostoMes - cargaColabMes).toFixed(2) : 0;
         return {
             posto: p.codigo || '',
-            unidade: row.unidade || p.unidadeNome || '',
+            unidade: row.unidade || formatUnidadeQuadroLabel(resolveUnidadeRecordParaPosto(p)) || p.unidadeNome || '',
             endereco: row.enderecoUnidade || '',
             cnpj: row.cnpjUnidade || '',
             empresa: row.empresaUnidade || '',
