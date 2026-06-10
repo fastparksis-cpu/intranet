@@ -3043,7 +3043,7 @@ td { color: var(--t); font-weight: 500;}
             <article class="panel list ref-report quadro-atual-report">
                 <div class="head">
                     <h2>Quadro atual</h2>
-                    <p class="ref-report-sub">Relatório alimentado por <strong>Unidades → Postos</strong> (código, dias, escala, horários, supervisor) e cadastro da unidade (endereço, CNPJ, empresa). <strong>Colaborador, função e registro</strong> vêm <strong>somente da ficha cadastral</strong>: campo <strong>Código do posto</strong> (deve coincidir com o código do posto em Unidades → Postos) e <strong>Atuando</strong> = unidade.</p>
+                    <p class="ref-report-sub">Relatório alimentado por <strong>Unidades → Postos</strong> (código, dias, escala, horários, supervisor) e cadastro da unidade (endereço, CNPJ, empresa). <strong>Colaborador, função, registro e carga horária</strong> vêm <strong>somente da ficha cadastral</strong> (vínculo por <strong>Código do posto</strong> + <strong>Atuando</strong> = unidade).</p>
                 </div>
                 <div class="ref-report-actions">
                     <button type="button" class="btn btn-info" onclick="abrirUnidadePostos()">Abrir cadastro de postos (Unidades)</button>
@@ -14501,19 +14501,34 @@ function findColaboradorParaPostoCatalog(p, row){
     const uniCod = String(uni?.cod || p?.unidadeCod || row.unidadeCod || '').trim();
     return findEmployeeByCodPostoFichaCadastro(postoK, uniNome, uniCod);
 }
-function fmtEmpresaRegistroColaborador(emp){
-    const e = String(emp?.empresa || '').trim();
-    if(!e || e === 'Sem empresa') return '—';
-    return e;
+/** Registro (empresa pagadora) na ficha cadastral — campo «Registro» / empresa do colaborador. */
+function registroColaboradorFichaCadastro(emp){
+    if(!emp) return '—';
+    const reg = String(emp.empresa || emp.registro2 || emp.registro || '').trim();
+    if(reg && reg !== 'Sem empresa') return reg;
+    return '—';
+}
+/** Carga horária do colaborador na ficha (campo Carga Horária + jornada/escala da ficha para cálculo). */
+function cargaHorariaColaboradorFichaCadastro(emp){
+    if(!emp) return { raw: '', semanal: 0, exibir: '—' };
+    const raw = String(emp.carga || '').trim();
+    const diasRef = emp.jornada || '';
+    const escalaRef = emp.escala || emp.jornada || '';
+    const semanal = raw ? parseCargaSemanalHoras(raw, diasRef, escalaRef) : 0;
+    let exibir = '—';
+    if(raw) exibir = raw;
+    else if(semanal > 0) exibir = fmtHorasSemanais(semanal);
+    return { raw, semanal, exibir };
 }
 function dadosColaboradorQuadroAtual(emp){
-    if(!emp) return { colaborador: '—', funcao: '—', registro: '—' };
-    const registro = String(emp.registro2 || emp.codigoRH || emp.codigoESocial || '').trim()
-        || fmtEmpresaRegistroColaborador(emp);
+    if(!emp) return { colaborador: '—', funcao: '—', registro: '—', cargaExibir: '—', cargaSemanal: 0 };
+    const carga = cargaHorariaColaboradorFichaCadastro(emp);
     return {
         colaborador: String(emp.nome || '').trim() || '—',
         funcao: String(emp.cargo || '').trim() || '—',
-        registro: registro === '—' ? '—' : registro
+        registro: registroColaboradorFichaCadastro(emp),
+        cargaExibir: carga.exibir,
+        cargaSemanal: carga.semanal
     };
 }
 function parseCargaSemanalHoras(raw, diasRef, escalaRef){
@@ -14664,7 +14679,8 @@ function renderPostosPanorama(){
         const retornoIntervaloRef = p.retornoIntervalo || '';
         const saidaRef = p.saida || '';
         const is12x36 = normText(escalaTxt).includes('12X36');
-        const cargaColab = parseCargaSemanalHoras(emp?.carga, diasRef, escalaTxt);
+        const cargaColab = col.cargaSemanal;
+        const cargaColabExibir = col.cargaExibir;
         const minDiaPosto = minutosPostoDia(entradaRef, saidaRef, saidaIntervaloRef, retornoIntervaloRef);
         const hDiaPosto = minDiaPosto > 0 ? +(minDiaPosto / 60).toFixed(2) : 0;
         const diasSem = diasSemanaisDoPosto(diasRef, escalaTxt);
@@ -14695,6 +14711,7 @@ function renderPostosPanorama(){
             funcao: col.funcao,
             registro: col.registro,
             cargaColab,
+            cargaColabExibir,
             cargaPosto,
             extra,
             extraMes,
@@ -14732,7 +14749,7 @@ function renderPostosPanorama(){
             <td>${esc(r.colaborador)}</td>
             <td>${esc(r.funcao)}</td>
             <td class="ref-readonly-val">${esc(r.registro)}</td>
-            <td>${esc(fmtHorasSemanais(r.cargaColab))}</td>
+            <td>${esc(r.cargaColabExibir || fmtHorasSemanais(r.cargaColab))}</td>
             <td>${esc(fmtHorasSemanais(r.cargaPosto))}</td>
             <td>${esc(r.extra > 0 ? `+${fmtHorasSemanais(r.extra)}` : (r.extra < 0 ? `-${fmtHorasSemanais(Math.abs(r.extra))}` : '—'))}</td>
             <td>${esc(r.extraMes > 0 ? `+${fmtHorasMensais(r.extraMes)}` : '—')}</td>
@@ -14948,8 +14965,8 @@ function preencherPostoRowDeCadastro(row, opts){
         };
         put('funcao', emp.cargo);
         put('empresa', emp.empresa === 'Sem empresa' ? '' : emp.empresa);
-        const registro2Cadastro = emp.empresa && emp.empresa !== 'Sem empresa' ? String(emp.empresa).trim() : '';
-        put('registro2', registro2Cadastro);
+        const registro2Cadastro = registroColaboradorFichaCadastro(emp);
+        if(registro2Cadastro !== '—') put('registro2', registro2Cadastro);
         const idCand = String(emp.codigoRH || emp.codigoESocial || '').trim();
         if(idCand && (force || fillOnly && !String(row.idRh || '').trim())) row.idRh = idCand;
     }
