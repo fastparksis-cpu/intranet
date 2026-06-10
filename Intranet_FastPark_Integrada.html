@@ -5597,7 +5597,9 @@ let chartInstances = {};
 const movState = { rows: [], charts: {}, meta: { competencia: '', empresa: '', cnpj: '' } };
 
 const F = {
-    empresa: ['EMPRESA'], nome: ['NOME'], status: ['STATUS'],
+    empresa: ['EMPRESA','REGISTRO EM','REGISTRO EM:','REGISTRO EM 2','REGISTRO','REGISTRO EM 1','REGISTRO_FUNCIONARIO','REGISTRO FUNCIONARIO'],
+    registroEm: ['REGISTRO EM','REGISTRO EM:','REGISTRO EM 2','REGISTRO EM 1','REGISTRO','REGISTRO_FUNCIONARIO','REGISTRO FUNCIONARIO'],
+    nome: ['NOME'], status: ['STATUS'],
     admissao: ['DATA ADMISSÃO','DATA ADMISSAO','DATA DE ADMISSÃO','DATA DE ADMISSAO','DATA_ADMISSÃO','DATA_ADMISSAO','ADMISSÃO','ADMISSAO','DT ADMISSÃO','DT ADMISSAO','DT. ADMISSÃO','DT. ADMISSAO','DATA ADMISSÃO COLABORADOR','DATA ADMISSAO COLABORADOR','DT ADMISSÃO COLABORADOR','DT ADMISSAO COLABORADOR'],
     demissao: ['DATA DEMISSÃO','DATA_DEMISSÃO'], aso: ['VENCIMENTO ASO','VENCIMENTO_ASO'],
     cargo: ['DESCRIÇÃO CARGO','CARGO'], nivel: ['NÍVEL'], atuando: ['ATUANDO','UNIDADE'],
@@ -6279,8 +6281,12 @@ function build(r) {
         || (cnhFromColCat != null && String(cnhFromColCat).trim() !== '' ? String(cnhFromColCat).trim() : '')
         || pickCnhCategoriaCell(r);
     const admIso = toIsoDateOnlyFromParsed(admCell);
+    const registroEm = String(one(r, F.registroEm) || one(r, F.empresa) || '').trim();
+    const empresaCad = String(one(r, F.empresa) || registroEm || '').trim();
     return {
-        empresa: one(r, F.empresa) || 'Sem empresa', nome: nomeOriginal, status: statusNorm(one(r, F.status)),
+        empresa: empresaCad || 'Sem empresa',
+        registroEm: registroEm || empresaCad || '',
+        nome: nomeOriginal, status: statusNorm(one(r, F.status)),
         admissao: admIso || admCell, demissao: one(r, F.demissao), aso: one(r, F.aso),
         inicioFerias: one(r, F.inicioFerias), fimFerias: one(r, F.fimFerias),
         cargo: one(r, F.cargo), nivel: one(r, F.nivel), atuando: one(r, F.atuando),
@@ -8833,7 +8839,12 @@ function fpEmployeeCadastroMatchKey(emp){
     const nk = normText(emp?.nome || '');
     return nk ? 'nome:' + nk : '';
 }
-/** Preserva vínculo de posto (codPosto) gravado na ficha quando snapshot embutido/nuvem não traz o campo. */
+/** Valor de registro/empresa válido na ficha (não vazio nem placeholder). */
+function fpRegistroEmpresaFichaValido(v){
+    const s = String(v || '').trim();
+    return s && s !== 'Sem empresa';
+}
+/** Preserva campos editados na ficha (posto, registro, carga) quando snapshot embutido/nuvem não traz ou sobrescreve. */
 function fpMergeEmployeeLocalCadastroFields(incoming, localPrev){
     if(!Array.isArray(incoming) || !incoming.length) return incoming || [];
     if(!Array.isArray(localPrev) || !localPrev.length) return incoming;
@@ -8846,11 +8857,34 @@ function fpMergeEmployeeLocalCadastroFields(incoming, localPrev){
     return incoming.map(e => {
         const hit = localMap.get(fpEmployeeCadastroMatchKey(e));
         if(!hit) return e;
+        const out = { ...e };
+        let changed = false;
         const localCod = normalizeCodPostoCadastro(hit.codPosto || hit.codigoPosto || hit.codigo_posto);
-        if(!localCod) return e;
-        const incCod = normalizeCodPostoCadastro(e.codPosto || e.codigoPosto || e.codigo_posto);
-        if(incCod === localCod) return e;
-        return { ...e, codPosto: localCod };
+        const incCod = normalizeCodPostoCadastro(out.codPosto || out.codigoPosto || out.codigo_posto);
+        if(localCod && localCod !== incCod){
+            out.codPosto = localCod;
+            changed = true;
+        }
+        const localReg = fpRegistroEmpresaFichaValido(hit.empresa) ? String(hit.empresa).trim()
+            : fpRegistroEmpresaFichaValido(hit.registroEm) ? String(hit.registroEm).trim()
+            : fpRegistroEmpresaFichaValido(hit.registro2) ? String(hit.registro2).trim()
+            : fpRegistroEmpresaFichaValido(hit.registro) ? String(hit.registro).trim()
+            : '';
+        const incReg = fpRegistroEmpresaFichaValido(out.empresa) ? String(out.empresa).trim()
+            : fpRegistroEmpresaFichaValido(out.registroEm) ? String(out.registroEm).trim()
+            : '';
+        if(localReg && (!incReg || incReg === 'Sem empresa' || normText(localReg) !== normText(incReg))){
+            out.empresa = localReg;
+            if(hit.registroEm) out.registroEm = String(hit.registroEm).trim();
+            changed = true;
+        }
+        const localCarga = String(hit.carga || '').trim();
+        const incCarga = String(out.carga || '').trim();
+        if(localCarga && localCarga !== incCarga){
+            out.carga = localCarga;
+            changed = true;
+        }
+        return changed ? out : e;
     });
 }
 function fpMergeEmployeeAttachments(arr, bag){
@@ -14501,16 +14535,29 @@ function findColaboradorParaPostoCatalog(p, row){
     const uniCod = String(uni?.cod || p?.unidadeCod || row.unidadeCod || '').trim();
     return findEmployeeByCodPostoFichaCadastro(postoK, uniNome, uniCod);
 }
+/** Releitura do colaborador em state.employees (dados locais mais recentes da ficha). */
+function resolveEmployeeFichaParaQuadro(emp){
+    if(!emp) return null;
+    const k = fpEmployeeCadastroMatchKey(emp);
+    if(!k) return emp;
+    const hit = (state.employees || []).find(e => fpEmployeeCadastroMatchKey(e) === k);
+    return hit || emp;
+}
 /** Registro (empresa pagadora) na ficha cadastral — campo «Registro» / empresa do colaborador. */
 function registroColaboradorFichaCadastro(emp){
     if(!emp) return '—';
-    const reg = String(emp.empresa || emp.registro2 || emp.registro || '').trim();
-    if(reg && reg !== 'Sem empresa') return reg;
-    return '—';
+    emp = resolveEmployeeFichaParaQuadro(emp) || emp;
+    const candidates = [emp.empresa, emp.registroEm, emp.registro2, emp.registro]
+        .map(v => String(v || '').trim())
+        .filter(fpRegistroEmpresaFichaValido);
+    if(!candidates.length) return '—';
+    const reg = candidates[0];
+    return typeof canonEmpresaNome === 'function' ? (canonEmpresaNome(reg) || reg) : reg;
 }
 /** Carga horária do colaborador na ficha (campo Carga Horária + jornada/escala da ficha para cálculo). */
 function cargaHorariaColaboradorFichaCadastro(emp){
     if(!emp) return { raw: '', semanal: 0, exibir: '—' };
+    emp = resolveEmployeeFichaParaQuadro(emp) || emp;
     const raw = String(emp.carga || '').trim();
     const diasRef = emp.jornada || '';
     const escalaRef = emp.escala || emp.jornada || '';
@@ -14522,6 +14569,7 @@ function cargaHorariaColaboradorFichaCadastro(emp){
 }
 function dadosColaboradorQuadroAtual(emp){
     if(!emp) return { colaborador: '—', funcao: '—', registro: '—', cargaExibir: '—', cargaSemanal: 0 };
+    emp = resolveEmployeeFichaParaQuadro(emp) || emp;
     const carga = cargaHorariaColaboradorFichaCadastro(emp);
     return {
         colaborador: String(emp.nome || '').trim() || '—',
@@ -14659,9 +14707,20 @@ function onQuadroAtualUnidadeFiltroChange(){
     window.__fpQuadroAtualUnidadeFiltro = sel ? String(sel.value || '').trim() : '';
     renderPostosPanorama();
 }
+function fpEnsureEmployeesCadastroLocalMerged(){
+    if(!Array.isArray(state.employees) || !state.employees.length) return;
+    try {
+        const raw = localStorage.getItem(FP_EMPLOYEES_STORE_KEY);
+        if(!raw) return;
+        const local = JSON.parse(raw);
+        if(!Array.isArray(local) || !local.length) return;
+        state.employees = fpMergeEmployeeLocalCadastroFields(state.employees, local);
+    } catch(e) { console.warn('[FP] merge cadastro local', e); }
+}
 function renderPostosPanorama(){
     const el = document.getElementById('postosPanorama');
     if(!el) return;
+    fpEnsureEmployeesCadastroLocalMerged();
     const catalog = getQuadroAtualPostosCatalog();
     if(!catalog.length){
         el.innerHTML = '<div class="empty postos-panorama-empty">Nenhum posto cadastrado. Vá em <strong>Unidades → Postos</strong>, selecione a unidade e cadastre os postos (código, dias, escala e horários).</div>';
@@ -14670,7 +14729,7 @@ function renderPostosPanorama(){
     const comp = getCompetenciaAnoMesRef();
     const linhas = catalog.map((p, idx) => {
         const row = catalogPostoToQuadroRow(p, idx);
-        const emp = findColaboradorParaPostoCatalog(p, row);
+        const emp = resolveEmployeeFichaParaQuadro(findColaboradorParaPostoCatalog(p, row));
         const col = dadosColaboradorQuadroAtual(emp);
         const escalaTxt = p.escala || p.jornada || '';
         const diasRef = p.diasSemana || '';

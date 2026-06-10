@@ -793,7 +793,9 @@ const IS_CADASTRO_VIEW = !IS_INICIO_VIEW;
 
 // MAPEAMENTO DE COLUNAS
 const F = {
-    empresa: ['EMPRESA'], nome: ['NOME'], status: ['STATUS'],
+    empresa: ['EMPRESA','REGISTRO EM','REGISTRO EM:','REGISTRO EM 2','REGISTRO','REGISTRO EM 1','REGISTRO_FUNCIONARIO','REGISTRO FUNCIONARIO'],
+    registroEm: ['REGISTRO EM','REGISTRO EM:','REGISTRO EM 2','REGISTRO EM 1','REGISTRO','REGISTRO_FUNCIONARIO','REGISTRO FUNCIONARIO'],
+    nome: ['NOME'], status: ['STATUS'],
     /* Data de admissão (experiência = dias desde esta data). Sem coluna de “contratação” para não confundir com outras datas. */
     admissao: ['DATA ADMISSÃO','DATA ADMISSAO','DATA DE ADMISSÃO','DATA DE ADMISSAO','DATA_ADMISSÃO','DATA_ADMISSAO','ADMISSÃO','ADMISSAO','DT ADMISSÃO','DT ADMISSAO','DT. ADMISSÃO','DT. ADMISSAO','DATA ADMISSÃO COLABORADOR','DATA ADMISSAO COLABORADOR','DT ADMISSÃO COLABORADOR','DT ADMISSAO COLABORADOR'],
     demissao: ['DATA DEMISSÃO','DATA_DEMISSÃO'], aso: ['VENCIMENTO ASO','VENCIMENTO_ASO'],
@@ -1895,8 +1897,12 @@ function build(r) {
         || (cnhFromColCat != null && String(cnhFromColCat).trim() !== '' ? String(cnhFromColCat).trim() : '')
         || pickCnhCategoriaCell(r);
     const admIso = toIsoDateOnlyFromParsed(admCell);
+    const registroEm = String(one(r, F.registroEm) || one(r, F.empresa) || '').trim();
+    const empresaCad = String(one(r, F.empresa) || registroEm || '').trim();
     return {
-        empresa: one(r, F.empresa) || 'Sem empresa', nome: nomeOriginal, status: statusNorm(one(r, F.status)),
+        empresa: empresaCad || 'Sem empresa',
+        registroEm: registroEm || empresaCad || '',
+        nome: nomeOriginal, status: statusNorm(one(r, F.status)),
         admissao: admIso || admCell, demissao: one(r, F.demissao), aso: one(r, F.aso),
         inicioFerias: one(r, F.inicioFerias), fimFerias: one(r, F.fimFerias),
         cargo: one(r, F.cargo), nivel: one(r, F.nivel), atuando: one(r, F.atuando),
