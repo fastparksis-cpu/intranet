@@ -20,6 +20,7 @@
 <script src="/fp-supabase-sync.js"></script>
 <script src="/fp-propostas.js"></script>
 <script src="/fp-selos.js"></script>
+<script src="/fp-estoque.js"></script>
 <script>
 (function () {
     if (window.FP_AUTH_REQUIRED === false) return;
@@ -36,6 +37,9 @@
     g.FP_BANK_XLSX_DIR = '\\\\192.168.0.64\\Servidor\\DP\\GESTÃO RH\\GESTÃO DE FUNCIONARIOS';
     g.FP_BANK_XLSX_NAME = 'BANCO DE DADOS.xlsx';
     g.FP_BANK_XLSX_PATH_HINT = g.FP_BANK_XLSX_DIR + '\\' + g.FP_BANK_XLSX_NAME;
+    g.FP_ESTOQUE_XLSX_DIR = '\\\\192.168.0.64\\Servidor\\DP\\GESTÃO RH';
+    g.FP_ESTOQUE_XLSX_NAME = 'Planilha de controle de estoque.xlsx';
+    g.FP_ESTOQUE_XLSX_PATH_HINT = g.FP_ESTOQUE_XLSX_DIR + '\\' + g.FP_ESTOQUE_XLSX_NAME;
 })(typeof window !== 'undefined' ? window : globalThis);
 </script>
 <style>
@@ -472,6 +476,52 @@ body {
     text-align: center;
     color: var(--m);
 }
+/* Gestão de Estoque — grelha tipo planilha */
+.est-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    padding: 10px 12px;
+    background: #f8fafc;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    margin-bottom: 10px;
+}
+.est-meta { font-size: 11px; color: #6b7280; margin-left: auto; }
+.est-sheet-scroll { overflow: auto; max-height: calc(100vh - 200px); border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; }
+.est-sheet-table { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 900px; }
+.est-sheet-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: #1f2937;
+    color: #fff;
+    font-weight: 700;
+    text-align: left;
+    padding: 8px 10px;
+    border: 1px solid #374151;
+    white-space: nowrap;
+}
+.est-sheet-table td {
+    border: 1px solid #e5e7eb;
+    padding: 0;
+    vertical-align: middle;
+    background: #fff;
+}
+.est-sheet-table tr.est-row-alerta td { background: #fff7ed; }
+.est-cell-input {
+    width: 100%;
+    min-width: 72px;
+    border: none;
+    padding: 6px 8px;
+    font-size: 12px;
+    background: transparent;
+    box-sizing: border-box;
+}
+.est-cell-input:focus { outline: 2px solid var(--fp-orange, #ff8c00); background: #fffbeb; }
+.est-col-acoes { width: 90px; text-align: center; white-space: nowrap; padding: 4px !important; }
+
 .fp-placeholder-panel h2 {
     margin: 0 0 8px;
     color: var(--fp-dark);
@@ -3486,13 +3536,52 @@ td { color: var(--t); font-weight: 500;}
         <div class="fp-placeholder-panel"><p>Relatórios e exportações financeiras aparecerão aqui.</p></div>
     </div>
     <div id="est-fornecedores" class="tab-content fp-page-full">
-        <div class="fp-placeholder-panel"><p>Cadastro de fornecedores para o estoque.</p></div>
+        <article class="panel">
+            <div class="head"><h2>Cadastro de fornecedores</h2></div>
+            <div class="body" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;font-size:12px;">
+                <input type="hidden" id="estFornEditId" value="">
+                <div><label><strong>Razão social</strong></label><br><input id="estFornRazao" type="text" style="width:100%;box-sizing:border-box;"></div>
+                <div><label><strong>Nome fantasia</strong></label><br><input id="estFornFantasia" type="text" style="width:100%;box-sizing:border-box;"></div>
+                <div><label><strong>CNPJ</strong></label><br><input id="estFornCnpj" type="text" style="width:100%;box-sizing:border-box;"></div>
+                <div><label><strong>Contato</strong></label><br><input id="estFornContato" type="text" style="width:100%;box-sizing:border-box;"></div>
+                <div><label><strong>Telefone</strong></label><br><input id="estFornTel" type="text" style="width:100%;box-sizing:border-box;"></div>
+                <div><label><strong>E-mail</strong></label><br><input id="estFornEmail" type="email" style="width:100%;box-sizing:border-box;"></div>
+                <div style="grid-column:1/-1;"><label><strong>Observações</strong></label><br><textarea id="estFornObs" rows="2" style="width:100%;box-sizing:border-box;"></textarea></div>
+                <div style="grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap;">
+                    <button type="button" class="btn btn-success" onclick="salvarFornecedor()">Salvar fornecedor</button>
+                    <button type="button" class="btn" onclick="limparFormFornecedor()">Limpar</button>
+                </div>
+            </div>
+        </article>
+        <article class="panel list" style="margin-top:12px;"><h3>Fornecedores</h3><div class="inner" id="estFornecedoresLista" style="overflow-x:auto;"></div></article>
     </div>
     <div id="est-estoque" class="tab-content fp-page-full">
-        <div class="fp-placeholder-panel"><p>Controlo de materiais e quantidades.</p></div>
+        <article class="panel">
+            <div class="head"><h2>Controle de estoque</h2><p style="margin:6px 0 0;font-size:12px;opacity:.9;">Importe a planilha de rede para manter o mesmo formato de colunas.</p><p id="estoquePathHint" style="margin:4px 0 0;font-size:11px;opacity:.75;word-break:break-all;"></p></div>
+            <div class="body" style="padding:10px;">
+                <div id="estoqueToolbarHost"></div>
+                <div id="estoqueGrelhaWrap"></div>
+            </div>
+        </article>
     </div>
     <div id="est-saida" class="tab-content fp-page-full">
-        <div class="fp-placeholder-panel"><p>Registo de saídas de material do estoque.</p></div>
+        <article class="panel">
+            <div class="head"><h2>Saída de material</h2><p style="margin:6px 0 0;font-size:12px;opacity:.9;">Regista a saída e atualiza automaticamente o saldo na grelha de estoque.</p></div>
+            <div class="body" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;font-size:12px;">
+                <input type="hidden" id="estSaidaEditId" value="">
+                <div><label><strong>Data</strong></label><br><input id="estSaidaData" type="date" style="width:100%;box-sizing:border-box;"></div>
+                <div style="grid-column:span 2;"><label><strong>Material</strong></label><br><select id="estSaidaMaterial" style="width:100%;box-sizing:border-box;"><option value="">Selecione</option></select></div>
+                <div><label><strong>Quantidade</strong></label><br><input id="estSaidaQtd" type="number" min="0" step="0.01" style="width:100%;box-sizing:border-box;"></div>
+                <div><label><strong>Unidade / destino</strong></label><br><select id="estSaidaUnidade" style="width:100%;box-sizing:border-box;"><option value="">—</option></select></div>
+                <div><label><strong>Solicitante</strong></label><br><input id="estSaidaSolicitante" type="text" style="width:100%;box-sizing:border-box;"></div>
+                <div style="grid-column:1/-1;"><label><strong>Motivo / observação</strong></label><br><textarea id="estSaidaMotivo" rows="2" style="width:100%;box-sizing:border-box;"></textarea></div>
+                <div style="grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap;">
+                    <button type="button" class="btn btn-success" onclick="salvarSaidaMaterial()">Registrar saída</button>
+                    <button type="button" class="btn" onclick="limparFormSaida()">Limpar</button>
+                </div>
+            </div>
+        </article>
+        <article class="panel list" style="margin-top:12px;"><h3>Histórico de saídas</h3><div class="inner" id="estSaidasLista" style="overflow-x:auto;"></div></article>
     </div>
 </div>
 <div id="uniReajusteModal" class="modal-overlay" style="display:none;z-index:2200;" onclick="if(event.target===this)cancelUniReajusteModal()">
@@ -3819,6 +3908,9 @@ function switchTab(tab) {
     if(tab === 'acessos' && typeof renderAcessosTab === 'function') renderAcessosTab();
     if(tab === 'propostas' && typeof renderPropostasTab === 'function') renderPropostasTab();
     if(tab === 'selos' && typeof renderSelosTab === 'function') renderSelosTab();
+    if(tab === 'est-fornecedores' && typeof renderFornecedoresTab === 'function') renderFornecedoresTab();
+    if(tab === 'est-estoque' && typeof renderEstoqueTab === 'function') renderEstoqueTab();
+    if(tab === 'est-saida' && typeof renderSaidaTab === 'function') renderSaidaTab();
 }
 
 function limparFormUsuarioAcesso(){
@@ -7050,6 +7142,9 @@ window.fpOnCloudDataReady = async function () {
         if(typeof renderSinistrosBaixa === 'function') renderSinistrosBaixa();
         if(typeof renderSinistrosHistorico === 'function') renderSinistrosHistorico();
         if(typeof renderPropostasLista === 'function') renderPropostasLista();
+        if(typeof renderEstoqueTab === 'function') renderEstoqueTab();
+        if(typeof renderFornecedoresTab === 'function') renderFornecedoresTab();
+        if(typeof renderSaidaTab === 'function') renderSaidaTab();
         if(typeof refreshMovGestaoPagamentosUi === 'function') refreshMovGestaoPagamentosUi();
         if(typeof renderVtHistory === 'function') renderVtHistory();
     } catch(modUiErr) { console.warn('[FP] UI módulos pós-nuvem', modUiErr); }

@@ -16,6 +16,10 @@
 
     var BANK = 'BANCO DE DADOS.xlsx';
 
+    var ESTOQUE_DIR = '\\\\192.168.0.64\\Servidor\\DP\\GESTÃO RH';
+
+    var ESTOQUE = 'Planilha de controle de estoque.xlsx';
+
     g.FP_INTRANET_BASE_UNC = INTRANET;
 
     g.FP_BANK_XLSX_DIR = BANK_DIR;
@@ -23,6 +27,12 @@
     g.FP_BANK_XLSX_NAME = BANK;
 
     g.FP_BANK_XLSX_PATH_HINT = BANK_DIR + '\\' + BANK;
+
+    g.FP_ESTOQUE_XLSX_DIR = ESTOQUE_DIR;
+
+    g.FP_ESTOQUE_XLSX_NAME = ESTOQUE;
+
+    g.FP_ESTOQUE_XLSX_PATH_HINT = ESTOQUE_DIR + '\\' + ESTOQUE;
 
     g.FP_INTRANET_FOLDERS = {
 
