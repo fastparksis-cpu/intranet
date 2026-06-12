@@ -1226,20 +1226,32 @@
                     fpCloudSetStatus('Entre com login para carregar os dados da nuvem (☁️).', false);
                     return { loaded: false, reason: 'not-logged' };
                 }
-                var peek = await supa.from('intranet_snapshots')
-                    .select('id, updated_at')
-                    .eq('id', ROW_ID)
-                    .maybeSingle();
-                if (peek.error) throw peek.error;
-                if (!peek.data) {
-                    fpCloudSetStatus('Sem dados na nuvem — importe o Excel e use ☁️ Salvar.', false);
-                    return { loaded: false, reason: 'no-snapshot' };
+                var skipPeek = g.FP_CLOUD_AUTOLOAD_SKIP_PEEK !== false && (opts.boot || opts.force);
+                var peek = null;
+                if (!skipPeek) {
+                    peek = await supa.from('intranet_snapshots')
+                        .select('id, updated_at')
+                        .eq('id', ROW_ID)
+                        .maybeSingle();
+                    if (peek.error) throw peek.error;
+                    if (!peek.data) {
+                        fpCloudSetStatus('Sem dados na nuvem — importe o Excel e use ☁️ Salvar.', false);
+                        return { loaded: false, reason: 'no-snapshot' };
+                    }
                 }
-                var loadRes = await g.fpCloudLoadSnapshot({ autoload: true, skipIframeSync: true });
+                var loadRes = await g.fpCloudLoadSnapshot({
+                    autoload: true,
+                    skipIframeSync: true,
+                    force: !!opts.force
+                });
                 if (loadRes && loadRes.skipped) {
                     return { loaded: false, reason: loadRes.reason || 'skipped' };
                 }
-                var result = { loaded: true, updatedAt: peek.data.updated_at || null };
+                var result = {
+                    loaded: true,
+                    updatedAt: (peek && peek.data && peek.data.updated_at) ||
+                        (loadRes && loadRes.__cloudUpdatedAt) || null
+                };
                 g.__fpCloudAutoloadDone = true;
                 g.__fpCloudAutoloadResult = result;
                 return result;
@@ -1331,14 +1343,32 @@
                 fpCloudSetStatus('A transferir documentos da nuvem…');
                 attStats = await g.fpResolveCloudAttachmentMarkers(db, { full: true }) || attStats;
             }
-            if (typeof g.fpResolveDiskAttachmentMarkers === 'function') {
+            if (!useFast && typeof g.fpResolveDiskAttachmentMarkers === 'function') {
                 await g.fpResolveDiskAttachmentMarkers(db);
             }
             if (typeof g.applyFpEmbeddedIntranetDb !== 'function') {
                 throw new Error('Função applyFpEmbeddedIntranetDb não encontrada.');
             }
-            await g.applyFpEmbeddedIntranetDb(db, { fromCloud: true });
-            if (useFast && typeof g.fpAwaitCloudMediaPrefetch === 'function') {
+            await g.applyFpEmbeddedIntranetDb(db, { fromCloud: true, fast: useFast });
+            db.__cloudUpdatedAt = cloudWhen;
+            if (!opts.skipIframeSync) {
+                if (typeof g.fpOnCloudDataReady === 'function') {
+                    await g.fpOnCloudDataReady();
+                } else if (typeof g.propagateStateToDashboardIframes === 'function') {
+                    g.propagateStateToDashboardIframes();
+                }
+            }
+            var bgMedia = useFast && g.FP_CLOUD_LOAD_BACKGROUND_MEDIA !== false;
+            if (bgMedia && typeof g.fpScheduleCloudMediaPrefetch === 'function') {
+                attStats = {
+                    ok: 0,
+                    fail: 0,
+                    total: collectAttachmentRefKeys(db).size,
+                    fast: true,
+                    background: true
+                };
+                g.fpScheduleCloudMediaPrefetch(db);
+            } else if (useFast && typeof g.fpAwaitCloudMediaPrefetch === 'function') {
                 try {
                     attStats = await g.fpAwaitCloudMediaPrefetch(db, { indexOnManyFails: true }) || attStats;
                     attStats.fast = true;
@@ -1350,13 +1380,12 @@
                 attStats = attStats || { ok: 0, fail: 0, total: 0 };
             }
             if (typeof g.fpPersistEmployeeAttBagFromState === 'function') {
-                await g.fpPersistEmployeeAttBagFromState();
-            }
-            if (!opts.skipIframeSync) {
-                if (typeof g.fpOnCloudDataReady === 'function') {
-                    g.fpOnCloudDataReady();
-                } else if (typeof g.propagateStateToDashboardIframes === 'function') {
-                    g.propagateStateToDashboardIframes();
+                if (bgMedia) {
+                    g.fpPersistEmployeeAttBagFromState().catch(function (bagErr) {
+                        console.warn('[fp-cloud] bag pós-carga', bagErr);
+                    });
+                } else {
+                    await g.fpPersistEmployeeAttBagFromState();
                 }
             }
             var when = res.data.updated_at || res.data.exported_at || '';
@@ -1367,7 +1396,9 @@
             var msg = (opts.autoload ? 'Carregado automaticamente' : 'Carregado da nuvem') +
                 ': ' + nEmp + ' colaborador(es)' +
                 (when ? ' (' + new Date(when).toLocaleString('pt-BR') + ')' : '') + '.';
-            if (attStats.fast && attStats.total) {
+            if (attStats.background && attStats.total) {
+                msg += ' Dados prontos — fotos/docs a carregar em segundo plano (' + attStats.total + ').';
+            } else if (attStats.fast && attStats.total) {
                 msg += ' Fotos/docs a carregar em segundo plano (' + attStats.total + ').';
             } else if (attStats.total || attStats.storageFiles) {
                 msg += ' Anexos: ' + attStats.ok + '/' + (attStats.total || attStats.storageFiles);

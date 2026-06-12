@@ -45,7 +45,12 @@
      */
     g.FP_CLOUD_FAST_SYNC = true;
     g.FP_CLOUD_UPLOAD_CONCURRENCY = 12;
-    g.FP_CLOUD_MEDIA_PREFETCH_CONCURRENCY = 16;
+    /** Fotos/docs em paralelo ao abrir (não bloqueia o JSON) */
+    g.FP_CLOUD_MEDIA_PREFETCH_CONCURRENCY = 24;
+    /** JSON visível de imediato; anexos carregam em segundo plano */
+    g.FP_CLOUD_LOAD_BACKGROUND_MEDIA = true;
+    /** No arranque, não faz pedido extra só para verificar se há snapshot */
+    g.FP_CLOUD_AUTOLOAD_SKIP_PEEK = true;
     /** Em auto-gravação não espera 3s pelos iframes — usa dados já em memória */
     g.FP_CLOUD_QUICK_SAVE = true;
     /** Antes de gravar na nuvem, sincroniza memória → localStorage de todas as abas */
