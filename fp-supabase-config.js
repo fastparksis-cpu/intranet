@@ -24,13 +24,18 @@
 
     /** Sincronização automática com a nuvem (sem botão Salvar) */
     g.FP_CLOUD_AUTOSAVE = true;
-    /** Após qualquer alteração nas abas (≈ meio segundo) */
-    g.FP_CLOUD_AUTOSAVE_DEBOUNCE_MS = 550;
-    /** Cadastro/DashBoard acabou de enviar dados — grava quase na hora */
-    g.FP_CLOUD_SAVE_INSTANT_MS = 350;
-    g.FP_CLOUD_SAVE_AFTER_MEDIA_MS = 180;
-    /** Tempo para o iframe Cadastro responder antes do snapshot */
-    g.FP_CLOUD_IFRAME_PULL_MS = 900;
+    /** Após qualquer alteração nas abas (~0,15 s) */
+    g.FP_CLOUD_AUTOSAVE_DEBOUNCE_MS = 150;
+    /** Gravação imediata após editar (quase sem espera) */
+    g.FP_CLOUD_SAVE_INSTANT_MS = 50;
+    g.FP_CLOUD_SAVE_AFTER_MEDIA_MS = 60;
+    /** Auto-gravação: usa dados já em memória/localStorage (sem esperar iframe) */
+    g.FP_CLOUD_IFRAME_PULL_MS = 0;
+    /** Caminho rápido: JSON na nuvem primeiro; anexos novos com tempo máximo de espera */
+    g.FP_CLOUD_AUTOSAVE_FAST_PATH = true;
+    g.FP_CLOUD_AUTOSAVE_SKIP_PEEK = true;
+    /** Máx. espera por uploads novos antes de gravar o JSON (ms) */
+    g.FP_CLOUD_AUTOSAVE_UPLOAD_WAIT_MS = 1800;
     /** Ao fechar o separador ou mudar de aba, grava de imediato */
     g.FP_CLOUD_FLUSH_ON_HIDE = true;
 
@@ -47,7 +52,7 @@
     g.FP_CLOUD_FLUSH_ALL_TABS = true;
     /** Envia cada foto/documento ao Storage assim que é anexado (antes do snapshot completo) */
     g.FP_CLOUD_IMMEDIATE_MEDIA_UPLOAD = true;
-    g.FP_CLOUD_MEDIA_SAVE_DEBOUNCE_MS = 80;
+    g.FP_CLOUD_MEDIA_SAVE_DEBOUNCE_MS = 40;
 
     /** Ao abrir a intranet com login, carrega snapshot + ficheiros do Supabase automaticamente */
     g.FP_CLOUD_AUTOLOAD = true;
@@ -55,7 +60,7 @@
     g.FP_CLOUD_AUTOLOAD_PREFER_NEWER = true;
     /** Após auto-carregar, não gravar de volta na nuvem durante este tempo (evita sobrescrever com cache local) */
     /** Pausa auto-gravação só logo após carregar da nuvem (evita eco); edições do utilizador ignoram a pausa */
-    g.FP_CLOUD_AUTOLOAD_AUTOSAVE_PAUSE_MS = 20000;
+    g.FP_CLOUD_AUTOLOAD_AUTOSAVE_PAUSE_MS = 6000;
 
     /** Rotas (Vercel: intranet-fastpark.html com cleanUrls, ou Intranet_FastPark_Integrada.html) */
     g.FP_LOGIN_URL = '/';

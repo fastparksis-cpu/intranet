@@ -8210,6 +8210,100 @@ function fpCollectAllIntranetLocalStorage(){
     return out;
 }
 window.fpCollectAllIntranetLocalStorage = fpCollectAllIntranetLocalStorage;
+const FP_LOCAL_KEY_META_KEY = 'fp_local_key_meta';
+function fpReadLocalKeyMeta(){
+    try {
+        const o = JSON.parse(localStorage.getItem(FP_LOCAL_KEY_META_KEY) || '{}');
+        return o && typeof o === 'object' ? o : {};
+    } catch(_e) { return {}; }
+}
+function fpTouchLocalKeyMeta(key){
+    if(!key) return;
+    try {
+        const meta = fpReadLocalKeyMeta();
+        meta[key] = { updatedAt: new Date().toISOString() };
+        const fn = Storage.prototype.__fpOrigSetItem || Storage.prototype.setItem;
+        fn.call(localStorage, FP_LOCAL_KEY_META_KEY, JSON.stringify(meta));
+    } catch(_e) { /* ignore */ }
+}
+window.fpTouchLocalKeyMeta = fpTouchLocalKeyMeta;
+function fpCaptureRegistryLocalStrings(){
+    const out = {};
+    (FP_SNAPSHOT_STORAGE_REGISTRY || []).forEach(function(entry){
+        if(!entry || !entry.key) return;
+        try {
+            const v = localStorage.getItem(entry.key);
+            if(v !== null && v !== undefined) out[entry.key] = v;
+        } catch(e) { console.warn('[FP] capture ls', entry.key, e); }
+    });
+    return out;
+}
+window.fpCaptureRegistryLocalStrings = fpCaptureRegistryLocalStrings;
+function fpJsonStorageRecordCount(s){
+    if(s === null || s === undefined || s === '') return 0;
+    try {
+        const v = JSON.parse(s);
+        if(Array.isArray(v)) return v.length;
+        if(v && typeof v === 'object') return Object.keys(v).length;
+        return String(s).length;
+    } catch(_e) { return String(s).length; }
+}
+function fpLocalStorageKeyNewerThanCloud(key, localVal, cloudVal, cloudExportedTs){
+    if(localVal === null || localVal === undefined || localVal === '') return false;
+    if(cloudVal === null || cloudVal === undefined || cloudVal === '') return true;
+    if(localVal === cloudVal) return false;
+    const keyMeta = fpReadLocalKeyMeta()[key];
+    const localTs = keyMeta && keyMeta.updatedAt ? new Date(keyMeta.updatedAt).getTime() : 0;
+    const cloudTs = cloudExportedTs > 0 ? cloudExportedTs : 0;
+    if(localTs && cloudTs && localTs > cloudTs + 800) return true;
+    const localN = fpJsonStorageRecordCount(localVal);
+    const cloudN = fpJsonStorageRecordCount(cloudVal);
+    if(localN > cloudN) return true;
+    return false;
+}
+function fpMergeCloudLocalStringsOnLoad(cloudLs, localCapture, cloudExportedTs){
+    const merged = { ...(cloudLs || {}) };
+    let keptLocal = 0;
+    Object.keys(localCapture || {}).forEach(function(k){
+        const localVal = localCapture[k];
+        const cloudVal = cloudLs && cloudLs[k];
+        if(fpLocalStorageKeyNewerThanCloud(k, localVal, cloudVal, cloudExportedTs)){
+            merged[k] = localVal;
+            keptLocal++;
+        } else if((cloudVal === null || cloudVal === undefined) && localVal){
+            merged[k] = localVal;
+            keptLocal++;
+        }
+    });
+    window.__fpLocalKeysMergedOnCloudLoad = keptLocal > 0;
+    return merged;
+}
+window.fpMergeCloudLocalStringsOnLoad = fpMergeCloudLocalStringsOnLoad;
+function fpSeedLocalKeyMetaFromSnapshot(){
+    const meta = fpReadLocalKeyMeta();
+    if(Object.keys(meta).length) return;
+    let snapTs = '';
+    try {
+        const snap = JSON.parse(localStorage.getItem('fp_local_snapshot_meta') || '{}');
+        snapTs = snap && snap.updatedAt ? snap.updatedAt : '';
+    } catch(_e) { return; }
+    if(!snapTs) return;
+    let seeded = false;
+    (FP_SNAPSHOT_STORAGE_REGISTRY || []).forEach(function(entry){
+        if(!entry || !entry.key) return;
+        try {
+            if(localStorage.getItem(entry.key) !== null){
+                meta[entry.key] = { updatedAt: snapTs, seeded: true };
+                seeded = true;
+            }
+        } catch(_e2) { /* ignore */ }
+    });
+    if(!seeded) return;
+    try {
+        const fn = Storage.prototype.__fpOrigSetItem || Storage.prototype.setItem;
+        fn.call(localStorage, FP_LOCAL_KEY_META_KEY, JSON.stringify(meta));
+    } catch(_e3) { /* ignore */ }
+}
 let unidadeAditivosTemp = [];
 let unidadeContratoAnexoPending = null;
 function uniDateBrFromStore(v){
@@ -9272,14 +9366,24 @@ async function fpUnlinkAttachmentsFolder(){
 function fpSlugAttSeg(s, maxLen){
     return String(s || 'x').replace(/[^\w.\-]/g, '_').replace(/_+/g, '_').slice(0, maxLen || 40);
 }
-async function collectFpIntranetSnapshot(){
-    if(typeof fpFlushAllTabsToLocalStorage === 'function'){
+async function collectFpIntranetSnapshot(opts){
+    opts = opts || {};
+    const fast = !!opts.fast;
+    if(!opts.skipFlush && typeof fpFlushAllTabsToLocalStorage === 'function'){
         try { await fpFlushAllTabsToLocalStorage(); } catch(flushErr) { console.warn('[FP] flush pré-snapshot', flushErr); }
     }
-    if(typeof fpPersistEmployeeAttBagFromState === 'function'){
+    if(!fast && typeof fpPersistEmployeeAttBagFromState === 'function'){
         try { await fpPersistEmployeeAttBagFromState(); } catch(bagErr) { console.warn('[FP] bag pré-snapshot', bagErr); }
     }
     const attachments = {};
+    if(fast){
+        try {
+            const emb = window.__FP_EMBEDDED_ATTACHMENTS__ || {};
+            Object.keys(emb).forEach(function(k){
+                if(!attachments[k]) attachments[k] = emb[k];
+            });
+        } catch(_emb) { /* ignore */ }
+    }
     try {
         Object.entries(uniAttBagGet()).forEach(([k, v]) => {
             if(typeof v === 'string' && v.startsWith('data:')) attachments[k] = v;
@@ -9487,6 +9591,9 @@ async function collectFpIntranetSnapshot(){
             ls[FP_PAGAS_LANCAMENTOS_KEY] = JSON.stringify(state.pagas || []);
             ls.fastparkHistorico = JSON.stringify(Array.isArray(historico) ? historico : []);
             try { ls[UNI_KEY] = JSON.stringify(uIn); } catch(eUniLs) { console.warn('[FP] snapshot fp_unidades', eUniLs); }
+            try { ls[MOV_CAD_KEY] = JSON.stringify(getMovCad()); } catch(eMovLs) { console.warn('[FP] snapshot movimentações', eMovLs); }
+            try { ls[FP_UNIDADES_POSTOS_KEY] = JSON.stringify(getUnidadesPostosCatalog()); } catch(ePostLs) { console.warn('[FP] snapshot postos', ePostLs); }
+            try { ls[FP_UNIDADES_ORCAMENTOS_KEY] = JSON.stringify(getUnidadesOrcamentos()); } catch(eOrcLs) { console.warn('[FP] snapshot orçamentos', eOrcLs); }
             try {
                 const uniBag = uniAttBagGet();
                 ls[FP_UNIDADES_ATT_BAG_KEY] = JSON.stringify(uniBag && typeof uniBag === 'object' ? uniBag : {});
@@ -9606,13 +9713,31 @@ async function applyFpEmbeddedIntranetDb(db, opts){
     }
     setFaltasCad(expandAnexoRefsInFaltas(db.faltasResolved || [], att));
     setSignedDocsMap(expandPagasSignedSlim(db.pagasSignedSlim || {}, att));
-    const ls = db.localStrings || {};
+    const cloudExportedTs = db.exportedAt ? new Date(db.exportedAt).getTime() : 0;
+    const localCapture = opts.fromCloud && typeof fpCaptureRegistryLocalStrings === 'function'
+        ? fpCaptureRegistryLocalStrings()
+        : {};
+    const ls = (opts.fromCloud && typeof fpMergeCloudLocalStringsOnLoad === 'function')
+        ? fpMergeCloudLocalStringsOnLoad(db.localStrings || {}, localCapture, cloudExportedTs)
+        : (db.localStrings || {});
     const uniLsDefer = new Set([UNI_KEY, FP_UNIDADES_ATT_BAG_KEY]);
     Object.keys(ls).forEach(k => {
         if(uniLsDefer.has(k)) return;
         if(ls[k] !== undefined && ls[k] !== null) try { localStorage.setItem(k, ls[k]); } catch(e2) { console.warn('localStorage', k, e2); }
     });
-    let uExp = (db.unidadesResolved || []).map(u => expandUnidadeContratoAnexo(u, att));
+    let uExp = [];
+    const cloudUniLs = ls[UNI_KEY];
+    const localUniLs = localCapture[UNI_KEY];
+    if(opts.fromCloud && localUniLs && fpLocalStorageKeyNewerThanCloud(UNI_KEY, localUniLs, cloudUniLs, cloudExportedTs)){
+        try {
+            const parsedLocalUni = JSON.parse(localUniLs);
+            if(Array.isArray(parsedLocalUni) && parsedLocalUni.length){
+                uExp = parsedLocalUni.map(u => expandUnidadeContratoAnexo(u, att));
+                console.log('[FP] unidades locais (mais recentes) mantidas:', uExp.length);
+            }
+        } catch(eLocalUni) { console.warn('[FP] unidades locais merge', eLocalUni); }
+    }
+    if(!uExp.length) uExp = (db.unidadesResolved || []).map(u => expandUnidadeContratoAnexo(u, att));
     if(!uExp.length && ls[UNI_KEY]){
         try {
             const parsedUni = JSON.parse(ls[UNI_KEY]);
@@ -9720,6 +9845,13 @@ async function applyFpEmbeddedIntranetDb(db, opts){
     await fpRestorePropostaModeloFromSnapshot(att);
     } finally {
         window.__fpLsHookPause = false;
+    }
+    if(opts.fromCloud && window.__fpLocalKeysMergedOnCloudLoad){
+        try {
+            if(typeof fpTouchLocalSnapshotMeta === 'function') fpTouchLocalSnapshotMeta();
+            if(typeof fpScheduleCloudSave === 'function') fpScheduleCloudSave({ instant: true });
+        } catch(ePush) { console.warn('[FP] reenvio nuvem pós-merge local', ePush); }
+        window.__fpLocalKeysMergedOnCloudLoad = false;
     }
     if(!opts.fromCloud && typeof fpNotifyIntranetChanged === 'function') fpNotifyIntranetChanged();
 }
@@ -9876,7 +10008,7 @@ function fpSetSaveIndicator(msg, kind){
     clearTimeout(__fpSaveIndicatorTimer);
     __fpSaveIndicatorTimer = setTimeout(() => {
         if(el) el.style.opacity = '0.65';
-    }, tone === 'sync' ? 2500 : 5000);
+    }, tone === 'sync' ? 1200 : 4000);
 }
 window.fpSetSaveIndicator = fpSetSaveIndicator;
 /** Grava em localStorage o estado de todas as abas antes da nuvem (sem disparar novo auto-save). */
@@ -9941,8 +10073,8 @@ function fpAfterPersistentStorageWrite(){
         if(typeof fpTouchLocalSnapshotMeta === 'function') fpTouchLocalSnapshotMeta();
         if(typeof fpSetSaveIndicator === 'function') fpSetSaveIndicator('A guardar na nuvem…', 'sync');
         fpNotifyIntranetChanged();
-        if(typeof fpScheduleCloudSave === 'function') fpScheduleCloudSave({ instant: true });
         if(typeof fpScheduleCloudMediaSave === 'function') fpScheduleCloudMediaSave();
+        else if(typeof fpScheduleCloudSave === 'function') fpScheduleCloudSave({ instant: true, autosave: true });
     } catch(_){}
 }
 function fpTouchLocalSnapshotMeta(){
@@ -9955,9 +10087,15 @@ function fpTouchLocalSnapshotMeta(){
                     return Array.isArray(arr) ? arr.length : 0;
                 } catch(_e) { return 0; }
             })();
+        let unidades = 0;
+        let movCad = 0;
+        try { unidades = (getUnidades() || []).length; } catch(_u) {}
+        try { movCad = (getMovCad() || []).length; } catch(_m) {}
         localStorage.setItem('fp_local_snapshot_meta', JSON.stringify({
             updatedAt: new Date().toISOString(),
-            employees: n
+            employees: n,
+            unidades: unidades,
+            movimentacoes: movCad
         }));
     } catch(_meta) { /* ignore */ }
 }
@@ -10397,6 +10535,7 @@ function fpInstallAutosaveHooks(){
     Storage.prototype.__fpOrigSetItem = Storage.prototype.setItem;
     Storage.prototype.setItem = function(k, v){
         Storage.prototype.__fpOrigSetItem.call(this, k, v);
+        if(k !== FP_LOCAL_KEY_META_KEY && !window.__fpLsHookPause && typeof fpTouchLocalKeyMeta === 'function') fpTouchLocalKeyMeta(k);
         if(window.__fpLsHookPause) return;
         if(typeof fpStorageKeyTriggersCloudSync === 'function' && fpStorageKeyTriggersCloudSync(k)) {
             fpSchedulePersist();
@@ -10408,6 +10547,7 @@ function fpInstallAutosaveHooks(){
 function fpLsSetItem(key, value) {
     const fn = Storage.prototype.__fpOrigSetItem || Storage.prototype.setItem;
     fn.call(localStorage, key, value);
+    if(key !== FP_LOCAL_KEY_META_KEY && !window.__fpLsHookPause && typeof fpTouchLocalKeyMeta === 'function') fpTouchLocalKeyMeta(key);
 }
 function fpRefreshAutosaveBanner(){
     const el = document.getElementById('fpAutosaveBanner');
@@ -10422,6 +10562,7 @@ function fpRefreshAutosaveBanner(){
 function fpInitAutosaveSystem(){
     window.__fpAutosaveEnabled = true;
     fpInstallAutosaveHooks();
+    if(typeof fpSeedLocalKeyMetaFromSnapshot === 'function') fpSeedLocalKeyMetaFromSnapshot();
     document.addEventListener('fp-intranet-changed', () => {
         fpSchedulePersist();
         fpXlsxDbScheduleSync();
@@ -10796,6 +10937,7 @@ function uniAttBagGet(){
 function uniAttBagSet(bag){
     try {
         localStorage.setItem(FP_UNIDADES_ATT_BAG_KEY, JSON.stringify(bag || {}));
+        if(typeof fpAfterPersistentStorageWrite === 'function') fpAfterPersistentStorageWrite();
     } catch(e){
         if(e && (e.name === 'QuotaExceededError' || e.code === 22)){
             throw new Error('Espaço insuficiente para guardar anexos. Use um PDF menor, ligue a pasta de anexos ou exporte dados antigos.');

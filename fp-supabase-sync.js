@@ -492,9 +492,13 @@
         }
     }
 
-    async function prepareSnapshotForCloud(snap) {
+    async function prepareSnapshotForCloud(snap, prepOpts) {
+        prepOpts = prepOpts || {};
         harvestInlineDataUrlsIntoAttachments(snap);
-        var hydrate = await hydrateAttachmentsForCloud(snap);
+        var hydrate = { hydrated: 0, failed: 0 };
+        if (!prepOpts.skipHydrate) {
+            hydrate = await hydrateAttachmentsForCloud(snap);
+        }
         var att = snap.attachments || {};
         var diskSkipped = hydrate.failed || 0;
         var uploaded = 0;
@@ -548,8 +552,19 @@
             }
         }
         if (queue.length) {
-            fpCloudSetStatus('A enviar ' + queue.length + ' ficheiro(s) em paralelo…');
-            await Promise.all(Array.from({ length: Math.min(conc, queue.length) }, uploadWorker));
+            if (!prepOpts.autosave) {
+                fpCloudSetStatus('A enviar ' + queue.length + ' ficheiro(s) em paralelo…');
+            }
+            var uploadAll = Promise.all(Array.from({ length: Math.min(conc, queue.length) }, uploadWorker));
+            if (prepOpts.autosave) {
+                var waitMs = g.FP_CLOUD_AUTOSAVE_UPLOAD_WAIT_MS || 1800;
+                await Promise.race([
+                    uploadAll,
+                    new Promise(function (resolve) { setTimeout(resolve, waitMs); })
+                ]);
+            } else {
+                await uploadAll;
+            }
         }
         snap.attachments = att;
         return {
@@ -771,8 +786,14 @@
         if (typeof g.fpLoadEmployeesFromLocalStorage === 'function') {
             g.fpLoadEmployeesFromLocalStorage();
         }
+        var quick = opts.quick !== false && opts.autosave && g.FP_CLOUD_QUICK_SAVE !== false && g.FP_CLOUD_FAST_SYNC !== false;
         if (typeof g.fpHydrateEmployeeAttachmentsFromIdb === 'function') {
-            await g.fpHydrateEmployeeAttachmentsFromIdb();
+            var bagReady = g.window.__FP_EMPLOYEE_ATT_BAG__ &&
+                typeof g.window.__FP_EMPLOYEE_ATT_BAG__ === 'object' &&
+                Object.keys(g.window.__FP_EMPLOYEE_ATT_BAG__).length > 0;
+            if (!quick || !bagReady) {
+                await g.fpHydrateEmployeeAttachmentsFromIdb();
+            }
         }
         if (typeof g.fpLoadPagasFromLocalStorage === 'function') {
             g.fpLoadPagasFromLocalStorage();
@@ -781,14 +802,17 @@
             g.fpLoadQuadroGeralFromLocalStorage();
         }
         if (typeof g.fpPersistEmployeeAttBagFromState === 'function') {
-            try { await g.fpPersistEmployeeAttBagFromState(); } catch (bagPrep) { console.warn('[fp-cloud] bag prepare', bagPrep); }
+            if (!quick || !bagReady) {
+                try { await g.fpPersistEmployeeAttBagFromState(); } catch (bagPrep) { console.warn('[fp-cloud] bag prepare', bagPrep); }
+            }
         }
-        var quick = opts.quick !== false && opts.autosave && g.FP_CLOUD_QUICK_SAVE !== false && g.FP_CLOUD_FAST_SYNC !== false;
         var pullMs = opts.iframeMs;
         if (pullMs == null) {
-            var recentIframe = g.__fpLastIframePostAt && (Date.now() - g.__fpLastIframePostAt < 5000);
-            if (recentIframe && quick) pullMs = 0;
-            else pullMs = quick ? (g.FP_CLOUD_IFRAME_PULL_MS || 900) : 2500;
+            if (quick) {
+                pullMs = g.FP_CLOUD_IFRAME_PULL_MS != null ? g.FP_CLOUD_IFRAME_PULL_MS : 0;
+            } else {
+                pullMs = 2500;
+            }
         }
         if (pullMs > 0) await g.fpPullStateFromDashboardIframes(pullMs);
         if (typeof g.syncBeneficiosFuncionariosFromEmployees === 'function') {
@@ -882,7 +906,8 @@
         } else if (!preview.employees) {
             throw new Error('Nenhum colaborador encontrado. Importe a planilha Excel ou abra a aba Cadastro/Início antes de salvar.');
         }
-        if (!opts.allowShrink) {
+        var skipPeek = opts.autosave && g.FP_CLOUD_AUTOSAVE_SKIP_PEEK !== false;
+        if (!opts.allowShrink && !skipPeek) {
             try {
                 var cloudMetaSave = await fpPeekCloudSnapshotMeta(supa);
                 if (cloudMetaSave && cloudMetaSave.employees > 0) {
@@ -916,9 +941,18 @@
         if (!opts.autosave) {
             fpCloudSetStatus('A preparar ' + (preview.employees || 0) + ' colaborador(es)…');
         }
-        var snap = await g.collectFpIntranetSnapshot();
-        fpCloudSetStatus('A enviar documentos de todas as abas…');
-        var prep = await prepareSnapshotForCloud(snap);
+        var fastAutosave = opts.autosave && g.FP_CLOUD_AUTOSAVE_FAST_PATH !== false;
+        var snap = await g.collectFpIntranetSnapshot({
+            skipFlush: !!opts.autosave,
+            fast: !!fastAutosave
+        });
+        if (!opts.autosave) {
+            fpCloudSetStatus('A enviar documentos de todas as abas…');
+        }
+        var prep = await prepareSnapshotForCloud(snap, {
+            autosave: !!opts.autosave,
+            skipHydrate: !!fastAutosave
+        });
         var jsonLen = JSON.stringify(snap).length;
         if (jsonLen > 12 * 1024 * 1024) {
             throw new Error('Snapshot muito grande (~' + (jsonLen / (1024 * 1024)).toFixed(1) + ' MB). Ligue a pasta de anexos no PC antes de gravar na nuvem.');
@@ -978,7 +1012,7 @@
         }
         cloudRunning = true;
         try {
-            await g.fpCloudSaveSnapshot({ autosave: true });
+            await g.fpCloudSaveSnapshot({ autosave: true, allowShrink: false });
         } catch (err) {
             console.warn('[fp-cloud] autosave', err);
             fpCloudSetStatus('Erro ao guardar na nuvem: ' + (err && err.message ? err.message : err), true);
@@ -1081,21 +1115,21 @@
     };
 
     g.fpScheduleCloudMediaSave = function () {
-        if (g.FP_CLOUD_IMMEDIATE_MEDIA_UPLOAD === false) {
-            g.fpScheduleCloudSave();
-            return;
-        }
-        g.fpScheduleCloudSave();
+        g.fpScheduleCloudSave({ instant: true, autosave: true });
+        if (g.FP_CLOUD_IMMEDIATE_MEDIA_UPLOAD === false) return;
         clearTimeout(mediaTimer);
-        var ms = g.FP_CLOUD_MEDIA_SAVE_DEBOUNCE_MS || 150;
+        var ms = g.FP_CLOUD_MEDIA_SAVE_DEBOUNCE_MS || 40;
         mediaTimer = setTimeout(function () {
             (async function () {
+                var result = { uploaded: 0 };
                 try {
-                    await g.fpCloudUploadAllPendingMedia();
+                    result = await g.fpCloudUploadAllPendingMedia() || result;
                 } catch (e) {
                     console.warn('[fp-cloud] media upload', e);
                 }
-                g.fpScheduleCloudSave({ afterMedia: true });
+                if (result.uploaded > 0) {
+                    g.fpScheduleCloudSave({ instant: true, autosave: true });
+                }
             })().catch(function (e) { console.warn('[fp-cloud] media save', e); });
         }, ms);
     };
@@ -1481,9 +1515,9 @@
             return;
         }
         if (g.__fpCloudAutosaveInit) return;
-        var sec = Math.round((g.FP_CLOUD_AUTOSAVE_DEBOUNCE_MS || 8000) / 1000);
+        var sec = ((g.FP_CLOUD_SAVE_INSTANT_MS || 50) + (g.FP_CLOUD_AUTOSAVE_DEBOUNCE_MS || 150)) / 1000;
         fpCloudSetStatus(
-            'Nuvem Supabase: entre em index.html (login). Depois carrega/grava automaticamente (~' + sec + ' s).',
+            'Nuvem Supabase: entre em index.html (login). Depois carrega/grava automaticamente (~' + sec.toFixed(1) + ' s).',
             false
         );
     }
