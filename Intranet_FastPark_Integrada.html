@@ -3782,11 +3782,6 @@ function switchTab(tab) {
     }
     fpSyncSidebarMenu(tab);
     if(tab === 'cestas' && typeof renderBeneficiosCestas === 'function') renderBeneficiosCestas();
-    if(tab !== 'fp-home' && !window.__fpLsHookPause){
-        queueMicrotask(function(){
-            if(typeof fpAfterPersistentStorageWrite === 'function') fpAfterPersistentStorageWrite();
-        });
-    }
     if(tab === 'cadpostos'){
         if(typeof renderPostosPanorama === 'function') renderPostosPanorama();
     }
@@ -9370,9 +9365,105 @@ async function fpUnlinkAttachmentsFolder(){
 function fpSlugAttSeg(s, maxLen){
     return String(s || 'x').replace(/[^\w.\-]/g, '_').replace(/_+/g, '_').slice(0, maxLen || 40);
 }
+/** Snapshot leve para auto-gravação (sem processar anexos linha a linha). */
+async function collectFpIntranetSnapshotLight(){
+    const attachments = { ...(window.__FP_EMBEDDED_ATTACHMENTS__ || {}) };
+    try {
+        Object.entries(uniAttBagGet()).forEach(function(entry){
+            const k = entry[0];
+            const v = entry[1];
+            if(typeof v === 'string' && v.startsWith('data:')) attachments[k] = v;
+        });
+    } catch(_bag) { /* ignore */ }
+    const uIn = getUnidades();
+    const unidadesResolved = uIn.map(function(u){
+        try { return uniPrepareUnidadeForStorage(u); }
+        catch(e) { return u; }
+    });
+    const faltasResolved = typeof getFaltasCad === 'function' ? getFaltasCad() : [];
+    const slimPack = typeof fpSlimEmployeesForLocalStorage === 'function'
+        ? fpSlimEmployeesForLocalStorage(state.employees || [])
+        : { slim: state.employees || [], bag: window.__FP_EMPLOYEE_ATT_BAG__ || {} };
+    window.__FP_EMPLOYEE_ATT_BAG__ = slimPack.bag;
+    const employeesResolved = slimPack.slim;
+    const pagasSignedSlim = typeof getSignedDocsMap === 'function' ? getSignedDocsMap() : {};
+    const compEl = document.getElementById('competenciaInput');
+    const tabsUi = {
+        competenciaInput: compEl ? compEl.value : '',
+        filterEmpresa: document.getElementById('filterEmpresa')?.value || '',
+        filterStatus: document.getElementById('filterStatus')?.value || '',
+        pagasEmpresaFiltro: document.getElementById('pagasEmpresaFiltro')?.value || '',
+        pagasPeriodoIni: document.getElementById('pagasPeriodoIni')?.value || '',
+        pagasPeriodoFim: document.getElementById('pagasPeriodoFim')?.value || '',
+        pagasHistFuncionario: document.getElementById('pagasHistFuncionario')?.value || '',
+        pagasHistDataIni: document.getElementById('pagasHistDataIni')?.value || '',
+        pagasHistDataFim: document.getElementById('pagasHistDataFim')?.value || '',
+        feriasFuncionarioFiltro: document.getElementById('feriasFuncionarioFiltro')?.value || '',
+        vtPeriodoIni: document.getElementById('vtPeriodoIni')?.value || '',
+        vtPeriodoFim: document.getElementById('vtPeriodoFim')?.value || ''
+    };
+    return {
+        version: FP_DB_VERSION,
+        sealed: true,
+        exportedAt: new Date().toISOString(),
+        tabsUi,
+        state: {
+            employees: employeesResolved,
+            cnhMapObj: mapToPlainObjectFromMap(state.cnhMap),
+            cnhColBDByNomeObj: mapToPlainObjectFromMap(state.cnhColBDByNome),
+            ferias: state.ferias || [],
+            movimentacoes: state.movimentacoes || [],
+            quadroGeral: state.quadroGeral || [],
+            pagas: state.pagas || []
+        },
+        movState: { rows: movState.rows || [], meta: movState.meta || { competencia: '', empresa: '', cnpj: '' } },
+        cestasGlobals: {
+            faltas: { ...faltas },
+            dados: Array.isArray(dados) ? [...dados] : [],
+            dadosPerdeuDireito: Array.isArray(dadosPerdeuDireito) ? [...dadosPerdeuDireito] : [],
+            beneficiosFuncionarios: Array.isArray(beneficiosFuncionarios) ? [...beneficiosFuncionarios] : [],
+            unidadesMap: unidadesMap && typeof unidadesMap === 'object' ? { ...unidadesMap } : {},
+            beneficiosPedidoRowsCache: Array.isArray(beneficiosPedidoRowsCache) ? [...beneficiosPedidoRowsCache] : [],
+            competenciaAtual: competenciaAtual || '',
+            competenciaInput: compEl ? compEl.value : ''
+        },
+        historico: Array.isArray(historico) ? historico : [],
+        localStrings: (function(){
+            const ls = typeof fpCollectAllIntranetLocalStorage === 'function'
+                ? fpCollectAllIntranetLocalStorage()
+                : {};
+            try {
+                const bag = window.__FP_EMPLOYEE_ATT_BAG__ || {};
+                ls[FP_EMPLOYEES_ATTACHMENTS_IDB_KEY] = JSON.stringify(bag);
+            } catch(bagLs) { console.warn('[FP] bag snapshot', bagLs); }
+            ls[FP_EMPLOYEES_STORE_KEY] = JSON.stringify(employeesResolved);
+            ls[FP_QUADRO_GERAL_KEY] = JSON.stringify(state.quadroGeral || []);
+            ls[FP_PAGAS_LANCAMENTOS_KEY] = JSON.stringify(state.pagas || []);
+            ls.fastparkHistorico = JSON.stringify(Array.isArray(historico) ? historico : []);
+            try { ls[UNI_KEY] = JSON.stringify(uIn); } catch(eUniLs) { console.warn('[FP] snapshot fp_unidades', eUniLs); }
+            try { ls[MOV_CAD_KEY] = JSON.stringify(getMovCad()); } catch(eMovLs) { console.warn('[FP] snapshot movimentações', eMovLs); }
+            try { ls[FP_UNIDADES_POSTOS_KEY] = JSON.stringify(getUnidadesPostosCatalog()); } catch(ePostLs) { console.warn('[FP] snapshot postos', ePostLs); }
+            try { ls[FP_UNIDADES_ORCAMENTOS_KEY] = JSON.stringify(getUnidadesOrcamentos()); } catch(eOrcLs) { console.warn('[FP] snapshot orçamentos', eOrcLs); }
+            try {
+                const uniBag = uniAttBagGet();
+                ls[FP_UNIDADES_ATT_BAG_KEY] = JSON.stringify(uniBag && typeof uniBag === 'object' ? uniBag : {});
+            } catch(eUniBag) { console.warn('[FP] snapshot uni bag', eUniBag); }
+            return ls;
+        })(),
+        modulesIncluded: (FP_SNAPSHOT_STORAGE_REGISTRY || []).map(function(x){ return x.area; }),
+        unidadesResolved,
+        faltasResolved,
+        pagasSignedSlim,
+        attachments: attachments
+    };
+}
+window.collectFpIntranetSnapshotLight = collectFpIntranetSnapshotLight;
 async function collectFpIntranetSnapshot(opts){
     opts = opts || {};
     const fast = !!opts.fast;
+    if(fast && window.FP_CLOUD_AUTOSAVE_JSON_ONLY !== false && typeof collectFpIntranetSnapshotLight === 'function'){
+        return collectFpIntranetSnapshotLight();
+    }
     if(!opts.skipFlush && typeof fpFlushAllTabsToLocalStorage === 'function'){
         try { await fpFlushAllTabsToLocalStorage(); } catch(flushErr) { console.warn('[FP] flush pré-snapshot', flushErr); }
     }
@@ -10093,15 +10184,19 @@ async function fpFlushAllTabsToLocalStorage(){
 function fpNotifyIntranetChanged(){
     if(typeof document !== 'undefined') document.dispatchEvent(new CustomEvent('fp-intranet-changed'));
 }
-/** Após gravar dados em localStorage: notifica abas e agenda gravação na nuvem (sem esperar upload de anexos). */
+/** Após gravar dados em localStorage: notifica abas e agenda gravação na nuvem (uma vez, sem duplicar). */
 function fpAfterPersistentStorageWrite(){
     try {
         if(typeof window !== 'undefined' && window.__fpLsHookPause) return;
         if(typeof fpTouchLocalSnapshotMeta === 'function') fpTouchLocalSnapshotMeta();
-        if(typeof fpSetSaveIndicator === 'function') fpSetSaveIndicator('A guardar na nuvem…', 'sync');
         fpNotifyIntranetChanged();
-        if(typeof fpScheduleCloudMediaSave === 'function') fpScheduleCloudMediaSave();
-        else if(typeof fpScheduleCloudSave === 'function') fpScheduleCloudSave({ instant: true, autosave: true });
+        if(typeof fpScheduleCloudSave === 'function') fpScheduleCloudSave({ instant: true, autosave: true });
+        if(window.FP_CLOUD_IMMEDIATE_MEDIA_UPLOAD !== false && typeof fpCloudUploadAllPendingMedia === 'function'){
+            clearTimeout(window.__fpCloudMediaBgTimer);
+            window.__fpCloudMediaBgTimer = setTimeout(function(){
+                fpCloudUploadAllPendingMedia().catch(function(){});
+            }, window.FP_CLOUD_MEDIA_SAVE_DEBOUNCE_MS || 600);
+        }
     } catch(_){}
 }
 function fpTouchLocalSnapshotMeta(){
@@ -19506,21 +19601,68 @@ function refInitTab(){ refInitEmpresasTab(); }
 (function fpInitCloudMediaListeners(){
     if(window.__fpCloudMediaListeners) return;
     window.__fpCloudMediaListeners = true;
-    document.addEventListener('fp-cloud-media-ready', function(){
-        if(!state || !Array.isArray(state.employees)) return;
-        state.employees = fpHydrateEmployeesMediaForSnapshot(state.employees, window.__FP_EMBEDDED_ATTACHMENTS__ || {});
-        try { renderAll(); } catch(e) { /* ignore */ }
-        if(typeof propagateStateToDashboardIframes === 'function') propagateStateToDashboardIframes();
-    });
-    document.addEventListener('fp-cloud-media-batch-ready', function(){
-        if(!state || !Array.isArray(state.employees)) return;
-        state.employees = fpApplyEmployeeMediaFromAttachments(state.employees, window.__FP_EMBEDDED_ATTACHMENTS__ || {});
-        state.employees = fpHydrateEmployeesMediaForSnapshot(state.employees, window.__FP_EMBEDDED_ATTACHMENTS__ || {});
-        try { renderAll(); } catch(e) { /* ignore */ }
-        if(typeof propagateStateToDashboardIframes === 'function') propagateStateToDashboardIframes();
-    });
+    var mediaRenderTimer = null;
+    function scheduleMediaUiRefresh(){
+        clearTimeout(mediaRenderTimer);
+        mediaRenderTimer = setTimeout(function(){
+            if(!state || !Array.isArray(state.employees)) return;
+            state.employees = fpApplyEmployeeMediaFromAttachments(state.employees, window.__FP_EMBEDDED_ATTACHMENTS__ || {});
+            state.employees = fpHydrateEmployeesMediaForSnapshot(state.employees, window.__FP_EMBEDDED_ATTACHMENTS__ || {});
+            try { renderAll(); } catch(e) { /* ignore */ }
+            if(typeof propagateStateToDashboardIframes === 'function') propagateStateToDashboardIframes();
+        }, 280);
+    }
+    document.addEventListener('fp-cloud-media-ready', scheduleMediaUiRefresh);
+    document.addEventListener('fp-cloud-media-batch-ready', scheduleMediaUiRefresh);
 })();
 
+async function fpBootLoadEmbeddedFallback(){
+    window.__FP_EMBEDDED_PARSED__ = getFpEmbeddedFromDom();
+    if(window.__FP_EMBEDDED_PARSED__ && window.__FP_EMBEDDED_PARSED__.state){
+        await applyFpEmbeddedIntranetDb(window.__FP_EMBEDDED_PARSED__, { fromEmbeddedFile: true });
+    }
+    const attLocal = window.__FP_EMBEDDED_ATTACHMENTS__ || {};
+    const hasCloudMarkers = Object.keys(attLocal).some(function(k){
+        const v = attLocal[k];
+        return v && typeof v === 'object' && v.__cloud === true;
+    });
+    if(hasCloudMarkers && typeof fpScheduleCloudMediaPrefetch === 'function' && window.fpSupabase){
+        fpScheduleCloudMediaPrefetch({ state: { employees: state.employees }, attachments: attLocal });
+    }
+}
+async function fpBootSyncCloudAfterLogin(){
+    if(window.FP_CLOUD_AUTOSAVE !== false && typeof fpInitCloudAutosave === 'function'){
+        try { fpInitCloudAutosave(); } catch(eInit) { console.warn('[fp-cloud] init autosave', eInit); }
+    }
+    if(window.FP_CLOUD_AUTOSAVE !== false && typeof fpScheduleCloudSave === 'function'){
+        window.__fpCloudSkipAutosaveUntil = 0;
+    }
+    var cloudLoaded = false;
+    if(typeof fpScheduleCloudAutoload === 'function'){
+        try {
+            var autoload = await fpScheduleCloudAutoload({ boot: true, force: true });
+            cloudLoaded = !!(autoload && autoload.loaded);
+        } catch(e) { console.warn('[fp-cloud] boot autoload', e); }
+    } else if(typeof fpTryCloudAutoload === 'function'){
+        if(typeof fpResetCloudAutoloadForRetry === 'function') fpResetCloudAutoloadForRetry();
+        try {
+            var autoloadLegacy = await fpTryCloudAutoload({ boot: true, force: true });
+            cloudLoaded = !!(autoloadLegacy && autoloadLegacy.loaded);
+        } catch(e2) { console.warn('[fp-cloud] boot autoload', e2); }
+    }
+    if(!cloudLoaded){
+        await fpBootLoadEmbeddedFallback();
+    }
+    state.employees = fpHydrateEmployeesMediaForSnapshot(state.employees || [], window.__FP_EMBEDDED_ATTACHMENTS__ || {});
+    if(typeof window.fpOnCloudDataReady === 'function') await window.fpOnCloudDataReady();
+    else {
+        try { renderAll(); } catch (renderErr) { console.error('[FP] renderAll', renderErr); }
+        fpPushDashboardWithRetry();
+    }
+    if(typeof fpCloudSetStatus === 'function' && cloudLoaded){
+        fpCloudSetStatus('Dados da nuvem actualizados.', false);
+    }
+}
 (async function fpBootIntranet(){
     window.__fpIntranetBootComplete = false;
     fpApplyLogoImages();
@@ -19528,88 +19670,34 @@ function refInitTab(){ refInitEmpresasTab(); }
     fpLoadEmployeesFromLocalStorage();
     fpLoadPagasFromLocalStorage();
     fpLoadQuadroGeralFromLocalStorage();
-    var cloudLoaded = false;
-    var bootUiReady = false;
-    var authWait = (window.FP_AUTH_REQUIRED !== false)
-        ? fpWaitForAuthSession(8000)
-        : Promise.resolve({ user: {} });
-    var idbWait = fpHydrateEmployeeAttachmentsFromIdb().catch(function(eIdb){ console.warn('[FP] idb boot', eIdb); });
-    var bootParallel = await Promise.all([authWait, idbWait]);
-    var bootSess = bootParallel[0];
-    state.employees = fpHydrateEmployeesMediaForSnapshot(state.employees || [], window.__FP_EMBEDDED_ATTACHMENTS__ || {});
     if(typeof fpInitExternalTabsAndDashboard === 'function') fpInitExternalTabsAndDashboard();
     try { switchTab('fp-home'); } catch(_tab) {}
     try { renderAll(); } catch(renderBoot) { console.warn('[FP] render boot local', renderBoot); }
-    if(window.FP_AUTH_REQUIRED !== false){
-        if(!bootSess){
-            if(typeof fpCloudSetStatus === 'function'){
-                fpCloudSetStatus('Dados locais visíveis. Faça login em index.html para sincronizar a nuvem.', false);
-            }
-            window.__fpIntranetBootComplete = true;
-            return;
-        }
-    }
-    if(window.FP_CLOUD_AUTOSAVE !== false && typeof fpInitCloudAutosave === 'function'){
-        try { fpInitCloudAutosave(); } catch(eInit) { console.warn('[fp-cloud] init autosave', eInit); }
-    }
-    if(window.FP_CLOUD_AUTOSAVE !== false && typeof fpScheduleCloudSave === 'function'){
-        window.__fpCloudSkipAutosaveUntil = 0;
-    }
-    if(typeof fpScheduleCloudAutoload === 'function'){
-        try {
-            var autoload = await fpScheduleCloudAutoload({ boot: true, force: true });
-            cloudLoaded = !!(autoload && autoload.loaded);
-            if(cloudLoaded && typeof window.fpOnCloudDataReady === 'function'){
-                try {
-                    await window.fpOnCloudDataReady();
-                    bootUiReady = true;
-                } catch(uiCloud) { console.warn('[FP] UI pós-nuvem boot', uiCloud); }
-            }
-        } catch(e) { console.warn('[fp-cloud] boot autoload', e); }
-    } else if(typeof fpTryCloudAutoload === 'function'){
-        if(typeof fpResetCloudAutoloadForRetry === 'function') fpResetCloudAutoloadForRetry();
-        try {
-            var autoloadLegacy = await fpTryCloudAutoload({ boot: true });
-            cloudLoaded = !!(autoloadLegacy && autoloadLegacy.loaded);
-        } catch(e2) { console.warn('[fp-cloud] boot autoload', e2); }
-    }
-    if(!cloudLoaded){
-        window.__FP_EMBEDDED_PARSED__ = getFpEmbeddedFromDom();
-        if(window.__FP_EMBEDDED_PARSED__ && window.__FP_EMBEDDED_PARSED__.state){
-            await applyFpEmbeddedIntranetDb(window.__FP_EMBEDDED_PARSED__, { fromEmbeddedFile: true });
-        }
-        const attLocal = window.__FP_EMBEDDED_ATTACHMENTS__ || {};
-        const hasCloudMarkers = Object.keys(attLocal).some(function(k){
-            const v = attLocal[k];
-            return v && typeof v === 'object' && v.__cloud === true;
-        });
-        if(hasCloudMarkers && typeof fpScheduleCloudMediaPrefetch === 'function' && window.fpSupabase){
-            fpScheduleCloudMediaPrefetch({ state: { employees: state.employees }, attachments: attLocal });
-        } else if(hasCloudMarkers && typeof fpAwaitCloudMediaPrefetch === 'function' && window.fpSupabase){
-            fpAwaitCloudMediaPrefetch({ state: { employees: state.employees }, attachments: attLocal }, { indexOnManyFails: true })
-                .then(function(){
-                    state.employees = fpApplyEmployeeMediaFromAttachments(state.employees || [], attLocal);
-                    fpPrimeEmployeeAttBagFromDb(state.employees, attLocal);
-                    state.employees = fpMergeEmployeeAttachments(state.employees, window.__FP_EMPLOYEE_ATT_BAG__ || {});
-                })
-                .catch(function(prefBootErr){ console.warn('[fp-cloud] prefetch local', prefBootErr); });
-        }
-    }
-    if(!bootUiReady){
-        state.employees = fpHydrateEmployeesMediaForSnapshot(state.employees || [], window.__FP_EMBEDDED_ATTACHMENTS__ || {});
-        if(typeof window.fpOnCloudDataReady === 'function') await window.fpOnCloudDataReady();
-        else {
-            try { renderAll(); } catch (renderErr) {
-                console.error('[FP] renderAll', renderErr);
-            }
-            fpPushDashboardWithRetry();
-        }
-    }
-    if (typeof switchTab === 'function') switchTab('fp-home');
     try { fpApplyAccessRestrictions(); } catch(_acc) {}
     try { fpEnsureAcessosLoginGuard(); } catch(_acc2) {}
     window.__fpIntranetBootComplete = true;
     if(typeof fpTouchLocalSnapshotMeta === 'function') fpTouchLocalSnapshotMeta();
+    var authWait = (window.FP_AUTH_REQUIRED !== false)
+        ? fpWaitForAuthSession(5000)
+        : Promise.resolve({ user: {} });
+    var idbWait = fpHydrateEmployeeAttachmentsFromIdb().catch(function(eIdb){ console.warn('[FP] idb boot', eIdb); });
+    (async function fpBootBackground(){
+        var bootParallel = await Promise.all([authWait, idbWait]);
+        var bootSess = bootParallel[0];
+        state.employees = fpHydrateEmployeesMediaForSnapshot(state.employees || [], window.__FP_EMBEDDED_ATTACHMENTS__ || {});
+        try { renderAll(); } catch(eRender) { console.warn('[FP] render pós-idb', eRender); }
+        if(window.FP_AUTH_REQUIRED !== false && !bootSess){
+            if(typeof fpCloudSetStatus === 'function'){
+                fpCloudSetStatus('Dados locais visíveis. Faça login em index.html para sincronizar a nuvem.', false);
+            }
+            return;
+        }
+        try {
+            await fpBootSyncCloudAfterLogin();
+        } catch(cloudBootErr) {
+            console.warn('[fp-cloud] boot sync', cloudBootErr);
+        }
+    })().catch(function(e){ console.warn('[FP] boot background', e); });
     if(window.FP_AUTH_REQUIRED !== false && (!(state.employees && state.employees.length)) && typeof fpCloudLoadSnapshot === 'function'){
         setTimeout(async function(){
             try {

@@ -494,6 +494,10 @@
 
     async function prepareSnapshotForCloud(snap, prepOpts) {
         prepOpts = prepOpts || {};
+        if (prepOpts.autosave && g.FP_CLOUD_AUTOSAVE_JSON_ONLY !== false) {
+            harvestInlineDataUrlsIntoAttachments(snap);
+            return { uploaded: 0, diskSkipped: 0, alreadyCloud: 0, hydrated: 0, jsonOnly: true };
+        }
         harvestInlineDataUrlsIntoAttachments(snap);
         var hydrate = { hydrated: 0, failed: 0 };
         if (!prepOpts.skipHydrate) {
@@ -815,6 +819,12 @@
             }
         }
         if (pullMs > 0) await g.fpPullStateFromDashboardIframes(pullMs);
+        if (quick) {
+            if (g.FP_CLOUD_FLUSH_ALL_TABS !== false && typeof g.fpFlushAllTabsToLocalStorage === 'function') {
+                await g.fpFlushAllTabsToLocalStorage();
+            }
+            return;
+        }
         if (typeof g.syncBeneficiosFuncionariosFromEmployees === 'function') {
             g.syncBeneficiosFuncionariosFromEmployees();
         }
@@ -894,8 +904,9 @@
         } else {
             fpCloudSetStatus('A guardar automaticamente todas as abas (dados + documentos)…');
         }
-        await g.fpPrepareDataForCloudSave({ autosave: !!opts.autosave, quick: !!opts.autosave });
-        if (typeof g.fpHydrateEmployeesMediaForSnapshot === 'function' && g.state && Array.isArray(g.state.employees)) {
+        var fastAutosavePrep = opts.autosave && g.FP_CLOUD_AUTOSAVE_FAST_PATH !== false;
+        await g.fpPrepareDataForCloudSave({ autosave: !!opts.autosave, quick: !!fastAutosavePrep });
+        if (!fastAutosavePrep && typeof g.fpHydrateEmployeesMediaForSnapshot === 'function' && g.state && Array.isArray(g.state.employees)) {
             g.state.employees = g.fpHydrateEmployeesMediaForSnapshot(g.state.employees, g.window.__FP_EMBEDDED_ATTACHMENTS__ || {});
         }
         var preview = g.fpCloudSavePreview();
@@ -1011,6 +1022,7 @@
             return;
         }
         cloudRunning = true;
+        if (typeof g.fpSetSaveIndicator === 'function') g.fpSetSaveIndicator('A guardar na nuvem…', 'sync');
         try {
             await g.fpCloudSaveSnapshot({ autosave: true, allowShrink: false });
         } catch (err) {
@@ -1138,7 +1150,6 @@
         opts = opts || {};
         if (g.FP_CLOUD_AUTOSAVE === false) return;
         g.__fpCloudUserEditedAt = Date.now();
-        if (typeof g.fpSetSaveIndicator === 'function') g.fpSetSaveIndicator('A guardar na nuvem…', 'sync');
         if (fpCloudAutosavePaused()) {
             fpQueueCloudSaveRetry();
             return;
@@ -1168,23 +1179,7 @@
     g.fpInitCloudAutosave = function () {
         if (g.__fpCloudAutosaveInit) return;
         g.__fpCloudAutosaveInit = true;
-        g.document.addEventListener('fp-intranet-changed', function () {
-            g.__fpCloudUserEditedAt = Date.now();
-            if (g.__fpCloudLoadRunning) {
-                fpQueueCloudSaveRetry();
-                return;
-            }
-            if (g.__fpCloudSkipAutosaveUntil && Date.now() < g.__fpCloudSkipAutosaveUntil) {
-                if (g.__fpCloudUserEditedAt > (g.__fpCloudLoadedAt || 0)) {
-                    g.__fpCloudSkipAutosaveUntil = 0;
-                }
-            }
-            if (typeof g.fpScheduleCloudMediaSave === 'function') {
-                g.fpScheduleCloudMediaSave();
-            } else {
-                g.fpScheduleCloudSave({ instant: true });
-            }
-        });
+        /* Gravação na nuvem só via fpAfterPersistentStorageWrite (evita duplicar ao notificar iframes). */
         if (g.FP_CLOUD_FLUSH_ON_HIDE !== false) {
             g.document.addEventListener('visibilitychange', function () {
                 if (g.document.visibilityState === 'hidden' && g.FP_CLOUD_AUTOSAVE !== false) {

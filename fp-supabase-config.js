@@ -34,8 +34,11 @@
     /** Caminho rápido: JSON na nuvem primeiro; anexos novos com tempo máximo de espera */
     g.FP_CLOUD_AUTOSAVE_FAST_PATH = true;
     g.FP_CLOUD_AUTOSAVE_SKIP_PEEK = true;
-    /** Máx. espera por uploads novos antes de gravar o JSON (ms) */
-    g.FP_CLOUD_AUTOSAVE_UPLOAD_WAIT_MS = 1800;
+    /** Auto-gravação: só JSON (anexos vão pelo upload imediato em segundo plano) */
+    g.FP_CLOUD_AUTOSAVE_JSON_ONLY = true;
+    g.FP_CLOUD_AUTOSAVE_UPLOAD_WAIT_MS = 0;
+    /** Arranque: interface com dados locais já; nuvem em segundo plano */
+    g.FP_CLOUD_BOOT_BACKGROUND = true;
     /** Ao fechar o separador ou mudar de aba, grava de imediato */
     g.FP_CLOUD_FLUSH_ON_HIDE = true;
 
@@ -57,7 +60,7 @@
     g.FP_CLOUD_FLUSH_ALL_TABS = true;
     /** Envia cada foto/documento ao Storage assim que é anexado (antes do snapshot completo) */
     g.FP_CLOUD_IMMEDIATE_MEDIA_UPLOAD = true;
-    g.FP_CLOUD_MEDIA_SAVE_DEBOUNCE_MS = 40;
+    g.FP_CLOUD_MEDIA_SAVE_DEBOUNCE_MS = 600;
 
     /** Ao abrir a intranet com login, carrega snapshot + ficheiros do Supabase automaticamente */
     g.FP_CLOUD_AUTOLOAD = true;
