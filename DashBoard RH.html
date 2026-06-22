@@ -4322,6 +4322,7 @@ function saveEmployeeForm(){
     populateCadastroUnitOptions();
     closeEmployeeForm();
     fpPostFullStateToParentIfEmbedded(true);
+    fpSetLocalSaveBadge('Funcionário salvo', 'ok');
 }
 
 if(EF.status) EF.status.addEventListener('change', syncEmpStatusDesligamentoUi);

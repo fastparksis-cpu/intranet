@@ -6749,10 +6749,16 @@ window.addEventListener('message', (ev) => {
             } else {
                 incoming = fpMergeEmployeeAttachments(incoming, window.__FP_EMPLOYEE_ATT_BAG__ || {});
             }
+            const cur = Array.isArray(state.employees) ? state.employees : [];
+            if(cur.length > incoming.length && typeof fpMergeEmployeesUnion === 'function'){
+                incoming = fpMergeEmployeesUnion(incoming, cur);
+                incoming = fpMergeEmployeeAttachments(incoming, window.__FP_EMPLOYEE_ATT_BAG__ || {});
+            }
             const sig = fpIframePayloadSig(incoming, msg.ferias, msg.movimentacoes);
             if(sig === __fpLastIframeEmployeesJson) return;
             __fpLastIframeEmployeesJson = sig;
             window.__fpLastIframePostAt = Date.now();
+            window.__fpCloudUserEditedAt = Date.now();
             state.employees = incoming;
             if(Array.isArray(msg.ferias)) state.ferias = msg.ferias;
             if(Array.isArray(msg.movimentacoes)) state.movimentacoes = msg.movimentacoes;
@@ -7680,6 +7686,12 @@ function renderAll() {
     if(typeof renderCadastroSinistrosPanel === 'function') renderCadastroSinistrosPanel();
     if(state.chartsVisible) renderCharts(listaCompletaPlanilha());
 }
+let __fpRenderAllTimer = null;
+function renderAllDebounced(){
+    clearTimeout(__fpRenderAllTimer);
+    __fpRenderAllTimer = setTimeout(renderAll, 200);
+}
+window.renderAllDebounced = renderAllDebounced;
 
 function renderMetrics() {
     const list = listaCompletaPlanilha();
@@ -7953,7 +7965,7 @@ function renderCompanySummary(list) {
 }
 
 // ========== FILTROS ==========
-[E.company, E.employee, E.search, E.status].forEach(el => el.addEventListener('input', renderAll));
+[E.company, E.employee, E.search, E.status].forEach(el => el.addEventListener('input', renderAllDebounced));
 
 function refreshDashboardFilters(){
     const companies = [...new Set(state.employees.map(e => canonEmpresaNome(e.empresa)).filter(Boolean))].sort((a,b) => a.localeCompare(b, 'pt-BR'));
@@ -9075,6 +9087,19 @@ function fpMergeEmployeeLocalCadastroFields(incoming, localPrev){
         return changed ? out : e;
     });
 }
+/** Mantém colaboradores que existem só no PC (ex.: cadastro novo ainda não na nuvem). */
+function fpMergeEmployeesUnion(incoming, localPrev){
+    const merged = fpMergeEmployeeLocalCadastroFields(incoming, localPrev);
+    if(!Array.isArray(localPrev) || !localPrev.length) return merged || [];
+    const inKeys = new Set((merged || []).map(e => fpEmployeeCadastroMatchKey(e)).filter(Boolean));
+    const extras = [];
+    localPrev.forEach(e => {
+        const k = fpEmployeeCadastroMatchKey(e);
+        if(k && !inKeys.has(k)) extras.push({ ...e });
+    });
+    return extras.length ? extras.concat(merged) : merged;
+}
+window.fpMergeEmployeesUnion = fpMergeEmployeesUnion;
 function fpMergeEmployeeAttachments(arr, bag){
     if(!Array.isArray(arr)) return [];
     const b = bag && typeof bag === 'object' ? bag : {};
@@ -9129,6 +9154,7 @@ function fpMergeEmployeeAttachments(arr, bag){
 }
 function fpSaveEmployeesToLocalStorage(){
     const emps = state.employees || [];
+    window.__fpCloudUserEditedAt = Date.now();
     const { slim, bag } = fpSlimEmployeesForLocalStorage(emps);
     window.__FP_EMPLOYEE_ATT_BAG__ = bag;
     fpIdbPut(FP_EMPLOYEES_ATTACHMENTS_IDB_KEY, bag).catch(e => console.warn('[FP] IDB fotos/docs', e));
@@ -9867,16 +9893,24 @@ async function applyFpEmbeddedIntranetDb(db, opts){
     }
     window.__FP_EMBEDDED_ATTACHMENTS__ = att;
     let localPrevEmployees = [];
-    if(Array.isArray(state.employees) && state.employees.length){
-        localPrevEmployees = state.employees.map(e => ({ ...e }));
-    } else {
-        try {
-            const rawLs = localStorage.getItem(FP_EMPLOYEES_STORE_KEY);
-            if(rawLs) localPrevEmployees = JSON.parse(rawLs);
-        } catch(eLs) { console.warn('[FP] merge codPosto local', eLs); }
-    }
+    const fromState = Array.isArray(state.employees) && state.employees.length
+        ? state.employees.map(e => ({ ...e })) : [];
+    let fromLs = [];
+    try {
+        const rawLs = localStorage.getItem(FP_EMPLOYEES_STORE_KEY);
+        if(rawLs){
+            const parsed = JSON.parse(rawLs);
+            if(Array.isArray(parsed)) fromLs = parsed;
+        }
+    } catch(eLs) { console.warn('[FP] merge codPosto local', eLs); }
+    if(fromState.length && fromLs.length){
+        localPrevEmployees = fromState.length >= fromLs.length
+            ? fpMergeEmployeesUnion(fromState, fromLs)
+            : fpMergeEmployeesUnion(fromLs, fromState);
+    } else if(fromState.length) localPrevEmployees = fromState;
+    else localPrevEmployees = fromLs;
     state.employees = expandEmployeeRefsInEmployees(db.state.employees, att);
-    state.employees = fpMergeEmployeeLocalCadastroFields(state.employees, localPrevEmployees);
+    state.employees = fpMergeEmployeesUnion(state.employees, localPrevEmployees);
     state.cnhMap = new Map(Object.entries(db.state.cnhMapObj || {}));
     state.cnhColBDByNome = new Map(Object.entries(db.state.cnhColBDByNomeObj || {}));
     state.ferias = db.state.ferias || [];
@@ -10825,17 +10859,19 @@ function salvarNovoFuncionario(){
         vtValor: Number(document.getElementById('novoVtValor')?.value || 0)
     };
     state.employees.push(emp);
+    window.__fpCloudUserEditedAt = Date.now();
     fpSaveEmployeesToLocalStorage();
     refreshDashboardFilters();
     populateCadastroDependentes();
-    renderAll();
-    renderBeneficiosCestas();
-    renderVtReport();
-    renderPostosPanorama();
-    if(typeof sincronizarTodosPostosComCadastro === 'function') sincronizarTodosPostosComCadastro();
+    queueMicrotask(function(){
+        renderAll();
+        renderBeneficiosCestas();
+        renderVtReport();
+        renderPostosPanorama();
+        if(typeof sincronizarTodosPostosComCadastro === 'function') sincronizarTodosPostosComCadastro();
+        if(typeof propagateStateToDashboardIframes === 'function') propagateStateToDashboardIframes();
+    });
     alert('Funcionário cadastrado.');
-    fpNotifyIntranetChanged();
-    if(typeof propagateStateToDashboardIframes === 'function') propagateStateToDashboardIframes();
 }
 
 function getMovCad(){

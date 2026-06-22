@@ -27,15 +27,13 @@
 
     function fpGetLocalEmployeeCount() {
         var n = (g.state && Array.isArray(g.state.employees)) ? g.state.employees.length : 0;
-        if (!n) {
-            try {
-                var raw = g.localStorage.getItem('fp_employees_json');
-                if (raw) {
-                    var arr = JSON.parse(raw);
-                    if (Array.isArray(arr)) n = arr.length;
-                }
-            } catch (_e) { /* ignore */ }
-        }
+        try {
+            var raw = g.localStorage.getItem('fp_employees_json');
+            if (raw) {
+                var arr = JSON.parse(raw);
+                if (Array.isArray(arr) && arr.length > n) n = arr.length;
+            }
+        } catch (_e) { /* ignore */ }
         return n;
     }
 
@@ -65,9 +63,7 @@
         if (!localCount || localCount < 1) return false;
         if (!cloudCount || cloudCount < 1) return true;
         if (cloudCount >= localCount) return false;
-        var diff = localCount - cloudCount;
-        if (diff >= 3) return true;
-        return cloudCount / localCount < 0.85;
+        return true;
     }
 
     function fpReadLocalSnapshotMeta() {
@@ -787,12 +783,15 @@
     /** Reúne planilha + todas as abas + documentos antes de gravar na nuvem. */
     g.fpPrepareDataForCloudSave = async function (opts) {
         opts = opts || {};
-        if (typeof g.fpLoadEmployeesFromLocalStorage === 'function') {
-            g.fpLoadEmployeesFromLocalStorage();
-        }
         var quick = opts.quick !== false && opts.autosave && g.FP_CLOUD_QUICK_SAVE !== false && g.FP_CLOUD_FAST_SYNC !== false;
+        if (!opts.autosave && typeof g.fpLoadEmployeesFromLocalStorage === 'function') {
+            g.fpLoadEmployeesFromLocalStorage();
+        } else if (opts.autosave && (!g.state || !Array.isArray(g.state.employees) || !g.state.employees.length)) {
+            if (typeof g.fpLoadEmployeesFromLocalStorage === 'function') g.fpLoadEmployeesFromLocalStorage();
+        }
+        var bagReady = false;
         if (typeof g.fpHydrateEmployeeAttachmentsFromIdb === 'function') {
-            var bagReady = g.window.__FP_EMPLOYEE_ATT_BAG__ &&
+            bagReady = g.window.__FP_EMPLOYEE_ATT_BAG__ &&
                 typeof g.window.__FP_EMPLOYEE_ATT_BAG__ === 'object' &&
                 Object.keys(g.window.__FP_EMPLOYEE_ATT_BAG__).length > 0;
             if (!quick || !bagReady) {
@@ -1040,7 +1039,12 @@
 
     function fpCloudAutosavePaused() {
         if (g.__fpCloudLoadRunning || g.__fpLsHookPause) return true;
-        if (g.__fpCloudSkipAutosaveUntil && Date.now() < g.__fpCloudSkipAutosaveUntil) return true;
+        if (g.__fpCloudSkipAutosaveUntil && Date.now() < g.__fpCloudSkipAutosaveUntil) {
+            if (g.__fpCloudUserEditedAt && g.__fpCloudLoadedAt && g.__fpCloudUserEditedAt > g.__fpCloudLoadedAt) {
+                return false;
+            }
+            return true;
+        }
         return false;
     }
 

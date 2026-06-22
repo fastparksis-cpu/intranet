@@ -24,11 +24,11 @@
 
     /** Sincronização automática com a nuvem (sem botão Salvar) */
     g.FP_CLOUD_AUTOSAVE = true;
-    /** Após qualquer alteração nas abas (~0,15 s) */
-    g.FP_CLOUD_AUTOSAVE_DEBOUNCE_MS = 150;
-    /** Gravação imediata após editar (quase sem espera) */
-    g.FP_CLOUD_SAVE_INSTANT_MS = 50;
-    g.FP_CLOUD_SAVE_AFTER_MEDIA_MS = 60;
+    /** Após qualquer alteração nas abas */
+    g.FP_CLOUD_AUTOSAVE_DEBOUNCE_MS = 1500;
+    /** Gravação imediata após editar */
+    g.FP_CLOUD_SAVE_INSTANT_MS = 800;
+    g.FP_CLOUD_SAVE_AFTER_MEDIA_MS = 400;
     /** Auto-gravação: usa dados já em memória/localStorage (sem esperar iframe) */
     g.FP_CLOUD_IFRAME_PULL_MS = 0;
     /** Caminho rápido: JSON na nuvem primeiro; anexos novos com tempo máximo de espera */
@@ -56,11 +56,11 @@
     g.FP_CLOUD_AUTOLOAD_SKIP_PEEK = true;
     /** Em auto-gravação não espera 3s pelos iframes — usa dados já em memória */
     g.FP_CLOUD_QUICK_SAVE = true;
-    /** Antes de gravar na nuvem, sincroniza memória → localStorage de todas as abas */
-    g.FP_CLOUD_FLUSH_ALL_TABS = true;
+    /** Antes de gravar na nuvem, sincroniza memória → localStorage (só em gravação manual) */
+    g.FP_CLOUD_FLUSH_ALL_TABS = false;
     /** Envia cada foto/documento ao Storage assim que é anexado (antes do snapshot completo) */
     g.FP_CLOUD_IMMEDIATE_MEDIA_UPLOAD = true;
-    g.FP_CLOUD_MEDIA_SAVE_DEBOUNCE_MS = 600;
+    g.FP_CLOUD_MEDIA_SAVE_DEBOUNCE_MS = 2500;
 
     /** Ao abrir a intranet com login, carrega snapshot + ficheiros do Supabase automaticamente */
     g.FP_CLOUD_AUTOLOAD = true;
