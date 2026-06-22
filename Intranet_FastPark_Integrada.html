@@ -6771,7 +6771,7 @@ window.addEventListener('message', (ev) => {
             __fpLastIframeEmployeesJson = sig;
             window.__fpLastIframePostAt = Date.now();
             window.__fpCloudUserEditedAt = Date.now();
-            window.__fpSkipPropagateUntil = Date.now() + 8000;
+            window.__fpSkipPropagateUntil = Date.now() + 15000;
             state.employees = incoming;
             if(Array.isArray(msg.ferias)) state.ferias = msg.ferias;
             if(Array.isArray(msg.movimentacoes)) state.movimentacoes = msg.movimentacoes;
@@ -9099,6 +9099,16 @@ function fpMergeEmployeeLocalCadastroFields(incoming, localPrev){
             out.carga = localCarga;
             changed = true;
         }
+        /* Datas editadas na ficha (admissão, etc.) não devem ser revertidas pela nuvem/planilha. */
+        ['admissao', 'demissao', 'nascimento', 'cnh', 'aso'].forEach(function(field){
+            const localIso = typeof toIsoDateOnlyFromParsed === 'function' ? toIsoDateOnlyFromParsed(hit[field]) : '';
+            if(!localIso || typeof dparse !== 'function' || !dparse(localIso)) return;
+            const incIso = typeof toIsoDateOnlyFromParsed === 'function' ? toIsoDateOnlyFromParsed(out[field]) : String(out[field] || '').trim();
+            if(incIso !== localIso){
+                out[field] = localIso;
+                changed = true;
+            }
+        });
         return changed ? out : e;
     });
 }
@@ -9948,8 +9958,13 @@ async function applyFpEmbeddedIntranetDb(db, opts){
     const cloudExportedTs = db.exportedAt ? new Date(db.exportedAt).getTime() : 0;
     const localEmpLs = localStorage.getItem(FP_EMPLOYEES_STORE_KEY);
     const cloudEmpLs = db.localStrings && db.localStrings[FP_EMPLOYEES_STORE_KEY];
+    const recentUserEdit = window.__fpCloudUserEditedAt && (Date.now() - window.__fpCloudUserEditedAt < 180000);
+    const recentIframeEdit = window.__fpLastIframePostAt && (Date.now() - window.__fpLastIframePostAt < 180000);
+    const editedSinceCloudLoad = window.__fpCloudUserEditedAt && window.__fpCloudLoadedAt
+        && window.__fpCloudUserEditedAt > window.__fpCloudLoadedAt;
     const preferLocalEmp = localPrevEmployees.length > 0 && (
-        fpLocalStorageKeyNewerThanCloud(FP_EMPLOYEES_STORE_KEY, localEmpLs, cloudEmpLs, cloudExportedTs)
+        recentUserEdit || recentIframeEdit || editedSinceCloudLoad
+        || fpLocalStorageKeyNewerThanCloud(FP_EMPLOYEES_STORE_KEY, localEmpLs, cloudEmpLs, cloudExportedTs)
         || localPrevEmployees.length > (db.state.employees || []).length
     );
     state.employees = expandEmployeeRefsInEmployees(db.state.employees, att);

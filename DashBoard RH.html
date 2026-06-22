@@ -3987,8 +3987,25 @@ function fillEmpCodPostoSelect(selectedCod){
     if(cur && [...EF.codPosto.options].some(o => o.value === cur)) EF.codPosto.value = cur;
     else if(!cur) EF.codPosto.value = '';
 }
+function fpNormEmpName(n){
+    return String(n || '').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+/** Localiza colaborador no array (referência, CPF ou nome) — evita gravar duplicata ao editar. */
+function fpFindEmployeeIndex(emp){
+    if(!emp || !Array.isArray(state.employees)) return -1;
+    let idx = state.employees.indexOf(emp);
+    if(idx >= 0) return idx;
+    const cpf = onlyDigits(emp.cpf || '');
+    if(cpf.length >= 11){
+        idx = state.employees.findIndex(e => onlyDigits(e.cpf || '') === cpf);
+        if(idx >= 0) return idx;
+    }
+    const nk = fpNormEmpName(emp.nome);
+    if(nk) return state.employees.findIndex(e => fpNormEmpName(e.nome) === nk);
+    return -1;
+}
 function openEmployeeForm(emp = null){
-    employeeEditIndex = emp ? state.employees.indexOf(emp) : -1;
+    employeeEditIndex = emp ? fpFindEmployeeIndex(emp) : -1;
     fpMarkFormEditing();
     EF.title.textContent = employeeEditIndex >= 0 ? 'Editar Funcionário' : 'Novo Funcionário';
     clearEmployeeFormErrors();
@@ -4161,9 +4178,12 @@ function fpApplyFormDraftToState(){
     if(!nome) return;
     const payload = fpBuildFormDraftPayload();
     const current = state.employees[employeeEditIndex] || {};
-    state.employees[employeeEditIndex] = { ...current, ...payload };
-    if(state.selected === current) state.selected = state.employees[employeeEditIndex];
-    syncCnhMapForEmployee(state.employees[employeeEditIndex]);
+    const updated = { ...current, ...payload };
+    state.employees[employeeEditIndex] = updated;
+    if(state.selected === current || fpNormEmpName(state.selected?.nome) === fpNormEmpName(nome)){
+        state.selected = updated;
+    }
+    syncCnhMapForEmployee(updated);
 }
 function fpScheduleFormLiveSyncToParent(){
     if(!EF.panel || EF.panel.style.display === 'none') return;
@@ -4243,6 +4263,9 @@ function saveEmployeeForm(){
     }
     if(hasError) return;
     fpMarkFormEditing();
+    if(employeeEditIndex < 0 && nome){
+        employeeEditIndex = fpFindEmployeeIndex({ nome, cpf: EF.cpf?.value?.trim() || '' });
+    }
     const payload = {
         nome,
         empresa: EF.empresa.value.trim() || 'Sem empresa',
@@ -4317,10 +4340,15 @@ function saveEmployeeForm(){
     };
     if(employeeEditIndex >= 0){
         const current = state.employees[employeeEditIndex] || {};
-        state.employees[employeeEditIndex] = { ...current, ...payload };
+        const updated = { ...current, ...payload };
+        state.employees[employeeEditIndex] = updated;
+        if(state.selected === current || fpNormEmpName(state.selected?.nome) === fpNormEmpName(nome)){
+            state.selected = updated;
+        }
         addAudit(`Cadastro atualizado: ${nome}`, 'action');
     } else {
         state.employees.push(payload);
+        state.selected = payload;
         addAudit(`Novo funcionário cadastrado: ${nome}`, 'action');
     }
     syncCnhMapForEmployee(payload);
@@ -4343,8 +4371,10 @@ EF.admissao.addEventListener('change', () => {
     refreshEmpTempoCasaForm();
 });
 EF.admissao.addEventListener('input', () => {
+    fpMarkFormEditing();
     maskEmpAdmissaoBr();
     clearFieldError(EF.admissao, 'errEmpAdmissao');
+    refreshEmpTempoCasaForm();
 });
 if(EF.cnh) {
     EF.cnh.addEventListener('input', maskEmpCnhBr);
@@ -4838,7 +4868,7 @@ function exportRelatorioPersonalizadoExcel(){
 
 function applyEmployeesSyncFromParent(msg) {
     if(EF.panel && EF.panel.style.display !== 'none' && employeeEditIndex >= 0
-        && Date.now() - (__fpLastFormEditAt || 0) < 8000){
+        && Date.now() - (__fpLastFormEditAt || 0) < 15000){
         const incomingCount = Array.isArray(msg.employees) ? msg.employees.length : 0;
         if(incomingCount <= (state.employees || []).length) return;
     }
@@ -4852,7 +4882,30 @@ function applyEmployeesSyncFromParent(msg) {
             window.parent.__FP_CLOUD_DISPLAY_URLS__ = { ...(window.parent.__FP_CLOUD_DISPLAY_URLS__ || {}), ...msg.cloudDisplayUrls };
         }
     }
-    state.employees = (Array.isArray(msg.employees) ? msg.employees : []).map(emp => {
+    let incomingEmployees = Array.isArray(msg.employees) ? msg.employees : [];
+    if(Date.now() - (__fpLastFormEditAt || 0) < 120000 && incomingEmployees.length && (state.employees || []).length){
+        const localMap = new Map();
+        (state.employees || []).forEach(e => {
+            const cpf = onlyDigits(e.cpf || '');
+            const nk = fpNormEmpName(e.nome);
+            if(cpf.length >= 11) localMap.set('cpf:' + cpf, e);
+            else if(nk) localMap.set('nome:' + nk, e);
+        });
+        incomingEmployees = incomingEmployees.map(e => {
+            const cpf = onlyDigits(e.cpf || '');
+            const nk = fpNormEmpName(e.nome);
+            const hit = (cpf.length >= 11 ? localMap.get('cpf:' + cpf) : null) || localMap.get('nome:' + nk);
+            if(!hit) return e;
+            const out = { ...e };
+            ['admissao', 'demissao', 'nascimento', 'cnh', 'aso'].forEach(field => {
+                const localIso = toIsoDateOnlyFromParsed(hit[field]);
+                const incIso = toIsoDateOnlyFromParsed(out[field]);
+                if(localIso && dparse(localIso) && localIso !== incIso) out[field] = localIso;
+            });
+            return out;
+        });
+    }
+    state.employees = incomingEmployees.map(emp => {
         const e = { ...emp };
         const foto = fpResolveEmployeeFotoUrl(e);
         if(foto) e.foto = foto;
@@ -4905,7 +4958,7 @@ window.addEventListener('message', (ev) => {
         try {
             const incomingCount = Array.isArray(msg.employees) ? msg.employees.length : 0;
             const editingForm = EF.panel && EF.panel.style.display !== 'none' && employeeEditIndex >= 0
-                && Date.now() - (__fpLastFormEditAt || 0) < 8000;
+                && Date.now() - (__fpLastFormEditAt || 0) < 15000;
             if(editingForm && incomingCount <= (state.employees || []).length) return;
             applyEmployeesSyncFromParent(msg);
             if(state.selected){
