@@ -1096,23 +1096,17 @@ function dparse(v) {
     if(v instanceof Date && !isNaN(v)) return new Date(v.getFullYear(), v.getMonth(), v.getDate());
     if(typeof v === 'number') { const p = XLSX.SSF.parse_date_code(v); return p ? new Date(p.y, p.m - 1, p.d) : null; }
     v = String(v).trim(); if(!v) return null;
-    /* Barras: tenta primeiro BR (dia/mês); se inválido, mês/dia (planilhas exportadas no padrão US). */
+    /* Barras: sempre dd/mm/aaaa (BR); fallback mm/dd só se a data BR for inválida. */
     const slash = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})\b/);
     if(slash) {
         const a = Number(slash[1]), b = Number(slash[2]);
         let y = Number(slash[3]);
         if(String(slash[3]).length === 2) y = y < 50 ? 2000 + y : 1900 + y;
-        const compact = v.trim();
-        const fullTwo = /^\d{2}\/\d{2}\/\d{4}$/.test(compact);
         let dt = null;
-        if(b > 12) dt = calendarDateValid(y, a, b); /* ex.: 3/15/2025 → mês 3 dia 15 */
+        if(b > 12) dt = calendarDateValid(y, a, b); /* ex.: 3/15/2025 → dia 15 mês 3 */
         else if(a > 12) dt = calendarDateValid(y, b, a); /* ex.: 15/3/2025 → dia 15 mês 3 */
-        else if(fullTwo && a < b) {
-            /* Excel em inglês: 03/06/2025 = 6 de março (mm/dd), não 3 de junho (dd/mm) */
-            dt = calendarDateValid(y, a, b);
-            if(!dt) dt = calendarDateValid(y, b, a);
-        } else {
-            dt = calendarDateValid(y, b, a); /* BR dd/mm (ex.: 06/03/2025 = 6 de março) */
+        else {
+            dt = calendarDateValid(y, b, a); /* BR: 04/05/2026 = 4 de maio */
             if(!dt) dt = calendarDateValid(y, a, b);
         }
         if(dt) return dt;
@@ -1124,15 +1118,10 @@ function dparse(v) {
     if(/^\d{1,2}-\d{1,2}-\d{4}$/.test(v)) {
         const [p1, p2, ys] = v.split('-');
         const a = Number(p1), b = Number(p2), y = Number(ys);
-        const compact = v.trim();
-        const fullTwo = /^\d{2}-\d{2}-\d{4}$/.test(compact);
         let dt = null;
         if(b > 12) dt = calendarDateValid(y, a, b);
         else if(a > 12) dt = calendarDateValid(y, b, a);
-        else if(fullTwo && a < b) {
-            dt = calendarDateValid(y, a, b);
-            if(!dt) dt = calendarDateValid(y, b, a);
-        } else {
+        else {
             dt = calendarDateValid(y, b, a);
             if(!dt) dt = calendarDateValid(y, a, b);
         }
