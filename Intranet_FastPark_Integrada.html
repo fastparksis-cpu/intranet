@@ -6673,7 +6673,6 @@ function propagateWorkbookToEmbeddedDashboardIframes(data) {
 /** Sincroniza o cadastro em memória (shell) para os iframes do DashBoard quando não há .xlsx (embutido, localStorage, novo funcionário). */
 function propagateStateToDashboardIframes() {
     if(window.__fpSkipPropagateUntil && Date.now() < window.__fpSkipPropagateUntil) return;
-    if(window.__fpLastIframePostAt && Date.now() - window.__fpLastIframePostAt < 12000) return;
     const bag = window.__FP_EMPLOYEE_ATT_BAG__ || {};
     const att = window.__FP_EMBEDDED_ATTACHMENTS__ || {};
     let employees = Array.isArray(state.employees) ? state.employees : [];
@@ -6761,7 +6760,7 @@ window.addEventListener('message', (ev) => {
             __fpLastIframeEmployeesJson = sig;
             window.__fpLastIframePostAt = Date.now();
             window.__fpCloudUserEditedAt = Date.now();
-            window.__fpSkipPropagateUntil = Date.now() + 15000;
+            window.__fpSkipPropagateUntil = Date.now() + 8000;
             state.employees = incoming;
             if(Array.isArray(msg.ferias)) state.ferias = msg.ferias;
             if(Array.isArray(msg.movimentacoes)) state.movimentacoes = msg.movimentacoes;
@@ -7109,10 +7108,9 @@ window.fpInitExternalTabsAndDashboard = function () {
     } catch (e) { console.warn('[FP] iframes', e); }
 };
 function fpPushDashboardWithRetry(){
-    if(window.__fpLastIframePostAt && Date.now() - window.__fpLastIframePostAt < 12000) return;
     if(window.__fpSkipPropagateUntil && Date.now() < window.__fpSkipPropagateUntil) return;
     var n = (state.employees && state.employees.length) || 0;
-    var delays = [0, 800, 2000];
+    var delays = [0, 400, 1200, 3000];
     delays.forEach(function(ms){
         setTimeout(function(){
             if(typeof propagateStateToDashboardIframes === 'function') propagateStateToDashboardIframes();
@@ -9975,7 +9973,6 @@ async function applyFpEmbeddedIntranetDb(db, opts){
     }
     setFaltasCad(expandAnexoRefsInFaltas(db.faltasResolved || [], att));
     setSignedDocsMap(expandPagasSignedSlim(db.pagasSignedSlim || {}, att));
-    const cloudExportedTs = db.exportedAt ? new Date(db.exportedAt).getTime() : 0;
     const localCapture = opts.fromCloud && typeof fpCaptureRegistryLocalStrings === 'function'
         ? fpCaptureRegistryLocalStrings()
         : {};
