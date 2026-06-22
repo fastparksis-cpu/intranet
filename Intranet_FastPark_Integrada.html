@@ -6672,6 +6672,8 @@ function propagateWorkbookToEmbeddedDashboardIframes(data) {
 
 /** Sincroniza o cadastro em memória (shell) para os iframes do DashBoard quando não há .xlsx (embutido, localStorage, novo funcionário). */
 function propagateStateToDashboardIframes() {
+    if(window.__fpSkipPropagateUntil && Date.now() < window.__fpSkipPropagateUntil) return;
+    if(window.__fpLastIframePostAt && Date.now() - window.__fpLastIframePostAt < 12000) return;
     const bag = window.__FP_EMPLOYEE_ATT_BAG__ || {};
     const att = window.__FP_EMBEDDED_ATTACHMENTS__ || {};
     let employees = Array.isArray(state.employees) ? state.employees : [];
@@ -6759,6 +6761,7 @@ window.addEventListener('message', (ev) => {
             __fpLastIframeEmployeesJson = sig;
             window.__fpLastIframePostAt = Date.now();
             window.__fpCloudUserEditedAt = Date.now();
+            window.__fpSkipPropagateUntil = Date.now() + 15000;
             state.employees = incoming;
             if(Array.isArray(msg.ferias)) state.ferias = msg.ferias;
             if(Array.isArray(msg.movimentacoes)) state.movimentacoes = msg.movimentacoes;
@@ -7106,8 +7109,10 @@ window.fpInitExternalTabsAndDashboard = function () {
     } catch (e) { console.warn('[FP] iframes', e); }
 };
 function fpPushDashboardWithRetry(){
+    if(window.__fpLastIframePostAt && Date.now() - window.__fpLastIframePostAt < 12000) return;
+    if(window.__fpSkipPropagateUntil && Date.now() < window.__fpSkipPropagateUntil) return;
     var n = (state.employees && state.employees.length) || 0;
-    var delays = [0, 400, 1000, 2200, 4000, 6500];
+    var delays = [0, 800, 2000];
     delays.forEach(function(ms){
         setTimeout(function(){
             if(typeof propagateStateToDashboardIframes === 'function') propagateStateToDashboardIframes();
@@ -9099,7 +9104,28 @@ function fpMergeEmployeesUnion(incoming, localPrev){
     });
     return extras.length ? extras.concat(merged) : merged;
 }
+/** Quando o cadastro local é mais recente, a ficha local prevalece por colaborador. */
+function fpMergeEmployeesPreferLocalRecords(incoming, localPrev){
+    if(!Array.isArray(incoming)) incoming = [];
+    if(!Array.isArray(localPrev) || !localPrev.length) return incoming;
+    const localMap = new Map();
+    localPrev.forEach(e => {
+        const k = fpEmployeeCadastroMatchKey(e);
+        if(k) localMap.set(k, e);
+    });
+    const out = incoming.map(e => {
+        const hit = localMap.get(fpEmployeeCadastroMatchKey(e));
+        return hit ? { ...e, ...hit } : e;
+    });
+    const keys = new Set(out.map(e => fpEmployeeCadastroMatchKey(e)).filter(Boolean));
+    localPrev.forEach(e => {
+        const k = fpEmployeeCadastroMatchKey(e);
+        if(k && !keys.has(k)) out.push({ ...e });
+    });
+    return out;
+}
 window.fpMergeEmployeesUnion = fpMergeEmployeesUnion;
+window.fpMergeEmployeesPreferLocalRecords = fpMergeEmployeesPreferLocalRecords;
 function fpMergeEmployeeAttachments(arr, bag){
     if(!Array.isArray(arr)) return [];
     const b = bag && typeof bag === 'object' ? bag : {};
@@ -9909,8 +9935,15 @@ async function applyFpEmbeddedIntranetDb(db, opts){
             : fpMergeEmployeesUnion(fromLs, fromState);
     } else if(fromState.length) localPrevEmployees = fromState;
     else localPrevEmployees = fromLs;
+    const cloudExportedTs = db.exportedAt ? new Date(db.exportedAt).getTime() : 0;
+    const localEmpLs = localStorage.getItem(FP_EMPLOYEES_STORE_KEY);
+    const cloudEmpLs = db.localStrings && db.localStrings[FP_EMPLOYEES_STORE_KEY];
+    const preferLocalEmp = fpLocalStorageKeyNewerThanCloud(FP_EMPLOYEES_STORE_KEY, localEmpLs, cloudEmpLs, cloudExportedTs)
+        || (localPrevEmployees.length > (db.state.employees || []).length);
     state.employees = expandEmployeeRefsInEmployees(db.state.employees, att);
-    state.employees = fpMergeEmployeesUnion(state.employees, localPrevEmployees);
+    state.employees = preferLocalEmp
+        ? fpMergeEmployeesPreferLocalRecords(state.employees, localPrevEmployees)
+        : fpMergeEmployeesUnion(state.employees, localPrevEmployees);
     state.cnhMap = new Map(Object.entries(db.state.cnhMapObj || {}));
     state.cnhColBDByNome = new Map(Object.entries(db.state.cnhColBDByNomeObj || {}));
     state.ferias = db.state.ferias || [];
@@ -10209,19 +10242,30 @@ let __fpPersistRunning = false;
 let __fpPersistPending = false;
 /** Evita ciclo iframe ↔ shell quando o payload não mudou de facto. */
 let __fpLastIframeEmployeesJson = null;
+/** Assinatura fiável do payload (hash completo — evita ignorar edições na ficha). */
+function fpPayloadSigHash(obj){
+    try {
+        const s = JSON.stringify(obj);
+        let h = 5381;
+        for(let i = 0; i < s.length; i++) h = ((h << 5) + h) ^ s.charCodeAt(i);
+        return s.length + ':' + (h >>> 0).toString(36);
+    } catch(_){
+        return '';
+    }
+}
 function fpIframePayloadSig(employees, ferias, movimentacoes){
     const emps = Array.isArray(employees) ? employees : [];
-    const fer = Array.isArray(ferias) ? ferias : [];
-    const mov = Array.isArray(movimentacoes) ? movimentacoes : [];
-    try {
-        const s = JSON.stringify({ emps, fer, mov });
-        let h = 5381;
-        const step = Math.max(1, Math.floor(s.length / 12000));
-        for(let i = 0; i < s.length; i += step) h = ((h << 5) + h) ^ s.charCodeAt(i);
-        return emps.length + ':' + fer.length + ':' + mov.length + ':' + s.length + ':' + (h >>> 0).toString(36);
-    } catch(_){
-        return emps.length + ':' + fer.length + ':' + mov.length;
-    }
+    return fpPayloadSigHash({
+        emps: emps.map(function(e){
+            return {
+                n: e.nome, c: e.cpf, emp: e.empresa, tel: e.telefone, sal: e.salario,
+                adm: e.admissao, car: e.cargo, sta: e.status, cod: e.codPosto, at: e.atuando,
+                vr: e.vr, vt: e.vt, aj: e.ajuda
+            };
+        }),
+        fer: Array.isArray(ferias) ? ferias.length : 0,
+        mov: Array.isArray(movimentacoes) ? movimentacoes.length : 0
+    });
 }
 function fpSetEmbeddedStatusLine(msg){
     const st = document.getElementById('fpEmbeddedStatus');

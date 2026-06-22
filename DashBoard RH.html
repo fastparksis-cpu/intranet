@@ -2431,19 +2431,24 @@ function fpSetLocalSaveBadge(msg, kind){
     } catch(_){}
 }
 
-/** Assinatura do payload completo (cadastro + férias + movimentações). */
+/** Assinatura fiável do payload (hash completo das fichas). */
 function fpStatePayloadSig(employees, ferias, movimentacoes){
     const emps = Array.isArray(employees) ? employees : [];
-    const fer = Array.isArray(ferias) ? ferias : [];
-    const mov = Array.isArray(movimentacoes) ? movimentacoes : [];
     try {
-        const s = JSON.stringify({ emps, fer, mov });
+        const s = JSON.stringify({
+            emps: emps.map(e => ({
+                n: e.nome, c: e.cpf, emp: e.empresa, tel: e.telefone, sal: e.salario,
+                adm: e.admissao, car: e.cargo, sta: e.status, cod: e.codPosto, at: e.atuando,
+                vr: e.vr, vt: e.vt, aj: e.ajuda
+            })),
+            fer: Array.isArray(ferias) ? ferias.length : 0,
+            mov: Array.isArray(movimentacoes) ? movimentacoes.length : 0
+        });
         let h = 5381;
-        const step = Math.max(1, Math.floor(s.length / 12000));
-        for(let i = 0; i < s.length; i += step) h = ((h << 5) + h) ^ s.charCodeAt(i);
-        return emps.length + ':' + fer.length + ':' + mov.length + ':' + s.length + ':' + (h >>> 0).toString(36);
+        for(let i = 0; i < s.length; i++) h = ((h << 5) + h) ^ s.charCodeAt(i);
+        return s.length + ':' + (h >>> 0).toString(36);
     } catch(_){
-        return emps.length + ':' + fer.length + ':' + mov.length;
+        return emps.length + '';
     }
 }
 
@@ -3989,6 +3994,7 @@ function fillEmpCodPostoSelect(selectedCod){
 }
 function openEmployeeForm(emp = null){
     employeeEditIndex = emp ? state.employees.indexOf(emp) : -1;
+    fpMarkFormEditing();
     EF.title.textContent = employeeEditIndex >= 0 ? 'Editar Funcionário' : 'Novo Funcionário';
     clearEmployeeFormErrors();
     if(emp){
@@ -4074,6 +4080,10 @@ function closeEmployeeForm(){
     EF.panel.style.display = 'none';
 }
 let __fpFormLiveSyncTimer = null;
+let __fpLastFormEditAt = 0;
+function fpMarkFormEditing(){
+    __fpLastFormEditAt = Date.now();
+}
 function fpBuildFormDraftPayload(){
     const admStr = EF.admissao.value.trim();
     return {
@@ -4163,11 +4173,12 @@ function fpApplyFormDraftToState(){
 function fpScheduleFormLiveSyncToParent(){
     if(!EF.panel || EF.panel.style.display === 'none') return;
     if(employeeEditIndex < 0) return;
+    fpMarkFormEditing();
     clearTimeout(__fpFormLiveSyncTimer);
     __fpFormLiveSyncTimer = setTimeout(() => {
         fpApplyFormDraftToState();
         fpPostFullStateToParentIfEmbedded(true);
-    }, 500);
+    }, 800);
 }
 /** Envia o cadastro completo (incl. documentos e foto em base64) para a intranet integrada gravar no JSON/localStorage. */
 function fpPostFullStateToParentIfEmbedded(immediate){
@@ -4236,6 +4247,7 @@ function saveEmployeeForm(){
         else if(!dparse(demStr)){ setFieldError(EF.demissao, 'errEmpDemissao', 'Data de desligamento inválida.'); hasError = true; }
     }
     if(hasError) return;
+    fpMarkFormEditing();
     const payload = {
         nome,
         empresa: EF.empresa.value.trim() || 'Sem empresa',
@@ -4825,6 +4837,9 @@ function exportRelatorioPersonalizadoExcel(){
 }
 
 function applyEmployeesSyncFromParent(msg) {
+    if(EF.panel && EF.panel.style.display !== 'none' && employeeEditIndex >= 0){
+        if(Date.now() - (__fpLastFormEditAt || 0) < 20000) return;
+    }
     fpLoadRefCacheFromStorage(msg);
     __fpLastParentSyncAt = Date.now();
     if(window.parent){
@@ -4886,6 +4901,10 @@ window.addEventListener('message', (ev) => {
     }
     if(msg.type === 'fastpark-employees-sync') {
         try {
+            if(EF.panel && EF.panel.style.display !== 'none' && employeeEditIndex >= 0
+                && Date.now() - (__fpLastFormEditAt || 0) < 20000){
+                return;
+            }
             applyEmployeesSyncFromParent(msg);
             if(state.selected){
                 const sel = state.employees.find(e => e === state.selected || String(e.nome) === String(state.selected.nome));
