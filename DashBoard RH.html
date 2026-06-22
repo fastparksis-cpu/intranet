@@ -459,7 +459,7 @@
       <div class="f"><label for="empNome">Nome</label><input id="empNome" placeholder="Nome completo"><div id="errEmpNome" class="field-error"></div></div>
       <div class="f"><label for="empCpf">CPF</label><input id="empCpf" placeholder="000.000.000-00"><div id="errEmpCpf" class="field-error"></div></div>
       <div class="f"><label for="empTelefone">Telefone</label><input id="empTelefone" placeholder="(11) 99999-9999"><div id="errEmpTelefone" class="field-error"></div></div>
-      <div class="f"><label for="empNascimento">Data de Nascimento</label><input id="empNascimento" type="date"></div>
+      <div class="f"><label for="empNascimento">Data de Nascimento (dd/mm/aaaa)</label><input id="empNascimento" type="text" inputmode="numeric" placeholder="dd/mm/aaaa" maxlength="10" autocomplete="off"></div>
       <div class="f"><label for="empIdade">Idade Atual</label><input id="empIdade" type="number" min="0" placeholder="Idade"></div>
       <div class="f"><label for="empEstadoCivil">Estado Civil</label><input id="empEstadoCivil" placeholder="Estado civil"></div>
       <div class="f"><label for="empRaca">Raça / Cor</label><input id="empRaca" placeholder="Raça / Cor"></div>
@@ -468,7 +468,7 @@
       <div class="f"><label for="empRg">RG</label><input id="empRg" placeholder="RG"></div>
       <div class="f"><label for="empCnhNumero">Número CNH</label><input id="empCnhNumero" placeholder="Registro / número"></div>
       <div class="f"><label for="empCnhCategoria">Categoria CNH</label><input id="empCnhCategoria" placeholder="Ex: AB, D"></div>
-      <div class="f"><label for="empCnh">Vencimento CNH</label><input id="empCnh" type="date"><span id="empCnhFmt" class="date-fmt" aria-live="polite"></span></div>
+      <div class="f"><label for="empCnh">Vencimento CNH (dd/mm/aaaa)</label><input id="empCnh" type="text" inputmode="numeric" placeholder="dd/mm/aaaa" maxlength="10" autocomplete="off"></div>
 
       <div style="grid-column:1 / -1; font-weight:800; font-size:11px; color:var(--fp-mid-gray); text-transform:uppercase; letter-spacing:.5px;">Dados Contratuais</div>
       <div class="f"><label for="empEmpresa">Registro</label><select id="empEmpresa"><option value="">Selecione a empresa</option></select><div id="errEmpEmpresa" class="field-error"></div></div>
@@ -508,7 +508,7 @@
       <div class="f"><label for="empOdontoDepValor">Odonto — valor dependente (R$)</label><input id="empOdontoDepValor" type="number" step="0.01" placeholder="0,00" readonly></div>
       <div class="f"><label for="empCargoConfianca">Cargo de confiança</label><input id="empCargoConfianca" type="number" step="0.01" placeholder="0,00"></div>
       <div class="f"><label for="empPericulosidade">Periculosidade</label><input id="empPericulosidade" type="number" step="0.01" placeholder="0,00"></div>
-      <div class="f"><label for="empAso">Vencimento ASO</label><input id="empAso" type="date"></div>
+      <div class="f"><label for="empAso">Vencimento ASO (dd/mm/aaaa)</label><input id="empAso" type="text" inputmode="numeric" placeholder="dd/mm/aaaa" maxlength="10" autocomplete="off"></div>
 
       <div style="grid-column:1 / -1; font-weight:800; font-size:11px; color:var(--fp-mid-gray); text-transform:uppercase; letter-spacing:.5px;">Banco / Agência / Conta</div>
       <div class="f"><label for="empBanco">Banco</label><input id="empBanco" placeholder="Banco"></div>
@@ -3385,39 +3385,45 @@ function toInputDate(v){
     const dd = String(d.getDate()).padStart(2,'0');
     return `${d.getFullYear()}-${mm}-${dd}`;
 }
-/** Dica ao lado do vencimento CNH (campo type=date). */
-function refreshFormDateBrHints() {
-    if(EF.cnhFmt) EF.cnhFmt.textContent = EF.cnh && EF.cnh.value ? fdate(EF.cnh.value) : '';
+function toFormDateBr(v){
+    const d = fdate(v);
+    return d === '—' ? '' : d;
 }
-/** Máscara dd/mm/aaaa na admissão (8 dígitos); se colar yyyy-mm-dd, converte para exibição BR. */
-function maskEmpAdmissaoBr() {
-    if(!EF.admissao) return;
-    let s = EF.admissao.value;
-    const t = s.trim();
+/** Máscara dd/mm/aaaa; aceita colar yyyy-mm-dd e converte para exibição BR. */
+function maskEmpDateBr(el, onValid){
+    if(!el) return;
+    const t = String(el.value || '').trim();
     if(/^\d{4}-\d{2}-\d{2}/.test(t)) {
         const d = dparse(t);
-        if(d) EF.admissao.value = fdate(d);
+        if(d) el.value = fdate(d);
+        if(onValid && el.value && dparse(el.value)) onValid();
         return;
     }
-    const digits = s.replace(/\D/g, '').slice(0, 8);
+    const digits = t.replace(/\D/g, '').slice(0, 8);
     let out = '';
     if(digits.length >= 5) out = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
     else if(digits.length >= 3) out = `${digits.slice(0, 2)}/${digits.slice(2)}`;
     else out = digits;
-    EF.admissao.value = out;
-    if(out.length >= 10 && dparse(out)) refreshEmpTempoCasaForm();
+    el.value = out;
+    if(onValid && out.length >= 10 && dparse(out)) onValid();
+}
+/** Dica ao lado do vencimento CNH (legado — campo já exibe dd/mm/aaaa). */
+function refreshFormDateBrHints() {
+    if(EF.cnhFmt) EF.cnhFmt.textContent = '';
+}
+function maskEmpAdmissaoBr() {
+    maskEmpDateBr(EF.admissao, refreshEmpTempoCasaForm);
 }
 function maskEmpDemissaoBr(){
-    if(!EF.demissao) return;
-    const s = String(EF.demissao.value || '');
-    const digits = s.replace(/\D/g, '').slice(0, 8);
-    let out = '';
-    if(digits.length >= 5) out = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
-    else if(digits.length >= 3) out = `${digits.slice(0, 2)}/${digits.slice(2)}`;
-    else out = digits;
-    EF.demissao.value = out;
-    refreshEmpTempoCasaForm();
+    maskEmpDateBr(EF.demissao, refreshEmpTempoCasaForm);
 }
+function maskEmpNascimentoBr(){
+    maskEmpDateBr(EF.nascimento, () => {
+        if(EF.idade) EF.idade.value = String(calcIdade(EF.nascimento.value || ''));
+    });
+}
+function maskEmpCnhBr(){ maskEmpDateBr(EF.cnh); }
+function maskEmpAsoBr(){ maskEmpDateBr(EF.aso); }
 function refreshEmpTempoCasaForm(){
     if(!EF.tempoCasa) return;
     const admStr = EF.admissao?.value?.trim() || '';
@@ -4021,11 +4027,11 @@ function openEmployeeForm(emp = null){
         EF.vtValor.value = Number(emp.vtValor || 0);
         EF.cnhNumero.value = emp.cnhNumero || '';
         EF.cnhCategoria.value = emp.cnhCategoria || '';
-        EF.cnh.value = toInputDate(emp.cnh);
-        EF.aso.value = toInputDate(emp.aso);
+        EF.cnh.value = toFormDateBr(emp.cnh);
+        EF.aso.value = toFormDateBr(emp.aso);
         EF.cpf.value = emp.cpf || '';
         EF.telefone.value = emp.telefone || '';
-        EF.nascimento.value = toInputDate(emp.nascimento);
+        EF.nascimento.value = toFormDateBr(emp.nascimento);
         EF.idade.value = emp.idade || '';
         EF.estadoCivil.value = emp.estadoCivil || '';
         EF.raca.value = emp.raca || '';
@@ -4109,13 +4115,13 @@ function fpBuildFormDraftPayload(){
         vt: EF.vt.value.trim(),
         vtTipo: EF.vtTipo.value.trim(),
         vtValor: Number(EF.vtValor?.value || 0),
-        cnh: EF.cnh.value || '',
+        cnh: toIsoDateOnlyFromParsed(EF.cnh.value.trim()) || '',
         cnhNumero: EF.cnhNumero.value.trim(),
         cnhCategoria: EF.cnhCategoria.value.trim(),
-        aso: EF.aso.value || '',
+        aso: toIsoDateOnlyFromParsed(EF.aso.value.trim()) || '',
         cpf: EF.cpf.value.trim(),
         telefone: EF.telefone.value.trim(),
-        nascimento: EF.nascimento.value || '',
+        nascimento: toIsoDateOnlyFromParsed(EF.nascimento.value.trim()) || '',
         idade: Number(EF.idade.value || 0) || '',
         estadoCivil: EF.estadoCivil.value.trim(),
         raca: EF.raca.value.trim(),
@@ -4271,13 +4277,13 @@ function saveEmployeeForm(){
         vt: EF.vt.value.trim(),
         vtTipo: EF.vtTipo.value.trim(),
         vtValor: Number(EF.vtValor?.value || 0),
-        cnh: EF.cnh.value || '',
+        cnh: toIsoDateOnlyFromParsed(EF.cnh.value.trim()) || '',
         cnhNumero: EF.cnhNumero.value.trim(),
         cnhCategoria: EF.cnhCategoria.value.trim(),
-        aso: EF.aso.value || '',
+        aso: toIsoDateOnlyFromParsed(EF.aso.value.trim()) || '',
         cpf: EF.cpf.value.trim(),
         telefone: EF.telefone.value.trim(),
-        nascimento: EF.nascimento.value || '',
+        nascimento: toIsoDateOnlyFromParsed(EF.nascimento.value.trim()) || '',
         idade: Number(EF.idade.value || 0) || '',
         estadoCivil: EF.estadoCivil.value.trim(),
         raca: EF.raca.value.trim(),
@@ -4352,12 +4358,17 @@ EF.admissao.addEventListener('input', () => {
     clearFieldError(EF.admissao, 'errEmpAdmissao');
 });
 if(EF.cnh) {
-    EF.cnh.addEventListener('change', refreshFormDateBrHints);
-    EF.cnh.addEventListener('input', refreshFormDateBrHints);
+    EF.cnh.addEventListener('input', maskEmpCnhBr);
+    EF.cnh.addEventListener('change', maskEmpCnhBr);
 }
-EF.nascimento.addEventListener('change', () => {
-    EF.idade.value = String(calcIdade(EF.nascimento.value || ''));
-});
+if(EF.aso) {
+    EF.aso.addEventListener('input', maskEmpAsoBr);
+    EF.aso.addEventListener('change', maskEmpAsoBr);
+}
+if(EF.nascimento) {
+    EF.nascimento.addEventListener('input', maskEmpNascimentoBr);
+    EF.nascimento.addEventListener('change', maskEmpNascimentoBr);
+}
 EF.cpf.addEventListener('input', () => { EF.cpf.value = maskCpf(EF.cpf.value); clearFieldError(EF.cpf, 'errEmpCpf'); });
 EF.telefone.addEventListener('input', () => { EF.telefone.value = maskTelefone(EF.telefone.value); clearFieldError(EF.telefone, 'errEmpTelefone'); });
 EF.cep.addEventListener('input', () => {
