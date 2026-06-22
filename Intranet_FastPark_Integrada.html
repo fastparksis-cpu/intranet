@@ -1433,9 +1433,12 @@ body {
 }
 #dashboard.tab-content.active,
 #inicio.tab-content.active {
-    display: block !important;
+    display: flex !important;
+    flex-direction: column !important;
     overflow: hidden !important;
     padding: 0 !important;
+    height: 100% !important;
+    min-height: 0 !important;
 }
 .tab-content.active:not(.fp-page-full):not(.ref-module):not(.uni-module) .fp-tab-body {
     flex: 1;
@@ -3889,7 +3892,7 @@ function switchTab(tab) {
         if(typeof fpSyncDarkModeToDashboardIframes === 'function') {
             fpSyncDarkModeToDashboardIframes(localStorage.getItem('fp_darkmode') === '1');
         }
-        if(typeof propagateStateToDashboardIframes === 'function') propagateStateToDashboardIframes();
+        if(typeof propagateStateToDashboardIframes === 'function') propagateStateToDashboardIframes({ force: true });
         if(typeof fpPushDashboardWithRetry === 'function') fpPushDashboardWithRetry();
     }
     if(tab === 'movimentos' && typeof refreshMovGestaoPagamentosUi === 'function') refreshMovGestaoPagamentosUi();
@@ -6671,37 +6674,51 @@ function propagateWorkbookToEmbeddedDashboardIframes(data) {
 }
 
 /** Sincroniza o cadastro em memória (shell) para os iframes do DashBoard quando não há .xlsx (embutido, localStorage, novo funcionário). */
-function propagateStateToDashboardIframes() {
-    if(window.__fpSkipPropagateUntil && Date.now() < window.__fpSkipPropagateUntil) return;
-    const bag = window.__FP_EMPLOYEE_ATT_BAG__ || {};
-    const att = window.__FP_EMBEDDED_ATTACHMENTS__ || {};
-    let employees = Array.isArray(state.employees) ? state.employees : [];
-    employees = fpMergeEmployeeAttachments(employees, bag);
-    employees = fpHydrateEmployeesMediaForSnapshot(employees, att);
-    const payload = {
-        type: 'fastpark-employees-sync',
-        employees,
-        empAttachmentsBag: window.__FP_EMPLOYEE_ATT_BAG__ || {},
-        cloudDisplayUrls: { ...(window.__FP_CLOUD_DISPLAY_URLS__ || {}) },
-        ferias: Array.isArray(state.ferias) ? state.ferias : [],
-        movimentacoes: Array.isArray(state.movimentacoes) ? state.movimentacoes : [],
-        cnhMapObj: mapToPlainObjectFromMap(state.cnhMap),
-        cnhColBDByNomeObj: mapToPlainObjectFromMap(state.cnhColBDByNome),
-        cnhColNumeroByNomeObj: mapToPlainObjectFromMap(state.cnhColNumeroByNome),
-        cnhColCategoriaByNomeObj: mapToPlainObjectFromMap(state.cnhColCategoriaByNome),
-        refVtTipos: typeof refGetVtTipos === 'function' ? refGetVtTipos() : [],
-        saude: typeof refGetBeneficioCfg === 'function' ? refGetBeneficioCfg('saude') : null,
-        odonto: typeof refGetBeneficioCfg === 'function' ? refGetBeneficioCfg('odonto') : null,
-        refEmpresas: typeof refGetEmpresas === 'function' ? refGetEmpresas() : []
-    };
-    document.querySelectorAll('#dashboard iframe.external-tab-frame, #inicio iframe.external-tab-frame').forEach(fr => {
-        if(!fr?.contentWindow) return;
-        try {
-            fr.contentWindow.postMessage(payload, '*');
-        } catch(err2) {
-            console.error('Falha ao propagar cadastro para iframe do dashboard', err2);
+function propagateStateToDashboardIframes(opts) {
+    opts = opts || {};
+    if(!opts.force && window.__fpSkipPropagateUntil && Date.now() < window.__fpSkipPropagateUntil) return;
+    try {
+        if(!state.employees || !state.employees.length){
+            if(typeof fpLoadEmployeesFromLocalStorage === 'function') fpLoadEmployeesFromLocalStorage();
         }
-    });
+        const bag = window.__FP_EMPLOYEE_ATT_BAG__ || {};
+        const att = window.__FP_EMBEDDED_ATTACHMENTS__ || {};
+        let employees = Array.isArray(state.employees) ? state.employees : [];
+        employees = fpMergeEmployeeAttachments(employees, bag);
+        try {
+            employees = fpHydrateEmployeesMediaForSnapshot(employees, att);
+        } catch(hydrateErr) {
+            console.warn('[FP] hydrate p/ iframe', hydrateErr);
+        }
+        const payload = {
+            type: 'fastpark-employees-sync',
+            employees,
+            empAttachmentsBag: window.__FP_EMPLOYEE_ATT_BAG__ || {},
+            cloudDisplayUrls: { ...(window.__FP_CLOUD_DISPLAY_URLS__ || {}) },
+            ferias: Array.isArray(state.ferias) ? state.ferias : [],
+            movimentacoes: Array.isArray(state.movimentacoes) ? state.movimentacoes : [],
+            cnhMapObj: mapToPlainObjectFromMap(state.cnhMap),
+            cnhColBDByNomeObj: mapToPlainObjectFromMap(state.cnhColBDByNome),
+            cnhColNumeroByNomeObj: mapToPlainObjectFromMap(state.cnhColNumeroByNome),
+            cnhColCategoriaByNomeObj: mapToPlainObjectFromMap(state.cnhColCategoriaByNome),
+            refVtTipos: typeof refGetVtTipos === 'function' ? refGetVtTipos() : [],
+            saude: typeof refGetBeneficioCfg === 'function' ? refGetBeneficioCfg('saude') : null,
+            odonto: typeof refGetBeneficioCfg === 'function' ? refGetBeneficioCfg('odonto') : null,
+            refEmpresas: typeof refGetEmpresas === 'function' ? refGetEmpresas() : []
+        };
+        const frames = document.querySelectorAll('#dashboard iframe.external-tab-frame, #inicio iframe.external-tab-frame');
+        if(!frames.length) return;
+        frames.forEach(fr => {
+            if(!fr?.contentWindow) return;
+            try {
+                fr.contentWindow.postMessage(payload, '*');
+            } catch(err2) {
+                console.error('Falha ao propagar cadastro para iframe do dashboard', err2);
+            }
+        });
+    } catch(propErr) {
+        console.error('[FP] propagateStateToDashboardIframes', propErr);
+    }
 }
 
 E.file.addEventListener('change', e => {
@@ -6730,6 +6747,10 @@ window.addEventListener('message', (ev) => {
         if(typeof fpApplyDarkModePreference === 'function') fpApplyDarkModePreference();
         return;
     }
+    if(msg.type === 'fastpark-iframe-ready'){
+        if(typeof propagateStateToDashboardIframes === 'function') propagateStateToDashboardIframes({ force: true });
+        return;
+    }
     if(msg.type === 'fastpark-employees-from-iframe' && Array.isArray(msg.employees)){
         try{
             if(msg.empAttachmentsBag && typeof msg.empAttachmentsBag === 'object'){
@@ -6751,7 +6772,7 @@ window.addEventListener('message', (ev) => {
                 incoming = fpMergeEmployeeAttachments(incoming, window.__FP_EMPLOYEE_ATT_BAG__ || {});
             }
             const cur = Array.isArray(state.employees) ? state.employees : [];
-            if(cur.length > incoming.length && typeof fpMergeEmployeesUnion === 'function'){
+            if(incoming.length < cur.length && typeof fpMergeEmployeesUnion === 'function'){
                 incoming = fpMergeEmployeesUnion(incoming, cur);
                 incoming = fpMergeEmployeeAttachments(incoming, window.__FP_EMPLOYEE_ATT_BAG__ || {});
             }
@@ -7082,11 +7103,13 @@ function configureExternalTab(tabId, fileName){
     });
     const frame = document.createElement('iframe');
     frame.className = 'external-tab-frame';
+    frame.style.flex = '1';
+    frame.style.minHeight = '0';
     frame.src = fpResolveIframeSrc(fileName);
     frame.title = fileName;
     frame.addEventListener('load', () => {
         queueMicrotask(() => {
-            if(typeof propagateStateToDashboardIframes === 'function') propagateStateToDashboardIframes();
+            if(typeof propagateStateToDashboardIframes === 'function') propagateStateToDashboardIframes({ force: true });
             if(typeof fpSyncDarkModeToDashboardIframes === 'function') {
                 fpSyncDarkModeToDashboardIframes(localStorage.getItem('fp_darkmode') === '1');
             }
@@ -7108,12 +7131,11 @@ window.fpInitExternalTabsAndDashboard = function () {
     } catch (e) { console.warn('[FP] iframes', e); }
 };
 function fpPushDashboardWithRetry(){
-    if(window.__fpSkipPropagateUntil && Date.now() < window.__fpSkipPropagateUntil) return;
     var n = (state.employees && state.employees.length) || 0;
-    var delays = [0, 400, 1200, 3000];
+    var delays = [0, 300, 900, 2000, 4500, 8000];
     delays.forEach(function(ms){
         setTimeout(function(){
-            if(typeof propagateStateToDashboardIframes === 'function') propagateStateToDashboardIframes();
+            if(typeof propagateStateToDashboardIframes === 'function') propagateStateToDashboardIframes({ force: true });
         }, ms);
     });
     if(typeof fpCloudSetStatus === 'function'){
@@ -9936,8 +9958,10 @@ async function applyFpEmbeddedIntranetDb(db, opts){
     const cloudExportedTs = db.exportedAt ? new Date(db.exportedAt).getTime() : 0;
     const localEmpLs = localStorage.getItem(FP_EMPLOYEES_STORE_KEY);
     const cloudEmpLs = db.localStrings && db.localStrings[FP_EMPLOYEES_STORE_KEY];
-    const preferLocalEmp = fpLocalStorageKeyNewerThanCloud(FP_EMPLOYEES_STORE_KEY, localEmpLs, cloudEmpLs, cloudExportedTs)
-        || (localPrevEmployees.length > (db.state.employees || []).length);
+    const preferLocalEmp = localPrevEmployees.length > 0 && (
+        fpLocalStorageKeyNewerThanCloud(FP_EMPLOYEES_STORE_KEY, localEmpLs, cloudEmpLs, cloudExportedTs)
+        || localPrevEmployees.length > (db.state.employees || []).length
+    );
     state.employees = expandEmployeeRefsInEmployees(db.state.employees, att);
     state.employees = preferLocalEmp
         ? fpMergeEmployeesPreferLocalRecords(state.employees, localPrevEmployees)
@@ -19843,6 +19867,7 @@ async function fpBootSyncCloudAfterLogin(){
     fpLoadPagasFromLocalStorage();
     fpLoadQuadroGeralFromLocalStorage();
     if(typeof fpInitExternalTabsAndDashboard === 'function') fpInitExternalTabsAndDashboard();
+    fpPushDashboardWithRetry();
     try { switchTab('fp-home'); } catch(_tab) {}
     try { renderAll(); } catch(renderBoot) { console.warn('[FP] render boot local', renderBoot); }
     try { fpApplyAccessRestrictions(); } catch(_acc) {}
@@ -19858,6 +19883,7 @@ async function fpBootSyncCloudAfterLogin(){
         var bootSess = bootParallel[0];
         state.employees = fpHydrateEmployeesMediaForSnapshot(state.employees || [], window.__FP_EMBEDDED_ATTACHMENTS__ || {});
         try { renderAll(); } catch(eRender) { console.warn('[FP] render pós-idb', eRender); }
+        if(typeof fpPushDashboardWithRetry === 'function') fpPushDashboardWithRetry();
         if(window.FP_AUTH_REQUIRED !== false && !bootSess){
             if(typeof fpCloudSetStatus === 'function'){
                 fpCloudSetStatus('Dados locais visíveis. Faça login em index.html para sincronizar a nuvem.', false);

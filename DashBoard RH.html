@@ -4837,8 +4837,10 @@ function exportRelatorioPersonalizadoExcel(){
 }
 
 function applyEmployeesSyncFromParent(msg) {
-    if(EF.panel && EF.panel.style.display !== 'none' && employeeEditIndex >= 0){
-        if(Date.now() - (__fpLastFormEditAt || 0) < 20000) return;
+    if(EF.panel && EF.panel.style.display !== 'none' && employeeEditIndex >= 0
+        && Date.now() - (__fpLastFormEditAt || 0) < 8000){
+        const incomingCount = Array.isArray(msg.employees) ? msg.employees.length : 0;
+        if(incomingCount <= (state.employees || []).length) return;
     }
     fpLoadRefCacheFromStorage(msg);
     __fpLastParentSyncAt = Date.now();
@@ -4901,10 +4903,10 @@ window.addEventListener('message', (ev) => {
     }
     if(msg.type === 'fastpark-employees-sync') {
         try {
-            if(EF.panel && EF.panel.style.display !== 'none' && employeeEditIndex >= 0
-                && Date.now() - (__fpLastFormEditAt || 0) < 20000){
-                return;
-            }
+            const incomingCount = Array.isArray(msg.employees) ? msg.employees.length : 0;
+            const editingForm = EF.panel && EF.panel.style.display !== 'none' && employeeEditIndex >= 0
+                && Date.now() - (__fpLastFormEditAt || 0) < 8000;
+            if(editingForm && incomingCount <= (state.employees || []).length) return;
             applyEmployeesSyncFromParent(msg);
             if(state.selected){
                 const sel = state.employees.find(e => e === state.selected || String(e.nome) === String(state.selected.nome));
@@ -4983,6 +4985,17 @@ if(IS_CADASTRO_VIEW){
     fpSyncFichaOlhoBtn();
 }
 applyFilters();
+
+function fpNotifyParentIframeReady(){
+    if(window.parent === window) return;
+    function notify(){
+        try { window.parent.postMessage({ type: 'fastpark-iframe-ready' }, '*'); } catch(e) {}
+    }
+    notify();
+    setTimeout(notify, 350);
+    setTimeout(notify, 1200);
+}
+fpNotifyParentIframeReady();
 </script>
 </body>
 </html>
