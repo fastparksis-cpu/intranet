@@ -6766,7 +6766,7 @@ window.addEventListener('message', (ev) => {
                 incoming = fpMergeEmployeesUnion(incoming, cur);
                 incoming = fpMergeEmployeeAttachments(incoming, window.__FP_EMPLOYEE_ATT_BAG__ || {});
             }
-            const sig = fpIframePayloadSig(incoming, msg.ferias, msg.movimentacoes);
+            const sig = fpIframePayloadSig(incoming, msg.ferias, msg.movimentacoes, msg.empAttachmentsBag);
             if(sig === __fpLastIframeEmployeesJson) return;
             __fpLastIframeEmployeesJson = sig;
             window.__fpLastIframePostAt = Date.now();
@@ -6784,6 +6784,12 @@ window.addEventListener('message', (ev) => {
             renderBeneficiosCestas();
             if(typeof refreshDashboardFilters === 'function') refreshDashboardFilters();
             if(typeof renderBeneficiosCestas === 'function') renderBeneficiosCestas();
+            if(typeof fpSetSaveIndicator === 'function') fpSetSaveIndicator('Salvo', 'ok');
+            document.querySelectorAll('#dashboard iframe.external-tab-frame, #inicio iframe.external-tab-frame').forEach(function(fr){
+                if(fr && fr.contentWindow){
+                    try { fr.contentWindow.postMessage({ type: 'fastpark-save-ack' }, '*'); } catch(_e) {}
+                }
+            });
             addAudit('Cadastro do DashBoard (anexos e dados) sincronizado com a intranet.', 'action');
         }catch(err){
             console.error('Falha ao receber cadastro do iframe do DashBoard', err);
@@ -10279,18 +10285,34 @@ function fpPayloadSigHash(obj){
         return '';
     }
 }
-function fpIframePayloadSig(employees, ferias, movimentacoes){
+function fpEmployeeSigSlice(e){
+    const docs = Array.isArray(e.documentos) ? e.documentos : [];
+    return {
+        n: e.nome, c: e.cpf, emp: e.empresa, tel: e.telefone, sal: e.salario,
+        adm: e.admissao, car: e.cargo, sta: e.status, cod: e.codPosto, at: e.atuando,
+        vr: e.vr, vt: e.vt, aj: e.ajuda,
+        nd: docs.length,
+        ds: docs.map(function(d){ return (d.name || '') + ':' + (d.size || 0) + ':' + (d.dataRef || (d.dataUrl ? 'b64' : '')); }).join('|'),
+        fr: e.fotoRef || (e.foto && String(e.foto).startsWith('data:') ? 'b64' : String(e.foto || ''))
+    };
+}
+function fpAttachmentsBagSig(bag){
+    if(!bag || typeof bag !== 'object') return '';
+    const keys = Object.keys(bag).sort();
+    var n = 0;
+    keys.forEach(function(k){
+        const v = bag[k];
+        if(v && typeof v === 'object' && Array.isArray(v.documentos)) n += v.documentos.length;
+    });
+    return keys.length + ':' + n + ':' + keys.join(',');
+}
+function fpIframePayloadSig(employees, ferias, movimentacoes, attBag){
     const emps = Array.isArray(employees) ? employees : [];
     return fpPayloadSigHash({
-        emps: emps.map(function(e){
-            return {
-                n: e.nome, c: e.cpf, emp: e.empresa, tel: e.telefone, sal: e.salario,
-                adm: e.admissao, car: e.cargo, sta: e.status, cod: e.codPosto, at: e.atuando,
-                vr: e.vr, vt: e.vt, aj: e.ajuda
-            };
-        }),
+        emps: emps.map(fpEmployeeSigSlice),
         fer: Array.isArray(ferias) ? ferias.length : 0,
-        mov: Array.isArray(movimentacoes) ? movimentacoes.length : 0
+        mov: Array.isArray(movimentacoes) ? movimentacoes.length : 0,
+        bag: fpAttachmentsBagSig(attBag)
     });
 }
 function fpSetEmbeddedStatusLine(msg){

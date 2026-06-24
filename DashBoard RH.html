@@ -543,8 +543,8 @@
       </div>
 
       <div style="grid-column:1 / -1; display:flex; gap:8px; justify-content:flex-end;">
-        <button onclick="closeEmployeeForm()">Cancelar</button>
-        <button onclick="saveEmployeeForm()" style="background:#0f8a57;color:#fff;border:1px solid #0f8a57;border-radius:6px;padding:8px 14px;font-weight:700;">Salvar</button>
+        <button onclick="closeEmployeeForm()">Fechar</button>
+        <button onclick="saveEmployeeForm()" style="background:#0f8a57;color:#fff;border:1px solid #0f8a57;border-radius:6px;padding:8px 14px;font-weight:700;" title="Valida campos obrigatórios e fecha — alterações já são salvas automaticamente">Concluir</button>
       </div>
     </div>
   </article>
@@ -2420,18 +2420,37 @@ function fpSetLocalSaveBadge(msg, kind){
     } catch(_){}
 }
 
-/** Assinatura fiável do payload (hash completo das fichas). */
-function fpStatePayloadSig(employees, ferias, movimentacoes){
+/** Fatia de assinatura por colaborador (inclui anexos e foto). */
+function fpEmployeeSigSlice(e){
+    const docs = Array.isArray(e.documentos) ? e.documentos : [];
+    return {
+        n: e.nome, c: e.cpf, emp: e.empresa, tel: e.telefone, sal: e.salario,
+        adm: e.admissao, car: e.cargo, sta: e.status, cod: e.codPosto, at: e.atuando,
+        vr: e.vr, vt: e.vt, aj: e.ajuda,
+        nd: docs.length,
+        ds: docs.map(d => `${d.name || ''}:${d.size || 0}:${d.dataRef || (d.dataUrl ? 'b64' : '')}`).join('|'),
+        fr: e.fotoRef || (e.foto && String(e.foto).startsWith('data:') ? 'b64' : String(e.foto || ''))
+    };
+}
+function fpAttachmentsBagSig(bag){
+    if(!bag || typeof bag !== 'object') return '';
+    const keys = Object.keys(bag).sort();
+    let n = 0;
+    keys.forEach(k => {
+        const v = bag[k];
+        if(v && typeof v === 'object' && Array.isArray(v.documentos)) n += v.documentos.length;
+    });
+    return keys.length + ':' + n + ':' + keys.join(',');
+}
+/** Assinatura fiável do payload (hash completo das fichas + bag de anexos). */
+function fpStatePayloadSig(employees, ferias, movimentacoes, attBag){
     const emps = Array.isArray(employees) ? employees : [];
     try {
         const s = JSON.stringify({
-            emps: emps.map(e => ({
-                n: e.nome, c: e.cpf, emp: e.empresa, tel: e.telefone, sal: e.salario,
-                adm: e.admissao, car: e.cargo, sta: e.status, cod: e.codPosto, at: e.atuando,
-                vr: e.vr, vt: e.vt, aj: e.ajuda
-            })),
+            emps: emps.map(fpEmployeeSigSlice),
             fer: Array.isArray(ferias) ? ferias.length : 0,
-            mov: Array.isArray(movimentacoes) ? movimentacoes.length : 0
+            mov: Array.isArray(movimentacoes) ? movimentacoes.length : 0,
+            bag: fpAttachmentsBagSig(attBag)
         });
         let h = 5381;
         for(let i = 0; i < s.length; i++) h = ((h << 5) + h) ^ s.charCodeAt(i);
@@ -3644,14 +3663,7 @@ function handleEmployeePhotoSelected(ev){
         const dataUrl = String(e.target?.result || '');
         employeePhotoDraft = dataUrl;
         renderEmployeePhotoPreview();
-        if(state.selected){
-            const idx = state.employees.findIndex(emp => emp === state.selected || String(emp.nome) === String(state.selected.nome));
-            if(idx >= 0){
-                state.employees[idx].foto = dataUrl;
-                state.selected = state.employees[idx];
-            }
-        }
-        fpPostFullStateToParentIfEmbedded(true);
+        fpFlushFormLiveSaveNow({ full: true });
     };
     reader.readAsDataURL(file);
 }
@@ -3674,7 +3686,7 @@ async function handleEmployeeDocsSelected(ev){
     }
     if(EF.docs) EF.docs.value = '';
     renderEmployeeDocsList();
-    fpPostFullStateToParentIfEmbedded(true);
+    fpFlushFormLiveSaveNow({ full: true });
 }
 function fpIsDisplayableMediaUrl(u){
     if(!u || typeof u !== 'string') return false;
@@ -3818,6 +3830,7 @@ function removeEmployeeDocDraft(idx){
     if(idx < 0 || idx >= employeeDocsDraft.length) return;
     employeeDocsDraft.splice(idx, 1);
     renderEmployeeDocsList();
+    fpFlushFormLiveSaveNow({ full: true });
 }
 async function viewSelectedEmployeeDoc(idx){
     const docs = state.selected?.documentos || [];
@@ -4091,10 +4104,20 @@ function openEmployeeForm(emp = null){
 function closeEmployeeForm(){
     EF.panel.style.display = 'none';
 }
-let __fpFormLiveSyncTimer = null;
+let __fpFormSaveQueued = false;
 let __fpLastFormEditAt = 0;
 function fpMarkFormEditing(){
     __fpLastFormEditAt = Date.now();
+}
+function fpRefreshFormSavedUi(fullRefresh){
+    if(fullRefresh && IS_CADASTRO_VIEW && state.selected){
+        try {
+            const list = typeof listagemParaPainel === 'function' ? listagemParaPainel() : [];
+            renderProfile(state.selected, list.length);
+            if(typeof refreshCadastroFichaTabs === 'function') refreshCadastroFichaTabs();
+        } catch(e) { console.warn('[DashBoard] refresh pós-save', e); }
+    }
+    fpSetLocalSaveBadge('Salvo', 'ok');
 }
 function fpBuildFormDraftPayload(){
     const admStr = EF.admissao.value.trim();
@@ -4172,11 +4195,21 @@ function fpBuildFormDraftPayload(){
     };
 }
 function fpApplyFormDraftToState(){
-    if(!EF.panel || EF.panel.style.display === 'none') return;
-    if(employeeEditIndex < 0) return;
-    const nome = EF.nome.value.trim();
-    if(!nome) return;
+    if(!EF.panel || EF.panel.style.display === 'none') return false;
+    const nome = EF.nome?.value?.trim();
+    if(!nome) return false;
+    if(employeeEditIndex < 0){
+        employeeEditIndex = fpFindEmployeeIndex({ nome, cpf: EF.cpf?.value?.trim() || '' });
+    }
     const payload = fpBuildFormDraftPayload();
+    if(employeeEditIndex < 0){
+        state.employees.push(payload);
+        employeeEditIndex = state.employees.length - 1;
+        state.selected = state.employees[employeeEditIndex];
+        syncCnhMapForEmployee(state.employees[employeeEditIndex]);
+        fillCompanies();
+        return true;
+    }
     const current = state.employees[employeeEditIndex] || {};
     const updated = { ...current, ...payload };
     state.employees[employeeEditIndex] = updated;
@@ -4184,16 +4217,32 @@ function fpApplyFormDraftToState(){
         state.selected = updated;
     }
     syncCnhMapForEmployee(updated);
+    return true;
 }
-function fpScheduleFormLiveSyncToParent(){
-    if(!EF.panel || EF.panel.style.display === 'none') return;
-    if(employeeEditIndex < 0) return;
+/** Grava imediatamente a ficha aberta (estado local + intranet + nuvem). */
+function fpFlushFormLiveSaveNow(opts){
+    if(!EF.panel || EF.panel.style.display === 'none') return false;
     fpMarkFormEditing();
-    clearTimeout(__fpFormLiveSyncTimer);
-    __fpFormLiveSyncTimer = setTimeout(() => {
-        fpApplyFormDraftToState();
-        fpPostFullStateToParentIfEmbedded(true);
-    }, 800);
+    if(!fpApplyFormDraftToState()) return false;
+    fpPostFullStateToParentIfEmbedded(true);
+    fpRefreshFormSavedUi(!!(opts && opts.full));
+    return true;
+}
+/** Autosave: imediato em change/blur; em input agrupa no mesmo tick (sem esperar 800 ms). */
+function fpScheduleFormLiveSyncToParent(ev){
+    if(!EF.panel || EF.panel.style.display === 'none') return;
+    fpMarkFormEditing();
+    const instant = !ev || ev.type === 'change' || ev.type === 'blur';
+    if(instant){
+        fpFlushFormLiveSaveNow({ full: true });
+        return;
+    }
+    if(__fpFormSaveQueued) return;
+    __fpFormSaveQueued = true;
+    queueMicrotask(() => {
+        __fpFormSaveQueued = false;
+        fpFlushFormLiveSaveNow({ full: false });
+    });
 }
 /** Envia o cadastro completo (incl. documentos e foto em base64) para a intranet integrada gravar no JSON/localStorage. */
 function fpPostFullStateToParentIfEmbedded(immediate){
@@ -4223,7 +4272,7 @@ function fpPostFullStateToParentNow(){
                 empAttachmentsBag = packed.bag;
             }
         } catch(slimErr) { console.warn('[DashBoard] slim antes de enviar à intranet', slimErr); }
-        const postSig = fpStatePayloadSig(employees, state.ferias, state.movimentacoes);
+        const postSig = fpStatePayloadSig(employees, state.ferias, state.movimentacoes, empAttachmentsBag);
         if(postSig === __fpLastPostedToParentSig) return;
         __fpLastPostedToParentSig = postSig;
         window.parent.postMessage({
@@ -4235,6 +4284,7 @@ function fpPostFullStateToParentNow(){
             cnhMapObj,
             cnhColBDByNomeObj
         }, '*');
+        fpSetLocalSaveBadge('Salvo', 'ok');
     }catch(err){
         fpSetLocalSaveBadge('Erro ao salvar alterações', 'error');
         console.error('fpPostFullStateToParentNow', err);
@@ -4262,102 +4312,12 @@ function saveEmployeeForm(){
         else if(!dparse(demStr)){ setFieldError(EF.demissao, 'errEmpDemissao', 'Data de desligamento inválida.'); hasError = true; }
     }
     if(hasError) return;
-    fpMarkFormEditing();
-    if(employeeEditIndex < 0 && nome){
-        employeeEditIndex = fpFindEmployeeIndex({ nome, cpf: EF.cpf?.value?.trim() || '' });
-    }
-    const payload = {
-        nome,
-        empresa: EF.empresa.value.trim() || 'Sem empresa',
-        status: EF.status.value || 'Funcionário Ativo',
-        demissao: ehDesligadoPorStatus(EF.status.value) ? (toIsoDateOnlyFromParsed(EF.demissao?.value?.trim() || '') || '') : '',
-        admissao: toIsoDateOnlyFromParsed(EF.admissao.value.trim()) || EF.admissao.value.trim(),
-        cargo: EF.cargo.value.trim(),
-        nivel: EF.nivel.value.trim(),
-        atuando: EF.unidade.value.trim(),
-        codPosto: (EF.codPosto?.value || '').trim(),
-        salario: Number(EF.salario.value || 0),
-        ajuda: Number(EF.ajuda.value || 0),
-        vr: Number(EF.vr.value || 0),
-        plano: EF.plano.value.trim(),
-        depPlano: Number(EF.depPlano.value || 0),
-        depBeneficios: Number(EF.depBeneficios.value || 0),
-        valorPlano: Number(EF.valorPlano.value || 0),
-        odonto: EF.odonto.value.trim(),
-        cargoConfianca: Number(EF.cargoConfianca.value || 0),
-        periculosidade: Number(EF.periculosidade.value || 0),
-        vt: EF.vt.value.trim(),
-        vtTipo: EF.vtTipo.value.trim(),
-        vtValor: Number(EF.vtValor?.value || 0),
-        cnh: toIsoDateOnlyFromParsed(EF.cnh.value.trim()) || '',
-        cnhNumero: EF.cnhNumero.value.trim(),
-        cnhCategoria: EF.cnhCategoria.value.trim(),
-        aso: toIsoDateOnlyFromParsed(EF.aso.value.trim()) || '',
-        cpf: EF.cpf.value.trim(),
-        telefone: EF.telefone.value.trim(),
-        nascimento: toIsoDateOnlyFromParsed(EF.nascimento.value.trim()) || '',
-        idade: Number(EF.idade.value || 0) || '',
-        estadoCivil: EF.estadoCivil.value.trim(),
-        raca: EF.raca.value.trim(),
-        instrucao: EF.instrucao.value.trim(),
-        deficiencia: EF.pcd.value.trim(),
-        trienios: calcTrienios(
-            toIsoDateOnlyFromParsed(EF.admissao.value.trim()) || EF.admissao.value.trim(),
-            ehDesligadoPorStatus(EF.status.value) ? (toIsoDateOnlyFromParsed(EF.demissao?.value?.trim() || '') || '') : ''
-        ),
-        banco: EF.banco.value.trim(),
-        agencia: EF.agencia.value.trim(),
-        conta: EF.conta.value.trim(),
-        endereco: EF.endereco.value.trim(),
-        bairro: EF.bairro.value.trim(),
-        cidade: EF.cidade.value.trim(),
-        uf: EF.uf.value.trim(),
-        cep: EF.cep.value.trim(),
-        camisa: EF.camisa.value.trim(),
-        calca: EF.calca.value.trim(),
-        sapato: EF.sapato.value.trim(),
-        mae: EF.mae.value.trim(),
-        pai: EF.pai.value.trim(),
-        rg: EF.rg?.value?.trim() || '',
-        escala: EF.escala?.value || '',
-        carga: EF.carga?.value?.trim() || '',
-        jornada: EF.jornada?.value?.trim() || '',
-        cestas: EF.cestas?.value || '',
-        vtIdaVolta: Number(EF.vtIdaVolta?.value || 0),
-        saudeDepValor: Number(EF.saudeDepValor?.value || 0),
-        odontoTitularValor: Number(EF.odontoTitularValor?.value || 0),
-        odontoDepValor: Number(EF.odontoDepValor?.value || 0),
-        dependentesQtd: Number(EF.dependentesQtd.value || 0),
-        dependentesNomes: EF.dependentesNomes.value.trim(),
-        foto: employeePhotoDraft || '',
-        documentos: employeeDocsDraft.map(d => ({
-            name: d.name || 'Documento',
-            type: d.type || '',
-            size: Number(d.size || 0),
-            addedAt: d.addedAt || new Date().toLocaleString('pt-BR'),
-            dataUrl: d.dataUrl || ''
-        }))
-    };
-    if(employeeEditIndex >= 0){
-        const current = state.employees[employeeEditIndex] || {};
-        const updated = { ...current, ...payload };
-        state.employees[employeeEditIndex] = updated;
-        if(state.selected === current || fpNormEmpName(state.selected?.nome) === fpNormEmpName(nome)){
-            state.selected = updated;
-        }
-        addAudit(`Cadastro atualizado: ${nome}`, 'action');
-    } else {
-        state.employees.push(payload);
-        state.selected = payload;
-        addAudit(`Novo funcionário cadastrado: ${nome}`, 'action');
-    }
-    syncCnhMapForEmployee(payload);
+    fpFlushFormLiveSaveNow();
+    addAudit(employeeEditIndex >= 0 ? `Cadastro concluído: ${nome}` : `Novo funcionário cadastrado: ${nome}`, 'action');
     fillCompanies();
     applyFilters();
     populateCadastroUnitOptions();
     closeEmployeeForm();
-    fpPostFullStateToParentIfEmbedded(true);
-    fpSetLocalSaveBadge('Funcionário salvo', 'ok');
 }
 
 if(EF.status) EF.status.addEventListener('change', syncEmpStatusDesligamentoUi);
@@ -4408,6 +4368,7 @@ if(EF.foto) EF.foto.addEventListener('change', handleEmployeePhotoSelected);
 if(EF.panel){
     EF.panel.addEventListener('input', fpScheduleFormLiveSyncToParent);
     EF.panel.addEventListener('change', fpScheduleFormLiveSyncToParent);
+    EF.panel.addEventListener('blur', fpScheduleFormLiveSyncToParent, true);
 }
 function editSelectedEmployee(){
     if(!state.selected){ alert('Selecione um funcionário no filtro para editar.'); return; }
@@ -4952,6 +4913,10 @@ window.addEventListener('message', (ev) => {
         } catch(err) {
             console.error('Falha ao carregar planilha recebida', err);
         }
+        return;
+    }
+    if(msg.type === 'fastpark-save-ack'){
+        fpSetLocalSaveBadge('Salvo', 'ok');
         return;
     }
     if(msg.type === 'fastpark-employees-sync') {

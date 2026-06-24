@@ -25,10 +25,10 @@
     /** Sincronização automática com a nuvem (sem botão Salvar) */
     g.FP_CLOUD_AUTOSAVE = true;
     /** Após qualquer alteração nas abas */
-    g.FP_CLOUD_AUTOSAVE_DEBOUNCE_MS = 1500;
-    /** Gravação imediata após editar */
-    g.FP_CLOUD_SAVE_INSTANT_MS = 800;
-    g.FP_CLOUD_SAVE_AFTER_MEDIA_MS = 400;
+    g.FP_CLOUD_AUTOSAVE_DEBOUNCE_MS = 400;
+    /** Gravação imediata após editar ficha cadastral */
+    g.FP_CLOUD_SAVE_INSTANT_MS = 0;
+    g.FP_CLOUD_SAVE_AFTER_MEDIA_MS = 150;
     /** Auto-gravação: usa dados já em memória/localStorage (sem esperar iframe) */
     g.FP_CLOUD_IFRAME_PULL_MS = 0;
     /** Caminho rápido: JSON na nuvem primeiro; anexos novos com tempo máximo de espera */
