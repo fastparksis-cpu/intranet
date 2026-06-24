@@ -3735,6 +3735,7 @@ async function fpResolveDocDataUrlAsync(doc, emp){
             const p = paths[pi];
             if(!p) continue;
             if(typeof parent.fpCloudPathFailed === 'function' && parent.fpCloudPathFailed(p)) continue;
+            if(typeof parent.fpCloudPathInStorageIndex === 'function' && !parent.fpCloudPathInStorageIndex(p)) continue;
             try {
                 u = await parent.fpEnsureCloudDisplayUrl(p);
                 if(u) return u;
@@ -3778,6 +3779,7 @@ async function fpResolveEmployeeFotoUrlAsync(emp){
         for(let i = 0; i < paths.length; i++){
             if(!paths[i]) continue;
             if(typeof parent.fpCloudPathFailed === 'function' && parent.fpCloudPathFailed(paths[i])) continue;
+            if(typeof parent.fpCloudPathInStorageIndex === 'function' && !parent.fpCloudPathInStorageIndex(paths[i])) continue;
             try {
                 u = await parent.fpEnsureCloudDisplayUrl(paths[i]);
                 if(u) return u;

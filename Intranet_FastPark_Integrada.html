@@ -14,10 +14,10 @@
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="/fp-intranet-base-path.js"></script>
 <script src="/fp-local-bridge-client.js"></script>
-<script src="/fp-supabase-config.js"></script>
+<script src="/fp-supabase-config.js?v=20260528b"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="/fp-auth.js"></script>
-<script src="/fp-supabase-sync.js"></script>
+<script src="/fp-supabase-sync.js?v=20260528b"></script>
 <script src="/fp-propostas.js"></script>
 <script src="/fp-selos.js"></script>
 <script src="/fp-estoque.js"></script>
@@ -8339,6 +8339,14 @@ function fpCollectAllIntranetLocalStorage(){
 }
 window.fpCollectAllIntranetLocalStorage = fpCollectAllIntranetLocalStorage;
 const FP_LOCAL_KEY_META_KEY = 'fp_local_key_meta';
+function fpRawLsSetItem(key, value){
+    if(Storage.prototype.__fpOrigSetItem){
+        Storage.prototype.__fpOrigSetItem.call(localStorage, key, value);
+        return;
+    }
+    localStorage.setItem(key, value);
+}
+window.fpRawLsSetItem = fpRawLsSetItem;
 function fpReadLocalKeyMeta(){
     try {
         const o = JSON.parse(localStorage.getItem(FP_LOCAL_KEY_META_KEY) || '{}');
@@ -8346,12 +8354,11 @@ function fpReadLocalKeyMeta(){
     } catch(_e) { return {}; }
 }
 function fpTouchLocalKeyMeta(key){
-    if(!key) return;
+    if(!key || key === 'fp_local_snapshot_meta') return;
     try {
         const meta = fpReadLocalKeyMeta();
         meta[key] = { updatedAt: new Date().toISOString() };
-        const fn = Storage.prototype.__fpOrigSetItem || Storage.prototype.setItem;
-        fn.call(localStorage, FP_LOCAL_KEY_META_KEY, JSON.stringify(meta));
+        fpRawLsSetItem(FP_LOCAL_KEY_META_KEY, JSON.stringify(meta));
     } catch(_e) { /* ignore */ }
 }
 window.fpTouchLocalKeyMeta = fpTouchLocalKeyMeta;
@@ -10406,8 +10413,10 @@ function fpNotifyIntranetChanged(){
 }
 /** Após gravar dados em localStorage: notifica abas e agenda gravação na nuvem (uma vez, sem duplicar). */
 function fpAfterPersistentStorageWrite(){
+    if(window.__fpAfterPersistWrite) return;
+    if(window.__fpLsHookPause) return;
+    window.__fpAfterPersistWrite = true;
     try {
-        if(typeof window !== 'undefined' && window.__fpLsHookPause) return;
         if(typeof fpTouchLocalSnapshotMeta === 'function') fpTouchLocalSnapshotMeta();
         fpNotifyIntranetChanged();
         if(typeof fpScheduleCloudSave === 'function') fpScheduleCloudSave({ instant: true, autosave: true });
@@ -10418,6 +10427,7 @@ function fpAfterPersistentStorageWrite(){
             }, window.FP_CLOUD_MEDIA_SAVE_DEBOUNCE_MS || 600);
         }
     } catch(_){}
+    finally { window.__fpAfterPersistWrite = false; }
 }
 function fpTouchLocalSnapshotMeta(){
     try {
@@ -10433,19 +10443,12 @@ function fpTouchLocalSnapshotMeta(){
         let movCad = 0;
         try { unidades = (getUnidades() || []).length; } catch(_u) {}
         try { movCad = (getMovCad() || []).length; } catch(_m) {}
-        const fn = Storage.prototype.__fpOrigSetItem || Storage.prototype.setItem;
-        const prevPause = window.__fpLsHookPause;
-        window.__fpLsHookPause = true;
-        try {
-            fn.call(localStorage, 'fp_local_snapshot_meta', JSON.stringify({
-                updatedAt: new Date().toISOString(),
-                employees: n,
-                unidades: unidades,
-                movimentacoes: movCad
-            }));
-        } finally {
-            window.__fpLsHookPause = prevPause;
-        }
+        fpRawLsSetItem('fp_local_snapshot_meta', JSON.stringify({
+            updatedAt: new Date().toISOString(),
+            employees: n,
+            unidades: unidades,
+            movimentacoes: movCad
+        }));
     } catch(_meta) { /* ignore */ }
 }
 window.fpTouchLocalSnapshotMeta = fpTouchLocalSnapshotMeta;
@@ -10464,7 +10467,7 @@ async function fpIdbPut(key, val){
         tx.objectStore(FP_IDB_STORE).put(val, key);
         tx.oncomplete = () => {
             try { db.close(); } catch(e) {}
-            if(key === FP_EMPLOYEES_ATTACHMENTS_IDB_KEY || key === FP_PROPOSTA_MODELO_IDB_KEY){
+            if(!window.__fpAfterPersistWrite && (key === FP_EMPLOYEES_ATTACHMENTS_IDB_KEY || key === FP_PROPOSTA_MODELO_IDB_KEY)){
                 if(typeof fpAfterPersistentStorageWrite === 'function') fpAfterPersistentStorageWrite();
             }
             resolve();
@@ -10884,8 +10887,8 @@ function fpInstallAutosaveHooks(){
     Storage.prototype.__fpOrigSetItem = Storage.prototype.setItem;
     Storage.prototype.setItem = function(k, v){
         Storage.prototype.__fpOrigSetItem.call(this, k, v);
-        if(k !== FP_LOCAL_KEY_META_KEY && !window.__fpLsHookPause && typeof fpTouchLocalKeyMeta === 'function') fpTouchLocalKeyMeta(k);
         if(window.__fpLsHookPause) return;
+        if(k !== FP_LOCAL_KEY_META_KEY && k !== 'fp_local_snapshot_meta' && typeof fpTouchLocalKeyMeta === 'function') fpTouchLocalKeyMeta(k);
         if(typeof fpStorageKeyTriggersCloudSync === 'function' && fpStorageKeyTriggersCloudSync(k)) {
             fpSchedulePersist();
             fpAfterPersistentStorageWrite();
@@ -10894,9 +10897,9 @@ function fpInstallAutosaveHooks(){
 }
 /** Grava no localStorage sem Illegal invocation (setItem exige .call(storage, …)). */
 function fpLsSetItem(key, value) {
-    const fn = Storage.prototype.__fpOrigSetItem || Storage.prototype.setItem;
-    fn.call(localStorage, key, value);
-    if(key !== FP_LOCAL_KEY_META_KEY && !window.__fpLsHookPause && typeof fpTouchLocalKeyMeta === 'function') fpTouchLocalKeyMeta(key);
+    fpRawLsSetItem(key, value);
+    if(window.__fpLsHookPause) return;
+    if(key !== FP_LOCAL_KEY_META_KEY && key !== 'fp_local_snapshot_meta' && typeof fpTouchLocalKeyMeta === 'function') fpTouchLocalKeyMeta(key);
 }
 function fpRefreshAutosaveBanner(){
     const el = document.getElementById('fpAutosaveBanner');

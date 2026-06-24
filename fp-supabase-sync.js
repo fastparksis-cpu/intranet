@@ -176,6 +176,79 @@
     }
 
     var signedUrlCache = {};
+    var failedPathCache = {};
+
+    function fpCloudStorageIndexSet() {
+        var raw = g.window.__FP_CLOUD_STORAGE_PATHS__;
+        if (!raw) return null;
+        if (raw instanceof Set) return raw;
+        if (Array.isArray(raw)) {
+            raw = new Set(raw);
+            g.window.__FP_CLOUD_STORAGE_PATHS__ = raw;
+            return raw;
+        }
+        return null;
+    }
+
+    function fpRememberCloudStoragePaths(paths) {
+        if (!paths || !paths.length) return;
+        var set = fpCloudStorageIndexSet() || new Set();
+        for (var i = 0; i < paths.length; i++) {
+            var p = sanitizeStoragePath(paths[i]);
+            if (p) set.add(p);
+        }
+        g.window.__FP_CLOUD_STORAGE_PATHS__ = set;
+        g.window.__FP_CLOUD_STORAGE_INDEX_READY__ = true;
+    }
+
+    function fpCloudPathInStorageIndex(path) {
+        path = sanitizeStoragePath(path);
+        if (!path) return false;
+        var set = fpCloudStorageIndexSet();
+        if (!set || !set.size) return false;
+        if (set.has(path)) return true;
+        var leaf = path.split('/').pop() || '';
+        if (set.has(leaf)) return true;
+        return false;
+    }
+
+    function attachmentMarkedCloud(snap, path) {
+        path = sanitizeStoragePath(path);
+        if (!path) return false;
+        var att = (snap && snap.attachments) || g.window.__FP_EMBEDDED_ATTACHMENTS__ || {};
+        var v = att[path];
+        if (v && typeof v === 'object' && v.__cloud === true) return true;
+        return false;
+    }
+
+    g.fpCloudPathInStorageIndex = fpCloudPathInStorageIndex;
+
+    function fpCloudPathFailed(path) {
+        path = sanitizeStoragePath(path);
+        return !!(path && failedPathCache[path]);
+    }
+
+    function fpMarkCloudPathFailed(path) {
+        path = sanitizeStoragePath(path);
+        if (path) failedPathCache[path] = Date.now();
+    }
+
+    g.fpCloudPathFailed = fpCloudPathFailed;
+
+    function storagePathLooksFetchable(path, snap) {
+        path = sanitizeStoragePath(path);
+        if (!path) return false;
+        if (attachmentMarkedCloud(snap, path)) return true;
+        if (!g.window.__FP_CLOUD_STORAGE_INDEX_READY__) return false;
+        if (!fpCloudPathInStorageIndex(path)) return false;
+        var leaf = path.split('/').pop() || '';
+        if (/\.[a-z0-9]{2,5}$/i.test(leaf)) return true;
+        if (path.indexOf('colaboradores/foto/') === 0) return true;
+        if (path.indexOf('colaboradores/docs/') === 0 && /_\d+_/.test(leaf)) return true;
+        if (path.indexOf('colaboradores/rescisao/') === 0 && /_\d+_/.test(leaf)) return true;
+        if (path.indexOf('inline_') >= 0) return true;
+        return fpCloudPathInStorageIndex(path);
+    }
 
     async function downloadDataUrl(path) {
         var supa = clientOrThrow();
@@ -204,17 +277,21 @@
         return signed.data.signedUrl;
     }
 
-    async function resolveCloudPathToDisplayUrl(path) {
+    async function resolveCloudPathToDisplayUrl(path, snap) {
         path = sanitizeStoragePath(path);
+        if (!path || fpCloudPathFailed(path)) return null;
+        if (!storagePathLooksFetchable(path, snap)) {
+            fpMarkCloudPathFailed(path);
+            return null;
+        }
         try {
             return await cloudMediaDisplayUrl(path);
         } catch (signedErr) {
-            console.warn('[fp-cloud] signedUrl', path, signedErr);
             try {
                 return await downloadDataUrl(path);
             } catch (dlErr) {
-                console.warn('[fp-cloud] download', path, dlErr);
-                throw dlErr;
+                fpMarkCloudPathFailed(path);
+                return null;
             }
         }
     }
@@ -261,6 +338,7 @@
     }
 
     async function fpCloudSignPathsToDisplayMap(paths) {
+        fpRememberCloudStoragePaths(paths);
         var disp = g.window.__FP_CLOUD_DISPLAY_URLS__ || (g.window.__FP_CLOUD_DISPLAY_URLS__ = {});
         var ok = 0;
         var fail = 0;
@@ -272,11 +350,16 @@
                 continue;
             }
             try {
-                var url = await resolveCloudPathToDisplayUrl(p);
-                disp[p] = url;
-                disp[raw] = url;
-                ok++;
+                var url = await cloudMediaDisplayUrl(p);
+                if (url) {
+                    disp[p] = url;
+                    disp[raw] = url;
+                    ok++;
+                } else {
+                    fail++;
+                }
             } catch (e) {
+                fpMarkCloudPathFailed(p);
                 fail++;
             }
             if (i % 10 === 0) {
@@ -334,14 +417,6 @@
             add(e.fotoRef);
             (e.documentos || []).forEach(function (d) { add(d && d.dataRef); });
             (e.documentosRescisao || []).forEach(function (d) { add(d && d.dataRef); });
-            if (typeof g.fpStableEmployeeSlug === 'function') {
-                try {
-                    var slug = g.fpStableEmployeeSlug(e, ei);
-                    add('colaboradores/foto/' + slug);
-                    add('colaboradores/docs/' + slug);
-                    add('colaboradores/rescisao/' + slug);
-                } catch (slugErr) { /* ignore */ }
-            }
         });
         (snap.faltasResolved || []).forEach(function (f) { add(f.anexoRef); });
         (snap.unidadesResolved || []).forEach(function (u) {
@@ -596,8 +671,16 @@
     async function fpRunCloudMediaPrefetch(db, opts) {
         opts = opts || {};
         db = db || { state: g.state, attachments: g.window.__FP_EMBEDDED_ATTACHMENTS__ || {} };
+        if (!g.window.__FP_CLOUD_STORAGE_INDEX_READY__ && typeof fpCloudIndexStorageBucket === 'function') {
+            try { await fpCloudIndexStorageBucket(); } catch (idxBootErr) {
+                console.warn('[fp-cloud] index antes do prefetch', idxBootErr);
+            }
+        }
         var keys = collectAttachmentRefKeys(db);
-        var list = Array.from(keys);
+        var list = Array.from(keys).filter(function (k) {
+            k = sanitizeStoragePath(k);
+            return storagePathLooksFetchable(k, db) && !fpCloudPathFailed(k);
+        });
         var foto = list.filter(function (k) { return k.indexOf('/foto/') >= 0; });
         var rest = list.filter(function (k) { return k.indexOf('/foto/') < 0; });
         list = foto.concat(rest);
@@ -618,13 +701,16 @@
                 if (i >= list.length) break;
                 var key = sanitizeStoragePath(list[i]);
                 var disp = g.window.__FP_CLOUD_DISPLAY_URLS__ || (g.window.__FP_CLOUD_DISPLAY_URLS__ = {});
-                if (disp[key]) { ok++; continue; }
-                try {
-                    var url = await resolveCloudPathToDisplayUrl(key);
+                if (disp[key] || fpCloudPathFailed(key) || !storagePathLooksFetchable(key, db)) {
+                    if (disp[key]) ok++;
+                    continue;
+                }
+                var url = await resolveCloudPathToDisplayUrl(key, db);
+                if (url) {
                     disp[key] = url;
                     ok++;
                     g.document.dispatchEvent(new CustomEvent('fp-cloud-media-ready', { detail: { path: key, url: url } }));
-                } catch (e) {
+                } else {
                     fail++;
                 }
             }
@@ -669,21 +755,25 @@
 
     g.fpEnsureCloudDisplayUrl = function (path) {
         path = sanitizeStoragePath(path);
-        if (!path) return Promise.resolve(null);
+        var snap = { attachments: g.window.__FP_EMBEDDED_ATTACHMENTS__ || {} };
+        if (!path || fpCloudPathFailed(path) || !storagePathLooksFetchable(path, snap)) return Promise.resolve(null);
         var disp = g.window.__FP_CLOUD_DISPLAY_URLS__ || (g.window.__FP_CLOUD_DISPLAY_URLS__ = {});
         if (disp[path]) return Promise.resolve(disp[path]);
         if (g.__fpCloudUrlPending && g.__fpCloudUrlPending[path]) {
             return g.__fpCloudUrlPending[path];
         }
         g.__fpCloudUrlPending = g.__fpCloudUrlPending || {};
-        g.__fpCloudUrlPending[path] = resolveCloudPathToDisplayUrl(path).then(function (url) {
-            disp[path] = url;
+        g.__fpCloudUrlPending[path] = resolveCloudPathToDisplayUrl(path, snap).then(function (url) {
             delete g.__fpCloudUrlPending[path];
-            g.document.dispatchEvent(new CustomEvent('fp-cloud-media-ready', { detail: { path: path, url: url } }));
+            if (url) {
+                disp[path] = url;
+                g.document.dispatchEvent(new CustomEvent('fp-cloud-media-ready', { detail: { path: path, url: url } }));
+            }
             return url;
-        }).catch(function (err) {
+        }).catch(function () {
             delete g.__fpCloudUrlPending[path];
-            throw err;
+            fpMarkCloudPathFailed(path);
+            return null;
         });
         return g.__fpCloudUrlPending[path];
     };
@@ -734,7 +824,8 @@
                 var tryP = sanitizeStoragePath(pathsToTry[ti]);
                 if (!tryP) continue;
                 try {
-                    var url = await resolveCloudPathToDisplayUrl(tryP);
+                    var url = await resolveCloudPathToDisplayUrl(tryP, db);
+                    if (!url) continue;
                     disp[key] = url;
                     disp[tryP] = url;
                     disp[cloudPath] = url;
