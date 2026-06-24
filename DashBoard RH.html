@@ -3732,10 +3732,13 @@ async function fpResolveDocDataUrlAsync(doc, emp){
     }
     if(parent && typeof parent.fpEnsureCloudDisplayUrl === 'function'){
         for(let pi = 0; pi < paths.length; pi++){
+            const p = paths[pi];
+            if(!p) continue;
+            if(typeof parent.fpCloudPathFailed === 'function' && parent.fpCloudPathFailed(p)) continue;
             try {
-                u = await parent.fpEnsureCloudDisplayUrl(paths[pi]);
+                u = await parent.fpEnsureCloudDisplayUrl(p);
                 if(u) return u;
-            } catch(e) { console.warn('[DashBoard] cloud doc url', paths[pi], e); }
+            } catch(e) { console.warn('[DashBoard] cloud doc url', p, e); }
         }
     }
     return '';
@@ -3774,6 +3777,7 @@ async function fpResolveEmployeeFotoUrlAsync(emp){
     if(parent && typeof parent.fpEnsureCloudDisplayUrl === 'function'){
         for(let i = 0; i < paths.length; i++){
             if(!paths[i]) continue;
+            if(typeof parent.fpCloudPathFailed === 'function' && parent.fpCloudPathFailed(paths[i])) continue;
             try {
                 u = await parent.fpEnsureCloudDisplayUrl(paths[i]);
                 if(u) return u;
