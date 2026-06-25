@@ -17,7 +17,7 @@
 <script src="/fp-supabase-config.js?v=20260528b"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="/fp-auth.js"></script>
-<script src="/fp-supabase-sync.js?v=20260528b"></script>
+<script src="/fp-supabase-sync.js?v=20260528c"></script>
 <script src="/fp-propostas.js"></script>
 <script src="/fp-selos.js"></script>
 <script src="/fp-estoque.js"></script>
@@ -8422,6 +8422,9 @@ function fpMergeCloudLocalStringsOnLoad(cloudLs, localCapture, cloudExportedTs){
         } else if((cloudVal === null || cloudVal === undefined) && localVal){
             merged[k] = localVal;
             keptLocal++;
+        } else if(localVal && cloudVal && fpJsonStorageRecordCount(localVal) > fpJsonStorageRecordCount(cloudVal)){
+            merged[k] = localVal;
+            keptLocal++;
         }
     });
     window.__fpLocalKeysMergedOnCloudLoad = keptLocal > 0;
@@ -10038,7 +10041,20 @@ async function applyFpEmbeddedIntranetDb(db, opts){
     const uniLsDefer = new Set([UNI_KEY, FP_UNIDADES_ATT_BAG_KEY]);
     Object.keys(ls).forEach(k => {
         if(uniLsDefer.has(k)) return;
-        if(ls[k] !== undefined && ls[k] !== null) try { localStorage.setItem(k, ls[k]); } catch(e2) { console.warn('localStorage', k, e2); }
+        if(ls[k] !== undefined && ls[k] !== null){
+            if(opts.fromCloud && !opts.userInitiated){
+                try {
+                    const cur = localStorage.getItem(k);
+                    const curN = fpJsonStorageRecordCount(cur);
+                    const newN = fpJsonStorageRecordCount(ls[k]);
+                    if(curN > 0 && newN === 0){
+                        console.warn('[FP] mantido localStorage', k, '— snapshot da nuvem viria vazio');
+                        return;
+                    }
+                } catch(_guard) { /* ignore */ }
+            }
+            try { localStorage.setItem(k, ls[k]); } catch(e2) { console.warn('localStorage', k, e2); }
+        }
     });
     let uExp = [];
     const cloudUniLs = ls[UNI_KEY];
@@ -11395,9 +11411,18 @@ function uniPersistUnidadesRaw(arr){
     fpSaveUnidadesToLocalStorage(Array.isArray(arr) ? arr : []);
 }
 /** Grava unidades + bag de anexos no localStorage e dispara sync na nuvem (como cadastro de colaboradores). */
-function fpSaveUnidadesToLocalStorage(arr){
+function fpSaveUnidadesToLocalStorage(arr, saveOpts){
+    saveOpts = saveOpts || {};
     window.__fpCloudUserEditedAt = Date.now();
     const source = Array.isArray(arr) ? arr : getUnidades();
+    if(!saveOpts.allowEmpty && source.length === 0){
+        let localN = 0;
+        try { localN = JSON.parse(localStorage.getItem(UNI_KEY) || '[]').length; } catch(_e) { localN = 0; }
+        if(localN > 0){
+            console.warn('[uni] ignorado gravar lista vazia — mantidas', localN, 'unidade(s) locais.');
+            return;
+        }
+    }
     let prepared;
     try {
         prepared = source.map(u => {
@@ -20139,13 +20164,13 @@ async function fpBootSyncCloudAfterLogin(){
     var cloudLoaded = false;
     if(typeof fpScheduleCloudAutoload === 'function'){
         try {
-            var autoload = await fpScheduleCloudAutoload({ boot: true, force: true });
+            var autoload = await fpScheduleCloudAutoload({ boot: true });
             cloudLoaded = !!(autoload && autoload.loaded);
         } catch(e) { console.warn('[fp-cloud] boot autoload', e); }
     } else if(typeof fpTryCloudAutoload === 'function'){
         if(typeof fpResetCloudAutoloadForRetry === 'function') fpResetCloudAutoloadForRetry();
         try {
-            var autoloadLegacy = await fpTryCloudAutoload({ boot: true, force: true });
+            var autoloadLegacy = await fpTryCloudAutoload({ boot: true });
             cloudLoaded = !!(autoloadLegacy && autoloadLegacy.loaded);
         } catch(e2) { console.warn('[fp-cloud] boot autoload', e2); }
     }
@@ -20161,6 +20186,32 @@ async function fpBootSyncCloudAfterLogin(){
     if(typeof fpCloudSetStatus === 'function' && cloudLoaded){
         fpCloudSetStatus('Dados da nuvem actualizados.', false);
     }
+    fpSuggestDataRecoveryIfEmpty();
+}
+function fpSuggestDataRecoveryIfEmpty(){
+    try {
+        const empN = Array.isArray(state.employees) ? state.employees.length : 0;
+        let uniN = 0;
+        try { uniN = JSON.parse(localStorage.getItem(UNI_KEY) || '[]').length; } catch(_u) { uniN = 0; }
+        if(empN || uniN) return;
+        if(typeof fpPeekCloudSnapshotMeta !== 'function') return;
+        fpPeekCloudSnapshotMeta().then(function(meta){
+            if(meta && meta.employees){
+                if(typeof fpCloudSetStatus === 'function'){
+                    fpCloudSetStatus(
+                        'Dados locais vazios. A nuvem tem ' + meta.employees +
+                        ' colaborador(es) — clique em ☁️ Recarregar nuvem para recuperar.',
+                        true
+                    );
+                }
+            } else if(typeof fpCloudSetStatus === 'function'){
+                fpCloudSetStatus(
+                    'Dados locais e nuvem parecem vazios. Tente outro PC/navegador ou reimporte o Excel.',
+                    true
+                );
+            }
+        }).catch(function(){ /* ignore */ });
+    } catch(e) { console.warn('[FP] recovery hint', e); }
 }
 (async function fpBootIntranet(){
     window.__fpIntranetBootComplete = false;
@@ -20204,7 +20255,7 @@ async function fpBootSyncCloudAfterLogin(){
             try {
                 if(state.employees && state.employees.length) return;
                 if(typeof fpResetCloudAutoloadForRetry === 'function') fpResetCloudAutoloadForRetry();
-                await fpCloudLoadSnapshot({ autoload: true, skipIframeSync: true, force: true });
+                await fpCloudLoadSnapshot({ autoload: true, skipIframeSync: true });
                 state.employees = fpHydrateEmployeesMediaForSnapshot(state.employees || [], window.__FP_EMBEDDED_ATTACHMENTS__ || {});
                 if(typeof window.fpOnCloudDataReady === 'function') await window.fpOnCloudDataReady();
             } catch(retryErr) { console.warn('[fp-cloud] retry autoload', retryErr); }
