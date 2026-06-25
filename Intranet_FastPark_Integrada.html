@@ -17,7 +17,7 @@
 <script src="/fp-supabase-config.js?v=20260528b"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="/fp-auth.js"></script>
-<script src="/fp-supabase-sync.js?v=20260528c"></script>
+<script src="/fp-supabase-sync.js?v=20260528d"></script>
 <script src="/fp-propostas.js"></script>
 <script src="/fp-selos.js"></script>
 <script src="/fp-estoque.js"></script>
@@ -5552,7 +5552,7 @@ window.addEventListener('DOMContentLoaded', () => {
     fpApplyLogoImages();
     if(typeof fpEnsurePostosPanoramaDocumentDelegation === 'function') fpEnsurePostosPanoramaDocumentDelegation();
     const movCad = typeof getMovCad === 'function' ? getMovCad() : [];
-    if(!fpIsEmbeddedActive() && movCad.length){
+    if(!window.__FP_EMBEDDED_FROM_FILE__ && movCad.length){
         state.movimentacoes = movCad.map(m => ({
             data: m.dataIni || '',
             funcionario: m.funcionario || '',
@@ -10059,8 +10059,6 @@ async function applyFpEmbeddedIntranetDb(db, opts){
     let uExp = [];
     const cloudUniLs = ls[UNI_KEY];
     const localUniLs = localCapture[UNI_KEY];
-    const editedSinceCloudLoad = window.__fpCloudUserEditedAt && window.__fpCloudLoadedAt
-        && window.__fpCloudUserEditedAt > window.__fpCloudLoadedAt;
     const preferLocalUni = opts.fromCloud && localUniLs && (
         fpLocalStorageKeyNewerThanCloud(UNI_KEY, localUniLs, cloudUniLs, cloudExportedTs)
         || (editedSinceCloudLoad && localUniLs !== cloudUniLs)
@@ -10210,6 +10208,7 @@ async function applyFpEmbeddedIntranetDb(db, opts){
     }
     if(!opts.fromCloud && typeof fpNotifyIntranetChanged === 'function') fpNotifyIntranetChanged();
 }
+window.applyFpEmbeddedIntranetDb = applyFpEmbeddedIntranetDb;
 async function fpBuildEmbeddedJsonString(){
     const snap = await collectFpIntranetSnapshot();
     return JSON.stringify(snap).replace(/</g, '\\u003c');
