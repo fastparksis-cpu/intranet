@@ -14501,7 +14501,11 @@ function findPostoCatalogByCodigoGlobal(codigo){
 /** Unidade cadastrada correspondente ao registro do catálogo de postos. */
 function resolveUnidadeRecordParaPosto(p){
     if(!p) return null;
-    return findUnidadeCanonical(p.unidadeCod, p.unidadeNome, p.unidadeNome || p.unidadeCod);
+    const uni = findUnidadeCanonical(p.unidadeCod, p.unidadeNome, p.unidadeNome || p.unidadeCod);
+    if(uni) return uni;
+    const key = _normUniPostoUnidadeKey(p.unidadeCod, p.unidadeNome);
+    if(!key) return null;
+    return getUnidades().find(u => _normUniPostoUnidadeKey(u.cod, u.nome) === key) || null;
 }
 /** Importa postos legados (planilha quadro / extras) para o catálogo Unidades → Postos, sem duplicar. */
 function syncLegacyPostosIntoUnidadesCatalog(){
@@ -15593,10 +15597,48 @@ function _normUnidadePosto(s){
 }
 function dadosUnidadeFromRecord(uni){
     if(!uni) return { enderecoUnidade: '', cnpjUnidade: '', empresaUnidade: '' };
+    const nf = dadosEmissaoNfUnidadeFromRecord(uni);
+    return {
+        enderecoUnidade: String(uni.endereco || '').trim() || nf.enderecoUnidade,
+        cnpjUnidade: nf.cnpjUnidade,
+        empresaUnidade: nf.empresaUnidade
+    };
+}
+/** CNPJ da seção Emissão de Nota Fiscal (campo uniCnpj → cnpj), com suporte a número/planilha. */
+function uniCoerceCnpjNfValue(raw){
+    if(raw == null || raw === '') return '';
+    if(typeof raw === 'number' && Number.isFinite(raw)){
+        const digits = String(Math.round(raw)).replace(/\D/g, '');
+        if(digits.length >= 11) return digits;
+    }
+    const s = String(raw).trim();
+    if(!s) return '';
+    const digits = s.replace(/\D/g, '');
+    if(digits.length === 14 || digits.length === 11) return digits;
+    return s;
+}
+function dadosEmissaoNfUnidadeFromRecord(uni){
+    if(!uni) return { enderecoUnidade: '', cnpjUnidade: '', empresaUnidade: '', ccm: '', serie: '' };
+    const cnpj = uniCoerceCnpjNfValue(
+        uni.cnpj ?? uni.CNPJ ?? uni.cnpjNotaFiscal ?? uni.cnpjUnidade ?? ''
+    );
     return {
         enderecoUnidade: String(uni.endereco || '').trim(),
-        cnpjUnidade: String(uni.cnpj || '').trim(),
-        empresaUnidade: String(uni.empresa || '').trim()
+        cnpjUnidade: cnpj,
+        empresaUnidade: String(uni.empresa || '').trim(),
+        ccm: String(uni.ccm || '').trim(),
+        serie: String(uni.serie || '').trim()
+    };
+}
+function enrichDadosUnidadeFromCadastro(unidadeLabel, partial){
+    partial = partial || {};
+    const uni = findUnidadeCanonical('', '', String(unidadeLabel || '').trim());
+    if(!uni) return partial;
+    const d = dadosEmissaoNfUnidadeFromRecord(uni);
+    return {
+        enderecoUnidade: d.enderecoUnidade || partial.enderecoUnidade || '',
+        cnpjUnidade: d.cnpjUnidade || partial.cnpjUnidade || '',
+        empresaUnidade: d.empresaUnidade || partial.empresaUnidade || ''
     };
 }
 /** Endereço, CNPJ e empresa da unidade a partir do catálogo (código/nome/rótulo). */
@@ -15604,7 +15646,7 @@ function resolveUnidadeDadosParaPosto(p){
     if(!p) return { uni: null, enderecoUnidade: '', cnpjUnidade: '', empresaUnidade: '' };
     const uni = resolveUnidadeRecordParaPosto(p)
         || findUnidadeCanonical(p.unidadeCod, p.unidadeNome, p.unidadeNome || p.unidadeCod);
-    const fromUni = dadosUnidadeFromRecord(uni);
+    const fromUni = dadosEmissaoNfUnidadeFromRecord(uni);
     const lookup = lookupDadosUnidadeParaQuadro(p.unidadeNome || p.unidadeCod || formatUnidadeQuadroLabel(uni));
     return {
         uni,
@@ -15645,11 +15687,11 @@ function lookupDadosUnidadeParaQuadro(nomeUnidade){
         return false;
     });
     if(ref){
-        return {
+        return enrichDadosUnidadeFromCadastro(key, {
             enderecoUnidade: String(ref.enderecoUnidade || '').trim(),
             cnpjUnidade: String(ref.cnpjUnidade || '').trim(),
             empresaUnidade: String(ref.empresaUnidade || ref.empresa || '').trim()
-        };
+        });
     }
     ref = getPostosExtras().find(r => {
         const ru = String(r.unidade || '').trim();
@@ -15661,11 +15703,11 @@ function lookupDadosUnidadeParaQuadro(nomeUnidade){
         return false;
     });
     if(ref){
-        return {
+        return enrichDadosUnidadeFromCadastro(key, {
             enderecoUnidade: String(ref.enderecoUnidade || '').trim(),
             cnpjUnidade: String(ref.cnpjUnidade || '').trim(),
             empresaUnidade: String(ref.empresaUnidade || ref.empresa || '').trim()
-        };
+        });
     }
     return empty;
 }
