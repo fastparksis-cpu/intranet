@@ -3845,6 +3845,10 @@ function switchTab(tab) {
         alert('Este usuário não possui permissão para acessar esta aba.');
         tab = 'fp-home';
     }
+    const activeUni = document.querySelector('.uni-module.tab-content.active');
+    if(activeUni && activeUni.id !== tab && typeof uniFlushAllPendingSaves === 'function'){
+        uniFlushAllPendingSaves();
+    }
     const panel = document.getElementById(tab);
     if (!panel) return;
     if (typeof fpConsolidateFullPageTab === 'function') fpConsolidateFullPageTab(panel);
@@ -8346,6 +8350,17 @@ function fpRawLsSetItem(key, value){
     localStorage.setItem(key, value);
 }
 window.fpRawLsSetItem = fpRawLsSetItem;
+/** Grava chave no localStorage, marca como mais recente que a nuvem e dispara sync. */
+function fpPersistIntranetRegistryKey(key, value, opts){
+    fpRawLsSetItem(key, value);
+    if(key && key !== FP_LOCAL_KEY_META_KEY && key !== 'fp_local_snapshot_meta' && typeof fpTouchLocalKeyMeta === 'function'){
+        fpTouchLocalKeyMeta(key);
+    }
+    if(!(opts && opts.skipCloud) && typeof fpAfterPersistentStorageWrite === 'function'){
+        fpAfterPersistentStorageWrite();
+    }
+}
+window.fpPersistIntranetRegistryKey = fpPersistIntranetRegistryKey;
 function fpReadLocalKeyMeta(){
     try {
         const o = JSON.parse(localStorage.getItem(FP_LOCAL_KEY_META_KEY) || '{}');
@@ -10028,7 +10043,13 @@ async function applyFpEmbeddedIntranetDb(db, opts){
     let uExp = [];
     const cloudUniLs = ls[UNI_KEY];
     const localUniLs = localCapture[UNI_KEY];
-    if(opts.fromCloud && localUniLs && fpLocalStorageKeyNewerThanCloud(UNI_KEY, localUniLs, cloudUniLs, cloudExportedTs)){
+    const editedSinceCloudLoad = window.__fpCloudUserEditedAt && window.__fpCloudLoadedAt
+        && window.__fpCloudUserEditedAt > window.__fpCloudLoadedAt;
+    const preferLocalUni = opts.fromCloud && localUniLs && (
+        fpLocalStorageKeyNewerThanCloud(UNI_KEY, localUniLs, cloudUniLs, cloudExportedTs)
+        || (editedSinceCloudLoad && localUniLs !== cloudUniLs)
+    );
+    if(preferLocalUni){
         try {
             const parsedLocalUni = JSON.parse(localUniLs);
             if(Array.isArray(parsedLocalUni) && parsedLocalUni.length){
@@ -10371,8 +10392,8 @@ async function fpFlushAllTabsToLocalStorage(){
         fpSaveQuadroGeralToLocalStorage();
         if(typeof fpPersistPostosQuadroState === 'function') fpPersistPostosQuadroState();
         try { localStorage.setItem('fastparkHistorico', JSON.stringify(historico)); } catch(e1) { console.warn(e1); }
-        try { localStorage.setItem(UNI_KEY, JSON.stringify(getUnidades())); } catch(e2) { console.warn(e2); }
-        try { localStorage.setItem(FP_UNIDADES_ATT_BAG_KEY, JSON.stringify(uniAttBagGet())); } catch(e2b) { console.warn(e2b); }
+        try { localStorage.setItem(UNI_KEY, JSON.stringify(getUnidades())); fpTouchLocalKeyMeta(UNI_KEY); } catch(e2) { console.warn(e2); }
+        try { localStorage.setItem(FP_UNIDADES_ATT_BAG_KEY, JSON.stringify(uniAttBagGet())); fpTouchLocalKeyMeta(FP_UNIDADES_ATT_BAG_KEY); } catch(e2b) { console.warn(e2b); }
         try { localStorage.setItem(FALTAS_KEY, JSON.stringify(getFaltasCad())); } catch(e3) { console.warn(e3); }
         try { localStorage.setItem(FP_SINISTROS_KEY, JSON.stringify(getSinistros())); } catch(e4) { console.warn(e4); }
         try { localStorage.setItem(FP_LAUDOS_KEY, JSON.stringify(getLaudosCad())); } catch(e4b) { console.warn(e4b); }
@@ -10925,6 +10946,9 @@ function fpInitAutosaveSystem(){
     setInterval(() => {
         fpSchedulePersist();
     }, 120000);
+    window.addEventListener('pagehide', function(){
+        if(typeof uniFlushAllPendingSaves === 'function') uniFlushAllPendingSaves();
+    });
 }
 
 function toggleNovoFuncionario(){
@@ -11290,8 +11314,7 @@ function uniAttBagGet(){
 }
 function uniAttBagSet(bag){
     try {
-        fpRawLsSetItem(FP_UNIDADES_ATT_BAG_KEY, JSON.stringify(bag || {}));
-        if(typeof fpAfterPersistentStorageWrite === 'function') fpAfterPersistentStorageWrite();
+        fpPersistIntranetRegistryKey(FP_UNIDADES_ATT_BAG_KEY, JSON.stringify(bag || {}));
     } catch(e){
         if(e && (e.name === 'QuotaExceededError' || e.code === 22)){
             throw new Error('Espaço insuficiente para guardar anexos. Use um PDF menor, ligue a pasta de anexos ou exporte dados antigos.');
@@ -11382,6 +11405,7 @@ function fpSaveUnidadesToLocalStorage(arr){
             catch(e){ console.warn('[uni] prepare', e); return u; }
         });
         fpRawLsSetItem(UNI_KEY, JSON.stringify(prepared));
+        fpTouchLocalKeyMeta(UNI_KEY);
     } catch(e){
         const msg = (e && (e.name === 'QuotaExceededError' || e.code === 22))
             ? 'Não foi possível guardar: o anexo ou os dados da unidade excedem o espaço do navegador. Reduza o PDF, ligue a pasta de anexos ou sincronize com a nuvem.'
@@ -11389,7 +11413,10 @@ function fpSaveUnidadesToLocalStorage(arr){
         alert(msg);
         throw e;
     }
-    try { fpRawLsSetItem(FP_UNIDADES_ATT_BAG_KEY, JSON.stringify(uniAttBagGet())); } catch(eBag) { console.warn('[uni] att bag', eBag); }
+    try {
+        fpRawLsSetItem(FP_UNIDADES_ATT_BAG_KEY, JSON.stringify(uniAttBagGet()));
+        fpTouchLocalKeyMeta(FP_UNIDADES_ATT_BAG_KEY);
+    } catch(eBag) { console.warn('[uni] att bag', eBag); }
     fpAfterPersistentStorageWrite();
     if(typeof refreshUnidadesPostosUnidadeSelect === 'function') refreshUnidadesPostosUnidadeSelect();
     if(typeof fpSetEmbeddedStatusLine === 'function'){
@@ -11456,8 +11483,7 @@ function getUnidadesOrcamentos(){
     } catch(e) { return []; }
 }
 function setUnidadesOrcamentos(arr){
-    fpRawLsSetItem(FP_UNIDADES_ORCAMENTOS_KEY, JSON.stringify(Array.isArray(arr) ? arr : []));
-    fpAfterPersistentStorageWrite();
+    fpPersistIntranetRegistryKey(FP_UNIDADES_ORCAMENTOS_KEY, JSON.stringify(Array.isArray(arr) ? arr : []));
 }
 function uniGetTabelaKeys(){ return Object.keys(UNI_TABELA_META); }
 function uniExtractTabelaFromUnidade(u){
@@ -12392,6 +12418,10 @@ function uniMergeCadastroLiveIntoUnidade(atual, item){
     return merged;
 }
 let __fpUniLiveSaveQueued = false;
+function uniFlushAllPendingSaves(){
+    try { uniFlushCadastroLiveSaveNow(); } catch(e) { console.warn('[uni] flush cadastro', e); }
+    try { uniFlushViewLiveSaveNow(); } catch(e) { console.warn('[uni] flush view', e); }
+}
 function uniFlushCadastroLiveSaveNow(){
     const panel = document.getElementById('unidadesCadastroFormPanel');
     if(!panel || panel.style.display === 'none') return false;
@@ -13784,8 +13814,18 @@ function renderUnidadesList(){
     }</div>`;
 }
 function uniInitCadastroTab(){
-    openUnidadesCadastroNovo();
+    const panel = document.getElementById('unidadesCadastroFormPanel');
+    if(panel) panel.style.display = 'block';
     uniBindDateBrInputs(document);
+    uniBindCadastroLiveSave();
+    const cod = document.getElementById('uniCod')?.value?.trim();
+    const nome = (getInputVal('uniNome') || '').trim();
+    const editIdx = parseUniEditIdx();
+    if(!cod && !nome && editIdx == null){
+        if(typeof uniWireTabelaAutoCalc === 'function') uniWireTabelaAutoCalc();
+        const codEl = document.getElementById('uniCod');
+        if(codEl) try { codEl.focus(); } catch(_e) {}
+    }
 }
 function uniInitUnidadeTab(){
     if(typeof refreshUnidadesViewSelect === 'function') refreshUnidadesViewSelect();
@@ -14360,8 +14400,7 @@ function getUnidadesPostosCatalog(){
     } catch(e) { return []; }
 }
 function setUnidadesPostosCatalog(arr){
-    fpRawLsSetItem(FP_UNIDADES_POSTOS_KEY, JSON.stringify(Array.isArray(arr) ? arr : []));
-    fpAfterPersistentStorageWrite();
+    fpPersistIntranetRegistryKey(FP_UNIDADES_POSTOS_KEY, JSON.stringify(Array.isArray(arr) ? arr : []));
 }
 function parseUnidadeLabelRef(s){
     const raw = String(s || '').trim();
