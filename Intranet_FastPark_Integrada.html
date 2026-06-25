@@ -2695,8 +2695,7 @@ td { color: var(--t); font-weight: 500;}
     <div id="uni-cadastro" class="tab-content uni-module fp-page-full">
         <div class="uni-page-root">
         <div id="unidadesCadastroTab">
-        <div style="margin-bottom:8px;"><button class="btn btn-success" onclick="toggleUnidadesCadastroForm()">➕ Novo cadastro</button></div>
-        <article class="panel" id="unidadesCadastroFormPanel" style="display:none;">
+        <article class="panel" id="unidadesCadastroFormPanel">
             <div class="head"><h2>Cadastro individual da unidade</h2></div>
             <div class="body" style="display:grid;grid-template-columns:repeat(4,minmax(180px,1fr));gap:10px;">
                 <input id="uniEditIdx" type="hidden">
@@ -2797,7 +2796,7 @@ td { color: var(--t); font-weight: 500;}
                 <button class="btn" onclick="addAditivoUnidade()">➕ Adicionar aditivo</button>
                 <div id="uniAditivosTemp" style="grid-column:1 / -1; font-size:12px;"></div>
                 <button class="btn btn-success" onclick="salvarUnidade()">Salvar unidade</button>
-                <button class="btn" onclick="limparUnidadeForm()">Novo cadastro</button>
+                <button class="btn" onclick="openUnidadesCadastroNovo()">Novo cadastro</button>
             </div>
         </article>
         </div>
@@ -8726,6 +8725,7 @@ function onUniContratoAnexoCadastroChange(){
     r.onload = ev => {
         unidadeContratoAnexoPending = { anexoNome: file.name, anexoData: String(ev.target?.result || '') };
         renderUniContratoAnexoCadastro(null);
+        if(typeof uniFlushCadastroLiveSaveNow === 'function') uniFlushCadastroLiveSaveNow();
     };
     r.onerror = () => alert('Erro ao ler o arquivo do contrato.');
     r.readAsDataURL(file);
@@ -11290,7 +11290,7 @@ function uniAttBagGet(){
 }
 function uniAttBagSet(bag){
     try {
-        localStorage.setItem(FP_UNIDADES_ATT_BAG_KEY, JSON.stringify(bag || {}));
+        fpRawLsSetItem(FP_UNIDADES_ATT_BAG_KEY, JSON.stringify(bag || {}));
         if(typeof fpAfterPersistentStorageWrite === 'function') fpAfterPersistentStorageWrite();
     } catch(e){
         if(e && (e.name === 'QuotaExceededError' || e.code === 22)){
@@ -11369,37 +11369,40 @@ function getUnidadeForDisplay(idx){
     return u ? uniHydrateUnidadeForDisplay(u) : null;
 }
 function uniPersistUnidadesRaw(arr){
-    const prevPause = window.__fpLsHookPause;
-    window.__fpLsHookPause = true;
-    try {
-        fpLsSetItem(UNI_KEY, JSON.stringify(Array.isArray(arr) ? arr : []));
-    } finally {
-        window.__fpLsHookPause = prevPause;
-    }
-    fpAfterPersistentStorageWrite();
+    fpSaveUnidadesToLocalStorage(Array.isArray(arr) ? arr : []);
 }
-function setUnidades(v){
-    const prevPause = window.__fpLsHookPause;
-    window.__fpLsHookPause = true;
-    let prepared = v;
+/** Grava unidades + bag de anexos no localStorage e dispara sync na nuvem (como cadastro de colaboradores). */
+function fpSaveUnidadesToLocalStorage(arr){
+    window.__fpCloudUserEditedAt = Date.now();
+    const source = Array.isArray(arr) ? arr : getUnidades();
+    let prepared;
     try {
-        prepared = Array.isArray(v) ? v.map(u => {
+        prepared = source.map(u => {
             try { return uniPrepareUnidadeForStorage(u); }
             catch(e){ console.warn('[uni] prepare', e); return u; }
-        }) : v;
-        const json = JSON.stringify(prepared);
-        fpLsSetItem(UNI_KEY, json);
+        });
+        fpRawLsSetItem(UNI_KEY, JSON.stringify(prepared));
     } catch(e){
         const msg = (e && (e.name === 'QuotaExceededError' || e.code === 22))
             ? 'Não foi possível guardar: o anexo ou os dados da unidade excedem o espaço do navegador. Reduza o PDF, ligue a pasta de anexos ou sincronize com a nuvem.'
             : ('Erro ao guardar unidades: ' + (e && e.message ? e.message : String(e)));
         alert(msg);
         throw e;
-    } finally {
-        window.__fpLsHookPause = prevPause;
     }
+    try { fpRawLsSetItem(FP_UNIDADES_ATT_BAG_KEY, JSON.stringify(uniAttBagGet())); } catch(eBag) { console.warn('[uni] att bag', eBag); }
     fpAfterPersistentStorageWrite();
     if(typeof refreshUnidadesPostosUnidadeSelect === 'function') refreshUnidadesPostosUnidadeSelect();
+    if(typeof fpSetEmbeddedStatusLine === 'function'){
+        fpSetEmbeddedStatusLine('Unidades gravadas — ' + new Date().toLocaleTimeString('pt-BR'));
+    }
+}
+window.fpSaveUnidadesToLocalStorage = fpSaveUnidadesToLocalStorage;
+function setUnidades(v){
+    try {
+        fpSaveUnidadesToLocalStorage(Array.isArray(v) ? v : []);
+    } catch(e){
+        throw e;
+    }
 }
 function uniHasNovoContratoAnexoCadastro(){
     return !!(unidadeContratoAnexoPending?.anexoData || document.getElementById('uniContratoAnexo')?.files?.[0]);
@@ -11453,7 +11456,7 @@ function getUnidadesOrcamentos(){
     } catch(e) { return []; }
 }
 function setUnidadesOrcamentos(arr){
-    localStorage.setItem(FP_UNIDADES_ORCAMENTOS_KEY, JSON.stringify(Array.isArray(arr) ? arr : []));
+    fpRawLsSetItem(FP_UNIDADES_ORCAMENTOS_KEY, JSON.stringify(Array.isArray(arr) ? arr : []));
     fpAfterPersistentStorageWrite();
 }
 function uniGetTabelaKeys(){ return Object.keys(UNI_TABELA_META); }
@@ -12264,7 +12267,19 @@ function limparUnidadeForm(opts){
     uniBindDateBrInputs(document);
     applyUnidadeSectionMode();
     const panel = document.getElementById('unidadesCadastroFormPanel');
-    if(panel && !opts.keepPanelOpen) panel.style.display = 'none';
+    if(panel){
+        if(opts.hidePanel) panel.style.display = 'none';
+        else panel.style.display = 'block';
+    }
+}
+function openUnidadesCadastroNovo(){
+    const panel = document.getElementById('unidadesCadastroFormPanel');
+    if(panel) panel.style.display = 'block';
+    limparUnidadeForm({ keepPanelOpen: true });
+    if(typeof uniWireTabelaAutoCalc === 'function') uniWireTabelaAutoCalc();
+    uniBindCadastroLiveSave();
+    const cod = document.getElementById('uniCod');
+    if(cod) try { cod.focus(); } catch(_e) {}
 }
 function salvarUnidade(){
     const btn = document.querySelector('#uni-cadastro .btn-success[onclick*="salvarUnidade"]') ||
@@ -12303,17 +12318,12 @@ function salvarUnidade(){
         }
     });
 }
-/** @returns {boolean} true se gravou; false se abriu modal de reajuste */
-function salvarUnidadeCommit(){
-    const cod = document.getElementById('uniCod')?.value?.trim();
-    if(!cod){ alert('Informe o código da unidade.'); return false; }
-    const nome = getInputVal('uniNome').trim();
-    if(!nome){ alert('Informe o nome da unidade.'); return false; }
+/** Extrai o objeto unidade a partir do formulário de cadastro (sem validação). */
+function uniCollectCadastroItemFromForm(){
     const tabela = uniCollectTabelaPayload();
-    const indiceReajuste = getInputVal('uniIndiceReajuste');
-    const item = {
-        cod,
-        nome,
+    return {
+        cod: document.getElementById('uniCod')?.value?.trim() || '',
+        nome: getInputVal('uniNome').trim(),
         edificio: getInputVal('uniEdificio'),
         endereco: getInputVal('uniEndereco'),
         funcionamento: getInputVal('uniHorario'),
@@ -12360,6 +12370,141 @@ function salvarUnidadeCommit(){
         vencimentoContrato: uniDateStoreFromInput(getInputVal('uniVencimentoContrato')),
         aditivos: [...unidadeAditivosTemp]
     };
+}
+function uniMergeCadastroLiveIntoUnidade(atual, item){
+    atual = atual || {};
+    const aditivos = [...(atual.aditivos || []), ...(item.aditivos || [])];
+    const venc = aditivos.length ? aditivos[aditivos.length - 1].vencimento || item.vencimentoContrato : item.vencimentoContrato;
+    const merged = {
+        ...atual,
+        ...item,
+        ...uniCollectContratoAnexoPayload(atual),
+        aditivos,
+        vencimentoContrato: venc,
+        historicoTabela: atual.historicoTabela
+    };
+    const previewHist = uniBuildHistoricoTabelaDiff(atual, { ...atual, ...item }, {});
+    if(previewHist.length){
+        uniMergeTabelaIntoUnidade(merged, uniGetTabelaVigente(atual));
+    } else {
+        uniMergeTabelaIntoUnidade(merged, uniExtractTabelaFromUnidade(item));
+    }
+    return merged;
+}
+let __fpUniLiveSaveQueued = false;
+function uniFlushCadastroLiveSaveNow(){
+    const panel = document.getElementById('unidadesCadastroFormPanel');
+    if(!panel || panel.style.display === 'none') return false;
+    const item = uniCollectCadastroItemFromForm();
+    if(!item.cod || !item.nome) return false;
+    const arr = getUnidades();
+    const editIdx = parseUniEditIdx();
+    if(editIdx != null && editIdx < arr.length){
+        arr[editIdx] = uniMergeCadastroLiveIntoUnidade(arr[editIdx], item);
+    } else {
+        const dupIdx = arr.findIndex(u => String(u.cod || '').trim().toLowerCase() === item.cod.toLowerCase());
+        if(dupIdx >= 0){
+            arr[dupIdx] = uniMergeCadastroLiveIntoUnidade(arr[dupIdx], item);
+            const ei = document.getElementById('uniEditIdx');
+            if(ei) ei.value = String(dupIdx);
+        } else {
+            const novo = uniMergeCadastroLiveIntoUnidade({}, item);
+            arr.unshift(novo);
+            const ei = document.getElementById('uniEditIdx');
+            if(ei) ei.value = '0';
+        }
+    }
+    try {
+        fpSaveUnidadesToLocalStorage(arr);
+    } catch(e){
+        console.warn('[uni] live save cadastro', e);
+        return false;
+    }
+    return true;
+}
+function uniScheduleCadastroLiveSave(ev){
+    const panel = document.getElementById('unidadesCadastroFormPanel');
+    if(!panel || panel.style.display === 'none') return;
+    if(ev && ev.target && ev.target.id === 'uniEditIdx') return;
+    const instant = !ev || ev.type === 'change' || ev.type === 'blur';
+    if(instant){
+        uniFlushCadastroLiveSaveNow();
+        return;
+    }
+    if(__fpUniLiveSaveQueued) return;
+    __fpUniLiveSaveQueued = true;
+    queueMicrotask(() => {
+        __fpUniLiveSaveQueued = false;
+        uniFlushCadastroLiveSaveNow();
+    });
+}
+function uniBindCadastroLiveSave(){
+    const panel = document.getElementById('unidadesCadastroFormPanel');
+    if(!panel || panel.dataset.uniLiveSaveBound) return;
+    panel.dataset.uniLiveSaveBound = '1';
+    panel.addEventListener('input', uniScheduleCadastroLiveSave);
+    panel.addEventListener('change', uniScheduleCadastroLiveSave);
+    panel.addEventListener('blur', uniScheduleCadastroLiveSave, true);
+}
+function uniFlushViewLiveSaveNow(){
+    const idx = uniViewSelectedIdx ?? getUniViewSelectedIdx();
+    if(idx == null) return false;
+    if(!uniViewEditing.dados && !uniViewEditing.contratos && !uniViewEditing.tabelaAlterar) return false;
+    const arr = getUnidades();
+    const atual = arr[idx];
+    if(!atual) return false;
+    let next = { ...atual };
+    if(uniViewEditing.dados){
+        const p = uniCollectDadosPayloadView();
+        if(!p.cod || !p.nome) return false;
+        next = { ...next, ...p };
+    }
+    if(uniViewEditing.contratos){
+        next = { ...next, ...uniCollectContratosPayloadView() };
+    }
+    if(uniViewEditing.tabelaAlterar){
+        const tabela = uniCollectTabelaPayloadView();
+        const previewHist = uniBuildHistoricoTabelaDiff(atual, { ...atual, ...tabela }, {});
+        if(!previewHist.length) uniMergeTabelaIntoUnidade(next, tabela);
+    }
+    arr[idx] = next;
+    try {
+        fpSaveUnidadesToLocalStorage(arr);
+    } catch(e){
+        console.warn('[uni] live save view', e);
+        return false;
+    }
+    return true;
+}
+function uniScheduleViewLiveSave(ev){
+    if(!uniViewEditing.dados && !uniViewEditing.contratos && !uniViewEditing.tabelaAlterar) return;
+    const instant = !ev || ev.type === 'change' || ev.type === 'blur';
+    if(instant){
+        uniFlushViewLiveSaveNow();
+        return;
+    }
+    if(__fpUniLiveSaveQueued) return;
+    __fpUniLiveSaveQueued = true;
+    queueMicrotask(() => {
+        __fpUniLiveSaveQueued = false;
+        uniFlushViewLiveSaveNow();
+    });
+}
+function uniBindViewLiveSaveOnRoot(root){
+    if(!root || root.dataset.uniViewLiveBound) return;
+    root.dataset.uniViewLiveBound = '1';
+    root.addEventListener('input', uniScheduleViewLiveSave);
+    root.addEventListener('change', uniScheduleViewLiveSave);
+    root.addEventListener('blur', uniScheduleViewLiveSave, true);
+}
+/** @returns {boolean} true se gravou; false se abriu modal de reajuste */
+function salvarUnidadeCommit(){
+    const item = uniCollectCadastroItemFromForm();
+    const cod = item.cod;
+    if(!cod){ alert('Informe o código da unidade.'); return false; }
+    const nome = item.nome;
+    if(!nome){ alert('Informe o nome da unidade.'); return false; }
+    const indiceReajuste = getInputVal('uniIndiceReajuste');
     const arr = getUnidades();
     const editIdx = parseUniEditIdx();
     const dupIdx = arr.findIndex((u, i) => String(u.cod || '').trim().toLowerCase() === cod.toLowerCase() && i !== editIdx);
@@ -12384,7 +12529,7 @@ function salvarUnidadeCommit(){
             arr[editIdx] = merged;
             setUnidades(arr);
             unidadeContratoAnexoPending = null;
-            limparUnidadeForm();
+            limparUnidadeForm({ keepPanelOpen: true });
             refreshUnidadesViewSelect();
             renderUnidadesList();
             populateCadastroDependentes();
@@ -12416,7 +12561,7 @@ function salvarUnidadeCommit(){
         return false;
     }
     unidadeContratoAnexoPending = null;
-    limparUnidadeForm({ keepPanelOpen: !isEdit });
+    limparUnidadeForm({ keepPanelOpen: true });
     refreshUnidadesViewSelect();
     renderUnidadesList();
     populateCadastroDependentes();
@@ -12474,16 +12619,10 @@ function editarUnidadeIndividual(idx){
         panel.style.display = 'block';
         panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
+    uniBindCadastroLiveSave();
 }
 function toggleUnidadesCadastroForm(){
-    const panel = document.getElementById('unidadesCadastroFormPanel');
-    if(!panel) return;
-    const nextOpen = panel.style.display === 'none';
-    panel.style.display = nextOpen ? 'block' : 'none';
-    if(nextOpen){
-        limparUnidadeForm({ keepPanelOpen: true });
-        uniWireTabelaAutoCalc();
-    }
+    openUnidadesCadastroNovo();
 }
 const FP_UNI_VIEW_SELECT_IDS = ['unidadesViewSelect', 'unidadesTabelaViewSelect', 'unidadesPostosViewSelect', 'unidadesContratosViewSelect'];
 const FP_UNI_VIEW_TAB_SHELLS = [
@@ -12630,6 +12769,7 @@ function buildUniViewTabelaForm(u){
     uniApplyTabelaCalculosView();
     uniWireMoneyInputs(form);
     uniWireTabelaViewAutoCalc();
+    uniBindViewLiveSaveOnRoot(form);
 }
 function uniViewFld(label, id, span, type){
     const wrapCls = span ? ' uni-field-wrap uni-span-all' : ' uni-field-wrap';
@@ -12921,6 +13061,7 @@ function buildUniViewDadosForm(u){
         inp.addEventListener('input', () => uniMarkFilledInputs(el));
         inp.addEventListener('change', () => uniMarkFilledInputs(el));
     });
+    uniBindViewLiveSaveOnRoot(el);
 }
 function uniCollectDadosPayloadView(){
     return {
@@ -12964,6 +13105,7 @@ function buildUniViewContratosForm(u){
         inp.addEventListener('input', () => uniMarkFilledInputs(el));
         inp.addEventListener('change', () => uniMarkFilledInputs(el));
     });
+    uniBindViewLiveSaveOnRoot(el);
 }
 function uniCollectContratosPayloadView(){
     return {
@@ -13642,8 +13784,7 @@ function renderUnidadesList(){
     }</div>`;
 }
 function uniInitCadastroTab(){
-    const panel = document.getElementById('unidadesCadastroFormPanel');
-    if(panel) panel.style.display = 'none';
+    openUnidadesCadastroNovo();
     uniBindDateBrInputs(document);
 }
 function uniInitUnidadeTab(){
@@ -14219,7 +14360,7 @@ function getUnidadesPostosCatalog(){
     } catch(e) { return []; }
 }
 function setUnidadesPostosCatalog(arr){
-    localStorage.setItem(FP_UNIDADES_POSTOS_KEY, JSON.stringify(Array.isArray(arr) ? arr : []));
+    fpRawLsSetItem(FP_UNIDADES_POSTOS_KEY, JSON.stringify(Array.isArray(arr) ? arr : []));
     fpAfterPersistentStorageWrite();
 }
 function parseUnidadeLabelRef(s){
@@ -14442,13 +14583,13 @@ function localizarPostoPorCodigo(){
     editarPostoUnidadeCatalog(encodeURIComponent(String(row.id || '')));
 }
 function catalogPostoToQuadroRow(p, catalogIdx){
-    const uni = resolveUnidadeRecordParaPosto(p);
+    const dados = resolveUnidadeDadosParaPosto(p);
+    const uni = dados.uni || resolveUnidadeRecordParaPosto(p);
     const uniNome = String(uni?.nome || p.unidadeNome || '').trim();
     const uniCod = String(uni?.cod || p.unidadeCod || '').trim();
-    const d = lookupDadosUnidadeParaQuadro(uniNome || uniCod);
-    const enderecoUnidade = String(uni?.endereco || d.enderecoUnidade || '').trim();
-    const cnpjUnidade = String(uni?.cnpj || d.cnpjUnidade || '').trim();
-    const empresaUnidade = String(uni?.empresa || d.empresaUnidade || '').trim();
+    const enderecoUnidade = dados.enderecoUnidade;
+    const cnpjUnidade = dados.cnpjUnidade;
+    const empresaUnidade = dados.empresaUnidade;
     const row = {
         posto: p.codigo || '',
         codigo: p.codigo || '',
@@ -15216,6 +15357,7 @@ function fpEnsureEmployeesCadastroLocalMerged(){
 function renderPostosPanorama(){
     const el = document.getElementById('postosPanorama');
     if(!el) return;
+    if(typeof repairUnidadesPostosCatalogRefs === 'function') repairUnidadesPostosCatalogRefs();
     fpEnsureEmployeesCadastroLocalMerged();
     const catalog = getQuadroAtualPostosCatalog();
     if(!catalog.length){
@@ -15449,23 +15591,59 @@ function salvarNovoPostoUnidade(){
 function _normUnidadePosto(s){
     return String(s || '').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
+function dadosUnidadeFromRecord(uni){
+    if(!uni) return { enderecoUnidade: '', cnpjUnidade: '', empresaUnidade: '' };
+    return {
+        enderecoUnidade: String(uni.endereco || '').trim(),
+        cnpjUnidade: String(uni.cnpj || '').trim(),
+        empresaUnidade: String(uni.empresa || '').trim()
+    };
+}
+/** Endereço, CNPJ e empresa da unidade a partir do catálogo (código/nome/rótulo). */
+function resolveUnidadeDadosParaPosto(p){
+    if(!p) return { uni: null, enderecoUnidade: '', cnpjUnidade: '', empresaUnidade: '' };
+    const uni = resolveUnidadeRecordParaPosto(p)
+        || findUnidadeCanonical(p.unidadeCod, p.unidadeNome, p.unidadeNome || p.unidadeCod);
+    const fromUni = dadosUnidadeFromRecord(uni);
+    const lookup = lookupDadosUnidadeParaQuadro(p.unidadeNome || p.unidadeCod || formatUnidadeQuadroLabel(uni));
+    return {
+        uni,
+        enderecoUnidade: fromUni.enderecoUnidade || lookup.enderecoUnidade,
+        cnpjUnidade: fromUni.cnpjUnidade || lookup.cnpjUnidade,
+        empresaUnidade: fromUni.empresaUnidade || lookup.empresaUnidade
+    };
+}
 /** Endereço, CNPJ e empresa da unidade: cadastro (Unidades) ou outra linha do quadro/extras com a mesma unidade. */
 function lookupDadosUnidadeParaQuadro(nomeUnidade){
     const key = String(nomeUnidade || '').trim();
     const empty = { enderecoUnidade: '', cnpjUnidade: '', empresaUnidade: '' };
     if(!key) return empty;
+
+    let uni = findUnidadeCanonical('', '', key);
+    if(uni) return dadosUnidadeFromRecord(uni);
+
+    const parsed = parseUnidadeLabelRef(key);
+    uni = findUnidadeCanonical(parsed.cod, parsed.nome, key);
+    if(uni) return dadosUnidadeFromRecord(uni);
+
     const nk = _normUnidadePosto(key);
+    const coreKey = normText(parsed.nome || key);
     for(const u of getUnidades()){
-        if(_normUnidadePosto(u.nome) === nk || _normUnidadePosto(u.cod) === nk){
-            return {
-                enderecoUnidade: String(u.endereco || '').trim(),
-                cnpjUnidade: String(u.cnpj || '').trim(),
-                empresaUnidade: String(u.empresa || '').trim()
-            };
-        }
+        if(_normUnidadePosto(u.nome) === nk || _normUnidadePosto(u.cod) === nk) return dadosUnidadeFromRecord(u);
+        if(unidadeCodLooksSimilar(u.cod, key) || (parsed.cod && unidadeCodLooksSimilar(u.cod, parsed.cod))) return dadosUnidadeFromRecord(u);
+        if(unidadeNomeCore(u.nome) === coreKey || normText(String(u.nome || '').trim()) === coreKey) return dadosUnidadeFromRecord(u);
     }
+
     const temDados = (r) => r && (String(r.enderecoUnidade || '').trim() || String(r.cnpjUnidade || '').trim() || String(r.empresaUnidade || '').trim() || String(r.empresa || '').trim());
-    let ref = (state.quadroGeral || []).find(r => _normUnidadePosto(r.unidade) === nk && temDados(r));
+    let ref = (state.quadroGeral || []).find(r => {
+        const ru = String(r.unidade || '').trim();
+        if(!ru) return false;
+        if(_normUnidadePosto(ru) === nk) return temDados(r);
+        const pr = parseUnidadeLabelRef(ru);
+        if(pr.cod && unidadeCodLooksSimilar(pr.cod, parsed.cod || key)) return temDados(r);
+        if(normText(pr.nome || ru) === coreKey) return temDados(r);
+        return false;
+    });
     if(ref){
         return {
             enderecoUnidade: String(ref.enderecoUnidade || '').trim(),
@@ -15473,7 +15651,15 @@ function lookupDadosUnidadeParaQuadro(nomeUnidade){
             empresaUnidade: String(ref.empresaUnidade || ref.empresa || '').trim()
         };
     }
-    ref = getPostosExtras().find(r => _normUnidadePosto(r.unidade) === nk && temDados(r));
+    ref = getPostosExtras().find(r => {
+        const ru = String(r.unidade || '').trim();
+        if(!ru) return false;
+        if(_normUnidadePosto(ru) === nk) return temDados(r);
+        const pr = parseUnidadeLabelRef(ru);
+        if(pr.cod && unidadeCodLooksSimilar(pr.cod, parsed.cod || key)) return temDados(r);
+        if(normText(pr.nome || ru) === coreKey) return temDados(r);
+        return false;
+    });
     if(ref){
         return {
             enderecoUnidade: String(ref.enderecoUnidade || '').trim(),
