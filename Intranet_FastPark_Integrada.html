@@ -16272,13 +16272,23 @@ function vtNomeKeysOnQuadroRow(r){
         r?.nome_colaborador, r?.nomeFuncionario
     ].map(normVtNomeKey).filter(Boolean);
 }
-/** Linha do Quadro de Postos (catálogo Unidades + planilha + extras) para o colaborador. */
+/** Linha do Quadro de Postos (catálogo Unidades + planilha + extras) — só para escala/horário do posto. */
 function resolveQuadroRowForVt(emp){
     if(!emp) return null;
+    emp = resolveEmployeeFichaParaQuadro(emp) || emp;
     const nomeK = normVtNomeKey(emp.nome);
-    if(!nomeK) return null;
     const uniK = normText(String(emp.atuando || ''));
     const rows = getQuadroRowsForLookup();
+
+    const codEmp = employeeCodigoPostoCadastro(emp);
+    const codByNome = getCodigoPostoByColaboradorNome(emp?.nome || '', emp?.atuando || '');
+    const codPosto = codEmp || codByNome;
+    if(codPosto){
+        const byCod = findPostoRowByCodigo(codPosto, emp?.atuando || '');
+        if(byCod) return byCod;
+    }
+
+    if(!nomeK) return null;
 
     const byName = rows.filter(r => vtNomeKeysOnQuadroRow(r).some(n => n === nomeK));
     if(byName.length){
@@ -16291,16 +16301,6 @@ function resolveQuadroRowForVt(emp){
         return byName[0];
     }
 
-    const codEmp = String(
-        emp?.codPosto || emp?.codigoPosto || emp?.codigo_posto || emp?.posto || ''
-    ).trim();
-    const codByNome = getCodigoPostoByColaboradorNome(emp?.nome || '', emp?.atuando || '');
-    const codPosto = codEmp || codByNome;
-    if(codPosto){
-        const byCod = findPostoRowByCodigo(codPosto, emp?.atuando || '');
-        if(byCod) return byCod;
-    }
-
     const scored = rows.map(r => {
         const nomes = vtNomeKeysOnQuadroRow(r);
         let score = 0;
@@ -16311,7 +16311,6 @@ function resolveQuadroRowForVt(emp){
         if(score > 0 && uniK && normText(String(r.unidade || '')) === uniK) score += 25;
         if(score > 0 && r.__source === 'catalog') score += 12;
         if(score > 0 && String(r.escala || r.jornada || r.diasSemana || '').trim()) score += 5;
-        if(score > 0 && String(r.registro2 || '').trim()) score += 2;
         return { r, score };
     });
     scored.sort((a, b) => b.score - a.score);
@@ -16335,23 +16334,21 @@ function findPostoRowByCodigo(codigoPosto, unidadePreferida){
     const catalog = byCod.find(r => r.__source === 'catalog');
     return catalog || byCod[0];
 }
-function getVtRegistroFromQuadroRow(row, emp){
-    if(row){
-        const r2 = String(row.registro2 || '').trim();
-        if(r2) return r2;
-        const re = String(row.empresa || row.empresaUnidade || '').trim();
-        if(re) return re;
+function getVtUnidadeFromCadastro(emp){
+    emp = resolveEmployeeFichaParaQuadro(emp) || emp;
+    const a = String(emp?.atuando || emp?.unidade || '').trim();
+    if(!a) return '';
+    const parsed = typeof parseUnidadeLabelRef === 'function' ? parseUnidadeLabelRef(a) : { cod: '', nome: a };
+    const uni = typeof findUnidadeCanonical === 'function'
+        ? findUnidadeCanonical(parsed.cod, parsed.nome, a) : null;
+    if(uni && typeof formatUnidadeQuadroLabel === 'function'){
+        return formatUnidadeQuadroLabel(uni) || a;
     }
-    const e = String(emp?.empresa || '').trim();
-    return e && e !== 'Sem empresa' ? e : '';
+    return a;
 }
-function getVtUnidadeFromQuadroRow(row, emp){
-    if(row && String(row.unidade || '').trim()) return String(row.unidade).trim();
-    const auth = typeof getPostoUnidadeAutoritativaParaColaborador === 'function'
-        ? getPostoUnidadeAutoritativaParaColaborador(emp?.nome)
-        : null;
-    if(auth) return auth;
-    return String(emp?.atuando || '').trim();
+function getVtRegistroFromCadastro(emp){
+    const r = registroColaboradorFichaCadastro(emp);
+    return r === '—' ? '' : r;
 }
 function getVtEscalaFromQuadroRow(row){
     if(!row) return '';
@@ -16369,16 +16366,14 @@ function getQuadroJornadaForEmployee(emp){
     return getQuadroEscalaForEmployee(emp);
 }
 function getVtDisplayDataForEmployee(emp, cfg){
+    emp = resolveEmployeeFichaParaQuadro(emp) || emp;
     const row = resolveQuadroRowForVt(emp);
-    const codEmp = String(
-        emp?.codPosto || emp?.codigoPosto || emp?.codigo_posto || emp?.posto || ''
-    ).trim();
-    const codByNome = getCodigoPostoByColaboradorNome(emp?.nome || '', emp?.atuando || '');
-    const codPosto = codEmp || codByNome || (row ? vtPickCodigoPostoRow(row) : '');
+    const col = dadosColaboradorQuadroAtual(emp);
+    const codPosto = employeeCodigoPostoCadastro(emp) || (row ? vtPickCodigoPostoRow(row) : '');
     return {
-        funcionario: (row && String(row.nome || '').trim()) || String(emp.nome || '').trim(),
-        registro: getVtRegistroFromQuadroRow(row, emp),
-        unidade: getVtUnidadeFromQuadroRow(row, emp),
+        funcionario: col.colaborador !== '—' ? col.colaborador : String(emp.nome || '').trim(),
+        registro: getVtRegistroFromCadastro(emp),
+        unidade: getVtUnidadeFromCadastro(emp),
         escala: getVtEscalaFromQuadroRow(row),
         codPosto: codPosto || '',
         quadroFonte: row ? (row.__source || 'quadro') : ''
@@ -16500,7 +16495,7 @@ function renderVtReport(){
         ? 'Faltas injustificadas: mês civil anterior ao início do período (regra 21→20).'
         : 'Faltas injustificadas: intervalo de igual duração imediatamente anterior ao início.';
     el.innerHTML = `<div style="margin-bottom:10px;"><strong>Período:</strong> ${ini.toLocaleDateString('pt-BR')} a ${fim.toLocaleDateString('pt-BR')}</div>
-    <div style="margin-bottom:8px;font-size:12px;color:#555;">Registro, Unidade e Escala são obtidos do <strong>Quadro de Postos</strong> (Unidades → Postos e panorama de postos). VT unitário e conta vêm da ficha cadastral.</div>
+    <div style="margin-bottom:8px;font-size:12px;color:#555;">Funcionário, Registro, Unidade (Atuando), VT unitário e conta vêm da <strong>ficha cadastral</strong>. A <strong>Escala</strong> é obtida do <strong>Quadro de Postos</strong> (código do posto + unidade).</div>
     <div style="margin-bottom:8px;font-size:12px;color:#555;">${notaFaltas}</div>
     <div style="margin-bottom:10px;"><strong>Dias úteis:</strong> ${diasUteis} | <strong>Total previsto:</strong> ${fmoney(totalGeral)} 
     <button class="btn btn-success" onclick="exportVtExcel()" style="margin-left:8px;">Excel</button><button class="btn btn-danger" onclick="exportVtPDF()" style="margin-left:6px;">PDF</button><button class="btn btn-info" onclick="exportVtBancoExcel()" style="margin-left:6px;">Exportar arquivo banco</button></div>
