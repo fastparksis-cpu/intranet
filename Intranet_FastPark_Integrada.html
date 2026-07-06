@@ -3899,6 +3899,10 @@ function switchTab(tab) {
         if(typeof fpPushDashboardWithRetry === 'function') fpPushDashboardWithRetry();
     }
     if(tab === 'movimentos' && typeof refreshMovGestaoPagamentosUi === 'function') refreshMovGestaoPagamentosUi();
+    if(tab === 'movfunc'){
+        if(typeof populateCadastroDependentes === 'function') populateCadastroDependentes();
+        if(typeof renderMovCadList === 'function') renderMovCadList();
+    }
     if(tab === 'vt'){
         if(typeof sincronizarTodosPostosComCadastro === 'function') sincronizarTodosPostosComCadastro();
         if(typeof renderVtReport === 'function') renderVtReport();
@@ -5552,7 +5556,9 @@ window.addEventListener('DOMContentLoaded', () => {
     fpApplyLogoImages();
     if(typeof fpEnsurePostosPanoramaDocumentDelegation === 'function') fpEnsurePostosPanoramaDocumentDelegation();
     const movCad = typeof getMovCad === 'function' ? getMovCad() : [];
-    if(!window.__FP_EMBEDDED_FROM_FILE__ && movCad.length){
+    if(!window.__FP_EMBEDDED_FROM_FILE__ && movCad.length && typeof fpSyncStateMovimentacoesFromMovCad === 'function'){
+        fpSyncStateMovimentacoesFromMovCad();
+    } else if(!window.__FP_EMBEDDED_FROM_FILE__ && movCad.length){
         state.movimentacoes = movCad.map(m => ({
             data: m.dataIni || '',
             funcionario: m.funcionario || '',
@@ -7177,6 +7183,8 @@ window.fpOnCloudDataReady = async function () {
         if(typeof renderSaidaTab === 'function') renderSaidaTab();
         if(typeof refreshMovGestaoPagamentosUi === 'function') refreshMovGestaoPagamentosUi();
         if(typeof renderVtHistory === 'function') renderVtHistory();
+        if(typeof renderMovCadList === 'function') renderMovCadList();
+        if(typeof fpSyncStateMovimentacoesFromMovCad === 'function') fpSyncStateMovimentacoesFromMovCad();
     } catch(modUiErr) { console.warn('[FP] UI módulos pós-nuvem', modUiErr); }
     fpPushDashboardWithRetry();
 };
@@ -9573,6 +9581,7 @@ async function collectFpIntranetSnapshotLight(){
         });
     } catch(_bag) { /* ignore */ }
     const uIn = getUnidades();
+    if(typeof fpSyncStateMovimentacoesFromMovCad === 'function') fpSyncStateMovimentacoesFromMovCad();
     const unidadesResolved = uIn.map(function(u){
         try { return uniPrepareUnidadeForStorage(u); }
         catch(e) { return u; }
@@ -9664,6 +9673,7 @@ async function collectFpIntranetSnapshot(opts){
     if(!opts.skipFlush && typeof fpFlushAllTabsToLocalStorage === 'function'){
         try { await fpFlushAllTabsToLocalStorage(); } catch(flushErr) { console.warn('[FP] flush pré-snapshot', flushErr); }
     }
+    if(typeof fpSyncStateMovimentacoesFromMovCad === 'function') fpSyncStateMovimentacoesFromMovCad();
     if(!fast && typeof fpPersistEmployeeAttBagFromState === 'function'){
         try { await fpPersistEmployeeAttBagFromState(); } catch(bagErr) { console.warn('[FP] bag pré-snapshot', bagErr); }
     }
@@ -10134,6 +10144,7 @@ async function applyFpEmbeddedIntranetDb(db, opts){
         movState.meta = db.movState.meta || { competencia: '', empresa: '', cnpj: '' };
         if(typeof movGestUpdateImportStatus === 'function') movGestUpdateImportStatus();
     }
+    if(typeof fpSyncStateMovimentacoesFromMovCad === 'function') fpSyncStateMovimentacoesFromMovCad();
     updateCompetenciaLabel(false);
     refreshDashboardFilters();
     populateCadastroDependentes();
@@ -10413,7 +10424,9 @@ async function fpFlushAllTabsToLocalStorage(){
         try { localStorage.setItem(FP_SINISTROS_KEY, JSON.stringify(getSinistros())); } catch(e4) { console.warn(e4); }
         try { localStorage.setItem(FP_LAUDOS_KEY, JSON.stringify(getLaudosCad())); } catch(e4b) { console.warn(e4b); }
         try { localStorage.setItem(PAGAS_SIGNED_KEY, JSON.stringify(getSignedDocsMap())); } catch(e5) { console.warn(e5); }
-        try { localStorage.setItem(MOV_CAD_KEY, JSON.stringify(getMovCad())); } catch(e6) { console.warn(e6); }
+        try {
+            fpPersistIntranetRegistryKey(MOV_CAD_KEY, JSON.stringify(getMovCad()), { skipCloud: true });
+        } catch(e6) { console.warn(e6); }
         try { localStorage.setItem(POSTOS_EXTRAS_KEY, JSON.stringify(getPostosExtras())); } catch(e7) { console.warn(e7); }
         try { localStorage.setItem(FP_UNIDADES_POSTOS_KEY, JSON.stringify(getUnidadesPostosCatalog())); } catch(e7b) { console.warn(e7b); }
         try { localStorage.setItem(FP_UNIDADES_ORCAMENTOS_KEY, JSON.stringify(getUnidadesOrcamentos())); } catch(e7c) { console.warn(e7c); }
@@ -11025,12 +11038,46 @@ function getMovCad(){
             id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : ('m_' + Date.now() + '_' + Math.random().toString(16).slice(2))
         };
     });
-    if(changed) setMovCad(arr);
+    if(changed) setMovCad(arr, { skipSync: true });
     return arr;
 }
-function setMovCad(v){
-    localStorage.setItem(MOV_CAD_KEY, JSON.stringify(v));
-    fpAfterPersistentStorageWrite();
+function fpMovCadItemToStateRow(m){
+    return {
+        data: m.dataIni || '',
+        funcionario: m.funcionario || '',
+        tipo: 'POSTO ALTERADO',
+        funcao: '',
+        origem: m.origem || '',
+        destino: m.destino || '',
+        codPostoDestino: m.codPostoDestino || '',
+        __fromMovCad: true,
+        __movCadId: m.id || ''
+    };
+}
+/** Mantém state.movimentacoes alinhado ao histórico cadastrado (fp_mov_cad) para snapshot na nuvem. */
+function fpSyncStateMovimentacoesFromMovCad(){
+    let cad = [];
+    try { cad = JSON.parse(localStorage.getItem(MOV_CAD_KEY) || '[]'); } catch(_e) { cad = []; }
+    if(!Array.isArray(cad)) cad = [];
+    const excelMovs = (state.movimentacoes || []).filter(m => !m || !m.__fromMovCad);
+    const fromCad = cad
+        .filter(m => m && String(m.funcionario || '').trim())
+        .map(fpMovCadItemToStateRow);
+    state.movimentacoes = [...fromCad, ...excelMovs];
+}
+window.fpSyncStateMovimentacoesFromMovCad = fpSyncStateMovimentacoesFromMovCad;
+function fpSaveMovCadToLocalStorage(arr){
+    window.__fpCloudUserEditedAt = Date.now();
+    const payload = JSON.stringify(Array.isArray(arr) ? arr : []);
+    fpPersistIntranetRegistryKey(MOV_CAD_KEY, payload);
+}
+window.fpSaveMovCadToLocalStorage = fpSaveMovCadToLocalStorage;
+function setMovCad(v, opts){
+    opts = opts || {};
+    fpSaveMovCadToLocalStorage(v);
+    if(!opts.skipSync && typeof fpSyncStateMovimentacoesFromMovCad === 'function'){
+        fpSyncStateMovimentacoesFromMovCad();
+    }
 }
 /** Movimentação vigente do colaborador (sem data fim ou fim futuro; senão a mais recente encerrada). */
 function getMovimentacaoVigenteColaborador(nome){
@@ -11283,16 +11330,6 @@ function salvarMovimentacaoCadastro(){
         arr.unshift(item);
     }
     setMovCad(arr);
-    if(!editId){
-        state.movimentacoes.unshift({
-            data: item.dataIni,
-            funcionario: item.funcionario,
-            tipo: 'POSTO ALTERADO',
-            funcao: '',
-            origem: item.origem,
-            destino: item.destino
-        });
-    }
     syncFichaCadastroFromMovimentacoes(item.funcionario);
     if(prevFuncionario && normText(prevFuncionario) !== normText(item.funcionario)){
         syncFichaCadastroFromMovimentacoes(prevFuncionario);

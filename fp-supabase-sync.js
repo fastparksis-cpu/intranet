@@ -88,7 +88,7 @@
 
     function fpShouldAutoloadApplyCloud(localCount, cloudCount, cloudWhen, localWhen, opts) {
         opts = opts || {};
-        if (opts.force) return true;
+        if (opts.force && opts.userInitiated) return true;
         if (!opts.autoload) return true;
         if (cloudCount === 0 && localCount > 0) return false;
         if (localCount === 0 && cloudCount > 0) return true;
@@ -910,6 +910,7 @@
         }
         if (pullMs > 0) await g.fpPullStateFromDashboardIframes(pullMs);
         if (quick) {
+            if (typeof g.fpSyncStateMovimentacoesFromMovCad === 'function') g.fpSyncStateMovimentacoesFromMovCad();
             if (g.FP_CLOUD_FLUSH_ALL_TABS !== false && typeof g.fpFlushAllTabsToLocalStorage === 'function') {
                 await g.fpFlushAllTabsToLocalStorage();
             }
@@ -1008,7 +1009,7 @@
             throw new Error('Nenhum colaborador encontrado. Importe a planilha Excel ou abra a aba Cadastro/Início antes de salvar.');
         }
         var skipPeek = opts.autosave && g.FP_CLOUD_AUTOSAVE_SKIP_PEEK !== false;
-        if (!opts.allowShrink && !skipPeek) {
+        if (!opts.allowShrink) {
             try {
                 var cloudMetaSave = await fpPeekCloudSnapshotMeta(supa);
                 if (cloudMetaSave && cloudMetaSave.employees > 0) {
@@ -1019,7 +1020,7 @@
                         fpCloudSetStatus(blockMsg, true);
                         return { skipped: true, reason: 'empty-save-blocked', cloudEmployees: cloudMetaSave.employees };
                     }
-                    if (fpCloudSaveWouldShrink(localSaveCount, cloudMetaSave.employees)) {
+                    if (!skipPeek && fpCloudSaveWouldShrink(localSaveCount, cloudMetaSave.employees)) {
                         var shrinkMsg = 'Gravação cancelada: este PC tem ' + localSaveCount +
                             ' colaborador(es) e a nuvem tem ' + cloudMetaSave.employees +
                             '. Use ☁️ Salvar manualmente se quiser substituir.';
@@ -1394,7 +1395,15 @@
             var cloudWhen = res.data.updated_at || res.data.exported_at || '';
             var localMeta = fpReadLocalSnapshotMeta();
             var localWhen = localMeta && localMeta.updatedAt ? localMeta.updatedAt : null;
-            if (!opts.force && opts.autoload && !fpShouldAutoloadApplyCloud(
+            var userForce = !!(opts.force && opts.userInitiated);
+            if (!userForce && cloudEmpCount === 0 && localEmpCount > 0) {
+                fpCloudSetStatus(
+                    'Nuvem vazia; mantidos ' + localEmpCount + ' colaborador(es) deste PC.',
+                    false
+                );
+                return { skipped: true, reason: 'empty-cloud-vs-local', localEmployees: localEmpCount };
+            }
+            if (!userForce && opts.autoload && !fpShouldAutoloadApplyCloud(
                 localEmpCount, cloudEmpCount, cloudWhen, localWhen, opts
             )) {
                 if (cloudEmpCount === 0 && localEmpCount > 0) {
@@ -1439,7 +1448,7 @@
             if (typeof g.applyFpEmbeddedIntranetDb !== 'function') {
                 throw new Error('Função applyFpEmbeddedIntranetDb não encontrada.');
             }
-            await g.applyFpEmbeddedIntranetDb(db, { fromCloud: true, fast: useFast });
+            await g.applyFpEmbeddedIntranetDb(db, { fromCloud: true, fast: useFast, userInitiated: !!opts.userInitiated });
             db.__cloudUpdatedAt = cloudWhen;
             if (!opts.skipIframeSync) {
                 if (typeof g.fpOnCloudDataReady === 'function') {
@@ -1601,8 +1610,14 @@
                 }
                 if (localN) extra += '\nEste PC: ' + localN + ' colaborador(es).';
             }
-            if (!confirm('Carregar da nuvem? Os dados actuais neste separador serão substituídos.' + extra)) return;
-            await g.fpCloudLoadSnapshot({ force: true });
+            if (cloudMetaLoad && !cloudMetaLoad.employees && localN) {
+                if (!confirm(
+                    'ATENÇÃO: a nuvem parece não ter colaboradores cadastrados.\n' +
+                    'Carregar pode apagar o que ainda existe neste PC (' + localN + ' colaborador(es)).\n\n' +
+                    'Continuar mesmo assim?'
+                )) return;
+            } else if (!confirm('Carregar da nuvem? Os dados actuais neste separador serão substituídos.' + extra)) return;
+            await g.fpCloudLoadSnapshot({ force: true, userInitiated: true });
         } catch (err) {
             console.error(err);
             fpCloudSetStatus('Erro: ' + (err && err.message ? err.message : err), true);
@@ -1621,7 +1636,6 @@
                 g.fpResetCloudAutoloadForRetry();
             }
         }
-        opts.force = true;
         return g.fpTryCloudAutoload(opts);
     };
 
