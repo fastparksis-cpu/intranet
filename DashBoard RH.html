@@ -2464,6 +2464,7 @@ function applyFilters() {
     if(__fpApplyingFilters) return;
     __fpApplyingFilters = true;
     try {
+        dashApplyMovimentacoesToEmployeesInMemory();
         const list = listagemParaPainel();
         const sel = E.employee ? E.employee.value : '';
         __fpSuppressFilterEvents = true;
@@ -2704,12 +2705,15 @@ function renderProfile(e, qtd) {
     const stRaw = String(e.status || '');
     const st = stRaw.includes('Deslig') ? 'd' : stRaw.includes('FÉR') ? 'w' : 'ok';
     const vtIv = Number(e.vtIdaVolta) > 0 ? e.vtIdaVolta : (Number(e.vtValor) > 0 ? Number(e.vtValor) * 2 : 0);
-    const codPosto = String(e.codPosto || e.codigoPosto || '').trim() || fpGetCodigoPostoByEmployeeName(e.nome, e);
+    const movFicha = dashGetUnidadeCodPostoFromMovCad(e.nome);
+    const atuandoExibir = movFicha.unidade || e.atuando || '';
+    const codPosto = movFicha.codPosto || String(e.codPosto || e.codigoPosto || '').trim() || fpGetCodigoPostoByEmployeeName(e.nome, e);
+    const movFonte = (movFicha.unidade || movFicha.codPosto) ? ' (conforme Movimentações)' : '';
     const part1 = [
         ['Registro', e.empresa], ['Status', e.status], ['Admissão', fdate(e.admissao)],
         ...(ehDesligado(e) ? [['Data de desligamento', fdate(e.demissao) || '—']] : []),
         ['Tempo de casa (automático)', tc.linhaGrelha + (tc.encerrado ? ' — congelado no desligamento' : '')],
-        ['Cargo', e.cargo], ['Nível', e.nivel], ['Atuando (Unidade)', e.atuando], ['Escala', e.escala || '—'],
+        ['Cargo', e.cargo], ['Nível', e.nivel], ['Atuando (Unidade)', atuandoExibir + movFonte], ['Escala', e.escala || '—'],
         ['Cód. de posto', codPosto || '—'],
         ['Carga horária', e.carga || '—'], ['Jornada', e.jornada || '—'],
         ['Salário Base', fpFmtFichaMoney('Salário Base', e.salario)], ['Ajuda de custos', fpFmtFichaMoney('Ajuda de custos', e.ajuda)], ['Vale Refeição', fpFmtFichaMoney('Vale Refeição', e.vr)], ['Cesta', e.cestas || 'NÃO'],
@@ -2765,7 +2769,7 @@ function renderProfile(e, qtd) {
                     <div class="sub">${esc(e.cargo || 'Sem cargo')} • Nível: ${esc(e.nivel || '—')}</div>
                     <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px;">
                         ${pill(st, e.status)}
-                        ${pill('n', `Unidade: ${e.atuando || '—'}`)}
+                        ${pill('n', `Unidade: ${atuandoExibir || '—'}`)}
                         ${pill('n', `Registro: ${e.empresa || '—'}`)}
                     </div>
                     <div class="mini">
@@ -2945,14 +2949,59 @@ function renderCompany(list) {
 }
 
 // ========== MOVIMENTAÇÕES ==========
+function dashGetMovCadRaw(){
+    try { return JSON.parse(localStorage.getItem('fp_mov_cad') || '[]'); }
+    catch(_e) { return []; }
+}
+function dashGetMovimentacaoVigenteColaborador(nome){
+    const nk = fpNormEmpName(nome || '');
+    if(!nk) return null;
+    const hoje = new Date().toISOString().slice(0, 10);
+    const movs = dashGetMovCadRaw().filter(m => fpNormEmpName(m.funcionario || '') === nk);
+    if(!movs.length) return null;
+    const sortMov = (a, b) => {
+        const d = String(b.dataIni || b.data || '').localeCompare(String(a.dataIni || a.data || ''));
+        if(d) return d;
+        return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
+    };
+    const ativos = movs.filter(m => {
+        const fim = String(m.dataFim || '').trim();
+        return !fim || fim >= hoje;
+    });
+    if(ativos.length) return ativos.sort(sortMov)[0];
+    return movs.sort((a, b) => {
+        const d = String(b.dataFim || b.dataIni || b.data || '').localeCompare(String(a.dataFim || a.dataIni || a.data || ''));
+        if(d) return d;
+        return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
+    })[0];
+}
+function dashGetUnidadeCodPostoFromMovCad(nome){
+    const mov = dashGetMovimentacaoVigenteColaborador(nome);
+    if(!mov) return { unidade: '', codPosto: '' };
+    return {
+        unidade: String(mov.destino || '').trim(),
+        codPosto: String(mov.codPostoDestino || '').trim()
+    };
+}
+function dashApplyMovimentacoesToEmployeesInMemory(){
+    state.employees = (state.employees || []).map(emp => {
+        const d = dashGetUnidadeCodPostoFromMovCad(emp.nome);
+        if(!d.unidade && !d.codPosto) return emp;
+        const out = { ...emp };
+        if(d.unidade) out.atuando = d.unidade;
+        if(d.codPosto) out.codPosto = d.codPosto;
+        return out;
+    });
+}
 function getMovimentacoesCadastroExterno(){
     try{
-        const arr = JSON.parse(localStorage.getItem('fp_mov_cad') || '[]');
+        const arr = dashGetMovCadRaw();
         return arr.map(x => ({
             data: x.dataIni || x.data || '',
             funcionario: x.funcionario || '',
             origem: x.origem || '',
             destino: x.destino || '',
+            codPosto: x.codPostoDestino || '',
             observacao: x.obs || x.observacao || ''
         }));
     }catch{
@@ -3005,7 +3054,7 @@ function renderMovimentacoes() {
             <tbody>
                 ${movs.map(m => `<tr>
                     <td>${esc(m.data ? fdate(m.data) : '—')}</td>
-                    <td>${esc(fpGetCodigoPostoByEmployeeName(m.funcionario, state.selected) || '—')}</td>
+                    <td>${esc(m.codPosto || fpGetCodigoPostoByEmployeeName(m.funcionario, state.selected) || '—')}</td>
                     <td>${esc(m.origem || '—')}</td>
                     <td>${esc(m.destino || '—')}</td>
                     <td>${esc(m.observacao || '—')}</td>
@@ -4035,8 +4084,9 @@ function openEmployeeForm(emp = null){
         EF.admissao.value = emp.admissao ? fdate(emp.admissao) : '';
         EF.cargo.value = emp.cargo || '';
         EF.nivel.value = emp.nivel || '';
-        EF.unidade.value = emp.atuando || '';
-        fillEmpCodPostoSelect(emp.codPosto || emp.codigoPosto || '');
+        const movForm = dashGetUnidadeCodPostoFromMovCad(emp.nome);
+        EF.unidade.value = movForm.unidade || emp.atuando || '';
+        fillEmpCodPostoSelect(movForm.codPosto || emp.codPosto || emp.codigoPosto || '');
         EF.salario.value = Number(emp.salario || 0);
         EF.ajuda.value = Number(emp.ajuda || 0);
         EF.vr.value = Number(emp.vr || 0);
@@ -4874,6 +4924,9 @@ function applyEmployeesSyncFromParent(msg) {
     }
     state.employees = incomingEmployees.map(emp => {
         const e = { ...emp };
+        const movD = dashGetUnidadeCodPostoFromMovCad(e.nome);
+        if(movD.unidade) e.atuando = movD.unidade;
+        if(movD.codPosto) e.codPosto = movD.codPosto;
         const foto = fpResolveEmployeeFotoUrl(e);
         if(foto) e.foto = foto;
         if(Array.isArray(e.documentos)){
@@ -4963,6 +5016,18 @@ window.addEventListener('storage', (ev) => {
     if(ev.key === FP_REF_EMPRESAS_KEY && IS_CADASTRO_VIEW){
         fpLoadRefCacheFromStorage(null);
         fillEmpRegistroSelect();
+    }
+    if(ev.key === 'fp_mov_cad'){
+        dashApplyMovimentacoesToEmployeesInMemory();
+        if(state.selected){
+            const sel = state.employees.find(e => e === state.selected || String(e.nome) === String(state.selected.nome));
+            if(sel){
+                state.selected = sel;
+                const list = typeof listagemParaPainel === 'function' ? listagemParaPainel() : [];
+                renderProfile(sel, list.length);
+                renderMovimentacoes();
+            }
+        }
     }
 });
 
